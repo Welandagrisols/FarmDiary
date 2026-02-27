@@ -1,12 +1,43 @@
-// template
-const tintColorLight = "#2f95dc";
+const COLORS = {
+  primary: "#1B5E20",
+  primaryLight: "#2E7D32",
+  primaryMid: "#388E3C",
+  primarySurface: "#E8F5E9",
+  amber: "#F57F17",
+  amberLight: "#FFF8E1",
+  amberDark: "#E65100",
+  red: "#C62828",
+  redLight: "#FFEBEE",
+  green: "#2E7D32",
+  greenLight: "#E8F5E9",
+  text: "#212121",
+  textSecondary: "#616161",
+  textMuted: "#9E9E9E",
+  border: "#E0E0E0",
+  borderLight: "#F5F5F5",
+  background: "#FAFAFA",
+  cardBg: "#FFFFFF",
+  white: "#FFFFFF",
+  black: "#000000",
+  shadow: "#000000",
+  blue: "#1565C0",
+  blueLight: "#E3F2FD",
+  purple: "#6A1B9A",
+  purpleLight: "#F3E5F5",
+  teal: "#00695C",
+  tealLight: "#E0F2F1",
+  orange: "#E64A19",
+  orangeLight: "#FBE9E7",
+};
 
-export default {
-  light: {
-    text: "#000",
-    background: "#fff",
-    tint: tintColorLight,
-    tabIconDefault: "#ccc",
-    tabIconSelected: tintColorLight,
-  },
+export default COLORS;
+
+export const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  "Pre-Planting": { bg: "#FFF3E0", text: "#E65100" },
+  "Inputs": { bg: "#E8F5E9", text: "#1B5E20" },
+  "Labor": { bg: "#E3F2FD", text: "#1565C0" },
+  "Facilitation & Supervision": { bg: "#F3E5F5", text: "#6A1B9A" },
+  "Logistics": { bg: "#E0F2F1", text: "#00695C" },
+  "Equipment": { bg: "#FBE9E7", text: "#BF360C" },
+  "Overhead": { bg: "#F5F5F5", text: "#424242" },
 };
