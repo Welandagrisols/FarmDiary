@@ -1,0 +1,789 @@
+ines • 30,741 characters
+# PHASE 1 — The Working Farm Diary
+## Potato Farm Management App | Replit + Supabase + React PWA
+### Build this first. It is complete and usable on its own.
+
+---
+
+## WHAT THIS PHASE BUILDS
+
+A mobile-first app that replaces the farm manager's notebook. It shows the spray and activity schedule, lets you log what was actually done, captures every cost (including historical costs from before the app existed), and tracks inventory. By the end of this phase you have a fully working tool for the current season.
+
+**What is NOT in this phase** (added later): multiple farms, multiple seasons, satellite maps, GPS walk, full P&L reports, Excel import. The database is designed so all of these slot in cleanly in later phases without restructuring.
+
+---
+
+## TECH STACK
+
+- **Frontend**: React with Vite + Tailwind CSS
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: None yet — single user, no login. Add `user_id UUID` as a nullable column on every table so auth can be bolted on later with zero migration.
+- **Hosting**: Replit
+- **PWA**: Add `manifest.json` + basic service worker so the app is installable on Android
+- **Charts**: Recharts
+- **Icons**: Lucide React
+
+---
+
+## DATABASE SCHEMA (Phase 1)
+
+Design these tables to support multi-farm and multi-season in future phases. Include the foreign key columns now even though Phase 1 only uses one farm and one season.
+
+```sql
+-- Farms table (Phase 1 seeds one farm, Phase 2 adds the UI to manage more)
+CREATE TABLE farms (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT 'Rift Valley Potato Farm',
+  location TEXT DEFAULT 'Nakuru / Bomet / Kericho, Kenya',
+  total_acres NUMERIC DEFAULT 4,
+  lease_status TEXT DEFAULT 'Leased',
+  -- Future phase columns (include now, leave null):
+  latitude NUMERIC,
+  longitude NUMERIC,
+  boundary_geojson JSONB,
+  area_acres_calculated NUMERIC,
+  notes TEXT,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Seasons table (Phase 1 seeds one season)
+CREATE TABLE seasons (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  farm_id UUID REFERENCES farms(id) ON DELETE CASCADE,
+  season_name TEXT NOT NULL,
+  season_type TEXT,           -- 'Long Rains', 'Short Rains', 'Dry Season'
+  status TEXT DEFAULT 'Active',
+  notes TEXT,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Sections (the subdivisions within a season — Section A and Section B)
+CREATE TABLE sections (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  season_id UUID REFERENCES seasons(id) ON DELETE CASCADE,
+  farm_id UUID REFERENCES farms(id),
+  label TEXT NOT NULL,
+  variety TEXT,
+  acres NUMERIC,
+  planting_date DATE,
+  estimated_germination DATE,
+  actual_germination DATE,
+  estimated_harvest DATE,
+  actual_harvest DATE,
+  blight_risk TEXT DEFAULT 'MEDIUM',
+  notes TEXT,
+  -- Future phase:
+  boundary_geojson JSONB,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- The master cost ledger — every single expenditure goes here
+CREATE TABLE costs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  farm_id UUID REFERENCES farms(id),
+  season_id UUID REFERENCES seasons(id),
+  section_id UUID REFERENCES sections(id),  -- NULL = whole farm level
+
+  -- What is this cost?
+  cost_category TEXT NOT NULL,
+  cost_subcategory TEXT,
+  description TEXT NOT NULL,
+
+  -- When did it happen?
+  cost_date DATE NOT NULL,
+  is_pre_planting BOOLEAN DEFAULT FALSE,
+  is_historical BOOLEAN DEFAULT FALSE,      -- TRUE if entered retrospectively
+
+  -- How much?
+  amount_kes NUMERIC NOT NULL,
+  quantity NUMERIC,
+  unit TEXT,
+  unit_price_kes NUMERIC,
+
+  -- Product detail (for chemicals and inputs)
+  product_name TEXT,
+  supplier TEXT,
+  receipt_reference TEXT,
+
+  -- Labor detail
+  num_workers INT,
+  days_worked NUMERIC,
+  rate_per_worker_per_day NUMERIC,
+
+  -- Facilitation detail
+  facilitator_name TEXT,
+  trip_from TEXT,
+  trip_to TEXT,
+
+  -- Deviation from plan?
+  is_deviation BOOLEAN DEFAULT FALSE,
+  planned_product TEXT,
+  deviation_reason TEXT,
+
+  -- Import tracking
+  import_source TEXT DEFAULT 'manual',
+
+  notes TEXT,
+  photo_url TEXT,
+  weather_conditions TEXT,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Inventory: what was bought and how much is left
+CREATE TABLE inventory (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  farm_id UUID REFERENCES farms(id),
+  season_id UUID REFERENCES seasons(id),
+  product_name TEXT NOT NULL,
+  category TEXT,
+  quantity_purchased NUMERIC NOT NULL,
+  unit TEXT NOT NULL,
+  unit_price_kes NUMERIC NOT NULL,
+  quantity_used NUMERIC DEFAULT 0,
+  purchase_date DATE NOT NULL,
+  supplier TEXT,
+  low_stock_threshold NUMERIC,
+  is_historical BOOLEAN DEFAULT FALSE,
+  notes TEXT,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Activity logs: when was a scheduled activity actually done?
+CREATE TABLE activity_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  farm_id UUID REFERENCES farms(id),
+  season_id UUID REFERENCES seasons(id),
+  section_id UUID REFERENCES sections(id),
+  schedule_activity_id TEXT,          -- links to hardcoded PLANNED_SCHEDULE id
+  activity_name TEXT NOT NULL,
+  planned_date DATE,
+  actual_date DATE NOT NULL,
+  products_used JSONB,
+  is_deviation BOOLEAN DEFAULT FALSE,
+  deviation_reason TEXT,
+  num_workers INT,
+  labor_cost_kes NUMERIC DEFAULT 0,
+  total_cost_kes NUMERIC DEFAULT 0,
+  weather_conditions TEXT,
+  is_historical BOOLEAN DEFAULT FALSE,
+  notes TEXT,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Field observations: daily scouting notes
+CREATE TABLE field_observations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  farm_id UUID REFERENCES farms(id),
+  season_id UUID REFERENCES seasons(id),
+  section_id UUID REFERENCES sections(id),
+  observation_date DATE NOT NULL,
+  observation_type TEXT,
+  description TEXT NOT NULL,
+  severity TEXT,
+  action_taken TEXT,
+  is_historical BOOLEAN DEFAULT FALSE,
+  user_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**Seed data**: Insert one farm, one season (Long Rains 2026), and two sections (A and B) on app first load if tables are empty.
+
+---
+
+## HARDCODED APP CONSTANTS
+
+```js
+export const FARM_SEED = {
+  name: "Rift Valley Potato Farm",
+  location: "Nakuru / Bomet / Kericho, Kenya",
+  total_acres: 4,
+  lease_status: "Leased"
+};
+
+export const SEASON_SEED = {
+  season_name: "Long Rains 2026",
+  season_type: "Long Rains",
+  status: "Active"
+};
+
+export const SECTIONS_SEED = [
+  {
+    label: "Section A",
+    variety: "Stephen's",
+    acres: 2,
+    planting_date: "2026-02-17",
+    estimated_germination: "2026-03-08",
+    estimated_harvest: "2026-06-17",
+    blight_risk: "HIGH",
+    notes: "Stephen's variety is highly prone to Late Blight fungal disease. Never skip sprays. If daily rain, reduce spray interval to 7 days."
+  },
+  {
+    label: "Section B",
+    variety: "Shangi",
+    acres: 2,
+    planting_date: "2026-02-20",
+    estimated_germination: "2026-03-11",
+    estimated_harvest: "2026-06-20",
+    blight_risk: "MEDIUM",
+    notes: "Shangi is a fast, heavy grower. Calcium at flowering is critical to prevent hollow heart. Ensure deep earthing up."
+  }
+];
+
+export const PLANNED_SCHEDULE = [
+  {
+    id: "pre-planting",
+    stage: "Pre-Planting",
+    activityType: "Cost Capture",
+    name: "Pre-Planting Costs",
+    plannedDateA: "2026-02-01",
+    plannedDateB: "2026-02-01",
+    daysAfterGermA: null,
+    plannedProducts: [],
+    estimatedTotalCost: 0,
+    purpose: "All costs before planting: land lease, soil testing, ploughing, harrowing, lime, NPSb, seed tubers, compost/manure, DAP at planting, all labor. Enter these retrospectively via Add Cost form with any past date.",
+    alert: "Use 'Add Historical Cost' to capture pre-planting costs already spent."
+  },
+  {
+    id: "weed-control",
+    stage: "Pre-Emergence",
+    activityType: "Herbicide",
+    name: "Weed Control — Weedal",
+    plannedDateA: "2026-03-01",
+    plannedDateB: "2026-03-04",
+    daysAfterGermA: -7,
+    plannedProducts: [
+      { name: "Weedal 480SL", rate: "200ml per 20L", qty: "2L total", unitPrice: 1000, unit: "L" }
+    ],
+    estimatedLaborCost: 1000,
+    estimatedTotalCost: 2000,
+    purpose: "Kill weeds before potato sprouts emerge. Apply 12-14 days after planting, BEFORE any sprout is visible.",
+    alert: "If cracking soil or a hook (bent sprout) is visible — DO NOT spray Weedal. Skip it entirely."
+  },
+  {
+    id: "stage1-spray1",
+    stage: "Stage 1 — Emergence",
+    activityType: "Spray",
+    name: "Stage 1 — 1st Spray",
+    plannedDateA: "2026-03-15",
+    plannedDateB: "2026-03-18",
+    daysAfterGermA: 7,
+    plannedProducts: [
+      { name: "Kenthane 800WP", rate: "50g per 20L", qty: "2.5kg", unitPrice: 2200, unit: "2.5kg bag" },
+      { name: "Metameta", rate: "70g per 20L", qty: "2.5kg", unitPrice: 4100, unit: "2.5kg bag" },
+      { name: "Flexigold Starter", rate: "20ml per 20L", qty: "2L", unitPrice: 1200, unit: "L" },
+      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from 20L stock", unitPrice: 250, unit: "L" },
+      { name: "YaraVita", rate: "200ml per 20L", qty: "1L", unitPrice: 1000, unit: "L" },
+      { name: "Agrozyne", rate: "20ml per 20L", qty: "500ml", unitPrice: 1000, unit: "L" },
+      { name: "Halothrin + Vendex Blend", rate: "10ml each per 20L", qty: "300ml each", unitPrice: 2250, unit: "combined" },
+      { name: "Sands (Sticker/Spreader)", rate: "5-10ml per 20L", qty: "from 1L stock", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 7500,
+    purpose: "First fungal barrier. Kenthane (contact) + Metameta (systemic). Rabbit Urine = organic nitrogen + aphid repellent. Halothrin + Vendex blend kills cutworms and aphids. NEVER spray without Sands sticker — rain washes products off within hours.",
+    alert: "Stephen's = HIGH RISK. Use full 70g Metameta. Do not reduce."
+  },
+  {
+    id: "stage1-spray2",
+    stage: "Stage 1 — Emergence",
+    activityType: "Spray",
+    name: "Stage 1 — 2nd Spray",
+    plannedDateA: "2026-03-27",
+    plannedDateB: "2026-03-30",
+    daysAfterGermA: 19,
+    plannedProducts: [
+      { name: "Kenthane 800WP", rate: "50g per 20L", qty: "2.5kg", unitPrice: 2200, unit: "2.5kg bag" },
+      { name: "Metameta", rate: "70g per 20L", qty: "2.5kg", unitPrice: 4100, unit: "2.5kg bag" },
+      { name: "Flexigold Starter", rate: "20ml per 20L", qty: "1L", unitPrice: 1200, unit: "L" },
+      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
+      { name: "YaraVita", rate: "200ml per 20L", qty: "1L", unitPrice: 1000, unit: "L" },
+      { name: "Agrozyne", rate: "20ml per 20L", qty: "from stock", unitPrice: 1000, unit: "L" },
+      { name: "Halothrin + Vendex Blend", rate: "10ml each per 20L", qty: "from stock", unitPrice: 2250, unit: "combined" },
+      { name: "Sands (Sticker/Spreader)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 7500,
+    purpose: "Repeat Stage 1. If heavy daily rain, reduce interval from 12 to 7 days.",
+    alert: "In heavy daily rain: spray at 7 days, not 12."
+  },
+  {
+    id: "earthing-up-1",
+    stage: "Stage 2 — Vegetative",
+    activityType: "Earthing Up + Fertilizer",
+    name: "1st Earthing Up + OCP/Konkali",
+    plannedDateA: "2026-04-01",
+    plannedDateB: "2026-04-04",
+    daysAfterGermA: 23,
+    plannedProducts: [
+      { name: "OCP Fertilizer", rate: "50kg per acre (soil)", qty: "4 bags / 200kg", unitPrice: 3200, unit: "50kg bag" },
+      { name: "Konkali", rate: "50kg per acre (soil)", qty: "4 bags / 200kg", unitPrice: 3800, unit: "50kg bag" }
+    ],
+    estimatedLaborCost: 3000,
+    estimatedTotalCost: 31000,
+    purpose: "BENCHMARK STRATEGY: OCP + Konkali at 44 days from planting. A local farmer achieved 4x yield using this approach. Mound soil 20-25cm. Prevents tuber greening and Potato Tuber Moth access.",
+    alert: "Most critical soil nutrition event of the season. Do not delay."
+  },
+  {
+    id: "stage2-spray1",
+    stage: "Stage 2 — Vegetative",
+    activityType: "Spray",
+    name: "Stage 2 — 1st Spray",
+    plannedDateA: "2026-04-10",
+    plannedDateB: "2026-04-13",
+    daysAfterGermA: 32,
+    plannedProducts: [
+      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend total", unitPrice: 1950, unit: "kg" },
+      { name: "Flexigold Vegetative", rate: "20ml per 20L", qty: "2L", unitPrice: 1200, unit: "L" },
+      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
+      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
+      { name: "Carbosink (Biostimulant)", rate: "20ml per 20L", qty: "500ml", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 8800,
+    purpose: "STAGE 2 TRANSITION: Drop Kenthane — never use again. Switch to Mastergold + Metameta blend. Drop Flexigold Starter — switch to Flexigold Vegetative. Introduce Carbosink (biostimulant / nutrient transporter — NOT a calcium product).",
+    alert: "Kenthane is Stage 1 ONLY. Use Mastergold + Metameta blend from here onward."
+  },
+  {
+    id: "earthing-up-2",
+    stage: "Stage 2 — Vegetative",
+    activityType: "Earthing Up",
+    name: "2nd Earthing Up (No Fertilizer)",
+    plannedDateA: "2026-04-15",
+    plannedDateB: "2026-04-18",
+    daysAfterGermA: 37,
+    plannedProducts: [],
+    estimatedLaborCost: 4000,
+    estimatedTotalCost: 4000,
+    purpose: "Build ridge to 25-30cm. No fertilizer this time. Prevents greening, blocks Potato Tuber Moth, channels rain away from tubers.",
+    alert: null
+  },
+  {
+    id: "stage2-spray2",
+    stage: "Stage 2 — Vegetative",
+    activityType: "Spray",
+    name: "Stage 2 — 2nd Spray",
+    plannedDateA: "2026-04-22",
+    plannedDateB: "2026-04-25",
+    daysAfterGermA: 44,
+    plannedProducts: [
+      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
+      { name: "Flexigold Vegetative", rate: "20ml per 20L", qty: "1L", unitPrice: 1200, unit: "L" },
+      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
+      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
+      { name: "Carbosink (Biostimulant)", rate: "20ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 8800,
+    purpose: "Maintain systemic blight protection during peak April rains.",
+    alert: "Peak rain period. Reduce to 7-day interval if daily rain."
+  },
+  {
+    id: "stage3-spray1",
+    stage: "Stage 3 — Flowering & Bulking",
+    activityType: "Spray",
+    name: "Stage 3 — 1st Spray (Flower Buds)",
+    plannedDateA: "2026-05-03",
+    plannedDateB: "2026-05-06",
+    daysAfterGermA: 55,
+    plannedProducts: [
+      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
+      { name: "Multi-K", rate: "150g per 20L", qty: "2L for this spray", unitPrice: 400, unit: "L" },
+      { name: "K-Flex", rate: "2L total for 4 acres", qty: "2L", unitPrice: 800, unit: "L" },
+      { name: "Carbosink Calcium", rate: "20ml per 20L", qty: "1L", unitPrice: 800, unit: "L" },
+      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 9500,
+    purpose: "THE MONEY STAGE. Apply when first flower buds appear. Introduce K-Flex + Multi-K (potassium drives tuber size). Introduce Carbosink Calcium — DIFFERENT from Carbosink — it supplies calcium for cell walls, prevents hollow heart and rot, toughens skin for transport.",
+    alert: "Critical for Shangi — do NOT miss Calcium. Apply when flower buds are forming."
+  },
+  {
+    id: "stage3-spray2",
+    stage: "Stage 3 — Flowering & Bulking",
+    activityType: "Spray",
+    name: "Stage 3 — 2nd Spray (Tuber Bulking)",
+    plannedDateA: "2026-05-17",
+    plannedDateB: "2026-05-20",
+    daysAfterGermA: 69,
+    plannedProducts: [
+      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
+      { name: "Multi-K", rate: "150g per 20L", qty: "from stock", unitPrice: 400, unit: "L" },
+      { name: "K-Flex", rate: "2L total for 4 acres", qty: "2L", unitPrice: 800, unit: "L" },
+      { name: "Carbosink Calcium", rate: "20ml per 20L", qty: "from stock", unitPrice: 800, unit: "L" },
+      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" }
+    ],
+    estimatedLaborCost: 1500,
+    estimatedTotalCost: 9500,
+    purpose: "Final bulking push. Maximize tuber weight. Keep canopy alive as long as possible — every extra green day means more starch into tubers.",
+    alert: null
+  },
+  {
+    id: "maturation",
+    stage: "Maturation",
+    activityType: "Observation",
+    name: "Stop All Spraying — Maturation",
+    plannedDateA: "2026-05-23",
+    plannedDateB: "2026-05-26",
+    daysAfterGermA: 75,
+    plannedProducts: [],
+    estimatedTotalCost: 0,
+    purpose: "All spraying stops. Allow natural vine die-back and skin hardening. Monitor foliage yellowing.",
+    alert: "STOP all chemical applications from this date."
+  },
+  {
+    id: "harvest",
+    stage: "Harvest",
+    activityType: "Harvest",
+    name: "HARVEST",
+    plannedDateA: "2026-06-17",
+    plannedDateB: "2026-06-20",
+    daysAfterGermA: 100,
+    plannedProducts: [],
+    estimatedLaborCost: 5000,
+    estimatedTotalCost: 5000,
+    purpose: "Harvest when foliage is yellowed, stolons separate easily, and skin does not slip on the thumb rub test. Harvest in dry conditions only.",
+    alert: "SKIN SET TEST: Rub thumb firmly on tuber. Skin slips = not ready. Skin holds = harvest time. Never harvest in rain."
+  }
+];
+```
+
+---
+
+## COST CATEGORIES (Use in dropdowns throughout the app)
+
+```js
+export const COST_CATEGORIES = {
+  "Pre-Planting": [
+    "Land Lease / Rent",
+    "Land Survey / Demarcation",
+    "Soil Testing",
+    "Land Clearing",
+    "Ploughing — 1st Pass",
+    "Ploughing — 2nd Pass",
+    "Harrowing / Levelling",
+    "Drainage Channel Digging",
+    "Furrow Making",
+    "Lime Application",
+    "Soil Amendment — Compost / Manure",
+    "Seed Tubers Purchase",
+    "Seed Treatment",
+    "Basal Fertilizer (DAP / NPSb)",
+    "Pre-Planting Herbicide",
+    "Other Pre-Planting"
+  ],
+  "Inputs": [
+    "Fungicide",
+    "Insecticide",
+    "Herbicide",
+    "Foliar Fertilizer",
+    "Soil Fertilizer (Top Dressing)",
+    "Biostimulant",
+    "Organic Input (Rabbit Urine / Compost Tea)",
+    "Sticker / Adjuvant",
+    "Other Agrochemical"
+  ],
+  "Labor": [
+    "Land Preparation Labor",
+    "Planting Labor",
+    "Weeding Labor",
+    "Spraying Labor",
+    "Earthing Up Labor",
+    "Fertilizer Application Labor",
+    "Scouting / Monitoring Labor",
+    "Harvest Labor",
+    "Post-Harvest Sorting Labor",
+    "Loading / Transport Labor",
+    "Security / Watchman",
+    "Casual Labor — Other"
+  ],
+  "Facilitation & Supervision": [
+    "Farm Manager / Supervisor Fee",
+    "Agronomist Consultation Fee",
+    "Facilitator Transport — Fuel",
+    "Facilitator Transport — Fare (Matatu / Boda / Taxi)",
+    "Facilitator Transport — Vehicle Hire",
+    "Facilitator Accommodation",
+    "Facilitator Meals / Per Diem",
+    "Mobile / Communication Costs",
+    "Other Facilitation"
+  ],
+  "Logistics": [
+    "Input Delivery — Transport",
+    "Agrochemical Purchase Trip",
+    "Harvest Transport to Market",
+    "Harvest Transport to Store",
+    "Packaging / Bags",
+    "Cold Storage Fees",
+    "Market Fees / Levies",
+    "Broker / Agent Commission",
+    "Weighing / Grading Fees",
+    "Other Logistics"
+  ],
+  "Equipment": [
+    "Knapsack Sprayer Purchase",
+    "Knapsack Sprayer Repair",
+    "Tractor Hire — Ploughing",
+    "Tractor Hire — Other",
+    "Hand Tools",
+    "Other Equipment"
+  ],
+  "Overhead": [
+    "Farm Registration / Permit",
+    "Insurance",
+    "Loan Interest",
+    "Other Overhead"
+  ]
+};
+```
+
+---
+
+## SCREENS TO BUILD (Phase 1)
+
+### Navigation
+Bottom bar with 5 tabs: **Home | Schedule | Log | Costs | More**
+"More" opens: Inventory | Observations | Settings (placeholder)
+
+---
+
+### Screen 1: Dashboard (Home)
+
+- **Section cards** — one for Section A (Stephen's) and one for Section B (Shangi):
+  - Variety + acres
+  - Days since planting
+  - Current growth stage (calculated from planting date)
+  - Next planned activity: name + planned date + days until due
+  - Urgency color: 🟢 >7 days | 🟡 3-7 days | 🔴 ≤3 days or overdue
+- **Budget bar**: "KES X spent of KES 83,850 estimated" with a progress bar
+- **Alert banner** (red, dismissible): shows if any activity is >3 days overdue OR if Stephen's hasn't been sprayed in >7 days
+- **Two quick action buttons**: [+ Log Activity] [+ Add Cost]
+
+---
+
+### Screen 2: Schedule
+
+- Chronological list of all planned activities for the current season
+- Each card shows: Stage badge | Name | Sec A date | Sec B date | Status chip
+- Status chips: Completed ✅ | Overdue 🔴 | Due in ≤3 days 🟡 | Upcoming ⬜
+- Tap a card → detail modal: purpose text, products list with rates, alert message
+- "Log Actual →" button on each card → pre-fills the Log screen for that activity
+
+---
+
+### Screen 3: Log Activity
+
+**Step-by-step form — make it fast for field use.**
+
+Step 1: What are you logging?
+- Choose activity: dropdown from PLANNED_SCHEDULE (shows name + due date) OR "Other / Unplanned" OR "Historical Entry (past date)"
+- Section: [Sec A] [Sec B] [Both]
+
+Step 2: Date & Weather
+- Date picker (defaults to today; allows any past date)
+- Weather: ☀️ Sunny | 🌦️ Light Rain | 🌧️ Heavy Rain | ☁️ Cloudy
+
+Step 3: Products Used
+- Pre-filled from the selected planned activity
+- Each product row: toggle [✅ Used as planned] or [⚠️ Used different product]
+  - If different: text field for actual product + reason dropdown:
+    "Product unavailable | Price too high — substituted | Heavy rain — used rain-fast alternative | Agronomist advice | Other"
+- Qty used | Unit | Price per unit → auto-calculates line total
+- [+ Add another product] button for ad-hoc additions
+
+Step 4: Labor
+- Number of workers (number input)
+- Daily rate per worker (KES) — default 500
+- Days worked (default 1)
+- Auto-calculates: workers × rate × days = total labor KES
+
+Step 5: Other Costs (collapsible section)
+- Each row: Type (Transport / Meals / Accommodation / Equipment / Other) | Description | Amount KES
+- [+ Add cost row] button
+
+Step 6: Notes
+- Free text notes field
+
+[SUBMIT — large green full-width button]
+
+On submit: create one `activity_logs` row + one or more `costs` rows (products, labor, other costs each become separate cost rows linked to the same activity log). Update inventory `quantity_used` for each product logged.
+
+---
+
+### Screen 4: Costs (The Ledger)
+
+**Sub-tabs**: All | Pre-Planting | Inputs | Labor | Facilitation | Logistics | Equipment
+
+Top summary row:
+- Total spent to date: KES X
+- Count of entries
+
+Costs list (most recent first):
+- Each row: Date | Category chip (color-coded) | Description | KES amount
+- Tap to expand full details
+- Long press or swipe → Edit / Delete
+
+Filter controls: Section | Category | Date range
+
+**"+ Add Cost" button** → opens the full standalone cost entry form:
+- Farm (auto-filled)
+- Season (auto-filled)
+- Section (Sec A / Sec B / Both / Whole Farm)
+- **Date** — any past or present date; if past, auto-sets `is_historical = TRUE`
+- Category (grouped dropdown from COST_CATEGORIES)
+- Subcategory (filtered based on category)
+- Description (free text)
+- Amount KES — OR — Quantity + Unit + Price per unit (switcher)
+- Product name (appears if category = Inputs)
+- Supplier
+- Receipt reference (optional)
+- Notes
+
+**Extra fields that appear based on category**:
+- If Labor: num_workers | days | rate per day | auto-total
+- If Facilitation: facilitator name | from | to | accommodation Y/N (adds accommodation cost row) | meals Y/N (adds meals cost row)
+- If Logistics: trip purpose | from | to | mode of transport | cost
+
+**"Import Historical Costs" button** (Phase 3 will build the full import — for now this shows a placeholder modal: "Full Excel/CSV import coming soon. Use Add Cost with any past date to enter historical costs manually.")
+
+---
+
+### Screen 5 (More → Inventory)
+
+- Product cards: Name | Category | Purchased | Used | **Remaining** (bold, large)
+- Low stock warning if remaining < 20% of purchased
+- [+ Add Stock Purchase] button → form: product name, category, qty, unit, price per unit, date, supplier
+- Tap product → usage history list (which activity used it, when, how much)
+
+Pre-populate with the master inventory list on first load if inventory table is empty:
+
+```js
+const INVENTORY_MASTER = [
+  { product: "Weedal 480SL", category: "Herbicide", qty: 2, unit: "L", unitPrice: 1000 },
+  { product: "Kenthane 800WP", category: "Fungicide", qty: 5, unit: "kg", unitPrice: 880 },
+  { product: "Metameta", category: "Fungicide", qty: 10, unit: "kg", unitPrice: 1640 },
+  { product: "Mastergold", category: "Fungicide", qty: 4, unit: "kg", unitPrice: 1950 },
+  { product: "Halothrin", category: "Insecticide", qty: 0.5, unit: "L", unitPrice: 1200 },
+  { product: "Vendex", category: "Insecticide", qty: 0.5, unit: "L", unitPrice: 1050 },
+  { product: "Sands (Sticker)", category: "Sticker", qty: 1, unit: "L", unitPrice: 1200 },
+  { product: "OCP Fertilizer", category: "Soil Fertilizer", qty: 4, unit: "50kg bag", unitPrice: 3200 },
+  { product: "Konkali", category: "Soil Fertilizer", qty: 4, unit: "50kg bag", unitPrice: 3800 },
+  { product: "Flexigold Starter", category: "Foliar", qty: 4, unit: "L", unitPrice: 1200 },
+  { product: "Flexigold Vegetative", category: "Foliar", qty: 4, unit: "L", unitPrice: 1200 },
+  { product: "YaraVita", category: "Foliar", qty: 3, unit: "L", unitPrice: 1000 },
+  { product: "Agrozyne", category: "Biostimulant", qty: 2, unit: "L", unitPrice: 1000 },
+  { product: "Carbosink", category: "Biostimulant", qty: 2, unit: "L", unitPrice: 1200 },
+  { product: "Carbosink Calcium", category: "Foliar Calcium", qty: 1, unit: "L", unitPrice: 800 },
+  { product: "K-Flex", category: "Foliar Potassium", qty: 4, unit: "L", unitPrice: 800 },
+  { product: "Multi-K", category: "Foliar Potassium", qty: 10, unit: "L", unitPrice: 400 },
+  { product: "Rabbit Urine", category: "Organic", qty: 20, unit: "L", unitPrice: 250 }
+];
+```
+
+---
+
+### Screen 6 (More → Observations)
+
+- Quick log: Section | Date | Type (Pest / Disease / Growth / Weather / General) | Description | Severity (Low / Medium / High / Critical) | Action taken
+- History list, newest first
+- Red highlight on High / Critical severity entries
+
+---
+
+## BUSINESS RULES
+
+```
+Section A (Stephen's) planted: 17 February 2026
+Section B (Shangi) planted: 20 February 2026
+Section A germination est.: 8 March 2026
+Section B germination est.: 11 March 2026
+
+SPRAY INTERVALS:
+- Stage 1: 12 days standard | 7 days if heavy daily rain
+- Stage 2: 12 days standard | 7 days if heavy daily rain
+- Stage 3: 14 days standard | 7 days if heavy daily rain
+- Stephen's: NEVER exceed 12 days without a spray
+- Alert if any spray is overdue by more than 3 days
+
+PRODUCT RULES:
+- Kenthane: Stage 1 ONLY. Never in Stage 2 or 3.
+- Mastergold + Metameta: Always blended. Stage 2 onward.
+- Carbosink ≠ Carbosink Calcium (two different products)
+- Halothrin + Vendex: Always logged as a combined blend
+- Rabbit Urine: Max 20L stock. Warn if exceeded in inventory.
+- Sands and Surds: Same product. Use "Sands (Sticker/Spreader)"
+
+COST RULES:
+- All costs in KES only
+- Any cost with a past date → is_historical = TRUE automatically
+- is_pre_planting = TRUE if cost_date < planting_date of section
+- user_id column exists on all tables but is always NULL in Phase 1
+```
+
+---
+
+## UI DESIGN
+
+- **Colors**: Deep green `#1B5E20` primary | Amber `#F57F17` warnings | Red `#C62828` alerts | White backgrounds | Charcoal `#212121` text
+- **Font**: DM Sans from Google Fonts — clean, legible on small screens
+- **Mobile-first**: 375px base width. All tap targets minimum 48px height. Thumb-reachable.
+- **Navigation**: Bottom bar, 5 tabs, icons + labels
+- **Cards**: 12px radius, subtle shadow
+- **Forms**: Labels above inputs (never placeholder-only). Full-width green submit button.
+- **Currency display**: Always "KES 12,500" with comma separator
+- **Empty states**: Friendly message + action button
+- **Skeleton loaders**: While fetching from Supabase
+
+---
+
+## BUILD ORDER (Phase 1)
+
+1. Supabase project + all 6 tables
+2. Seed data insert on first load (farm, season, sections, inventory)
+3. React + Vite + Tailwind skeleton + bottom navigation
+4. Dashboard screen with section cards and alerts
+5. Schedule screen with status chips
+6. **Log Activity form** — most important, build this carefully
+7. **Add Cost form** — with all category-specific fields
+8. Costs ledger screen with list + filters
+9. Inventory screen with stock levels
+10. Observations screen
+11. PWA manifest + service worker
+
+---
+
+## WHAT PHASE 2 WILL ADD (do not build, just be aware)
+
+- Multi-farm switcher and Add Farm wizard
+- Multi-season: create new seasons, copy schedule from previous season
+- Full P&L profit/loss report
+- Harvest revenue capture screen
+- Cross-season comparison charts
+
+**Database is already ready for Phase 2.** The farm_id and season_id foreign keys on every table mean Phase 2 only adds UI — zero schema changes.
+
+---
+
+## WHAT PHASE 3 WILL ADD (do not build, just be aware)
+
+- Excel / CSV file upload with column mapper
+- Bulk historical import with preview and undo
+- WhatsApp message quick-entry mode
+
+---
+
+## WHAT PHASE 4 WILL ADD (do not build, just be aware)
+
+- GPS farm walk boundary survey (Leaflet.js + Turf.js)
+- Satellite NDVI crop monitoring (Sentinel Hub API)
+
+**DB is already ready**: `boundary_geojson` and `area_acres_calculated` columns exist on farms and sections tables.
+
+---
+
+*End of Phase 1 Prompt. Build this. Use it. Then request Phase 2.*
