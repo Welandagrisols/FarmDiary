@@ -32,6 +32,43 @@ interface ProductRow {
   unitPrice: string;
 }
 
+interface OtherCostRow {
+  typeKey: string;
+  category: string;
+  subcategory: string;
+  description: string;
+  amount: string;
+}
+
+const OTHER_COST_TYPES: { key: string; label: string; category: string; subcategory: string }[] = [
+  { key: "boda", label: "Motorcycle / Boda", category: "Facilitation", subcategory: "Motorcycle / Boda Hire" },
+  { key: "matatu", label: "Matatu / Bus / Taxi", category: "Facilitation", subcategory: "Matatu / Bus / Taxi Fare" },
+  { key: "car", label: "Vehicle / Car Hire", category: "Facilitation", subcategory: "Vehicle / Car Hire" },
+  { key: "fuel", label: "Fuel", category: "Facilitation", subcategory: "Fuel — Manager / Supervisor Trip" },
+  { key: "accommodation", label: "Accommodation", category: "Facilitation", subcategory: "Accommodation — Overnight Stay" },
+  { key: "meals", label: "Meals / Food", category: "Facilitation", subcategory: "Meals / Food / Per Diem" },
+  { key: "airtime", label: "Airtime / Data", category: "Facilitation", subcategory: "Mobile / Communication / Airtime" },
+  { key: "agronomist", label: "Agronomist Fee", category: "Facilitation", subcategory: "Agronomist / Consultant Fee" },
+  { key: "professional", label: "Professional Fee", category: "Facilitation", subcategory: "Professional Service Fee (Accountant / Legal)" },
+  { key: "token_neighbour", label: "Token — Neighbour", category: "Community & Goodwill", subcategory: "Token of Appreciation — Neighbour" },
+  { key: "token_leader", label: "Token — Leader", category: "Community & Goodwill", subcategory: "Token of Appreciation — Community Leader" },
+  { key: "community", label: "Community Gift", category: "Community & Goodwill", subcategory: "Community / Harambee Contribution" },
+  { key: "security", label: "Local Security", category: "Community & Goodwill", subcategory: "Local Security Contribution" },
+  { key: "equipment", label: "Equipment Hire", category: "Equipment", subcategory: "Tractor Hire — Other" },
+  { key: "packaging", label: "Packaging / Bags", category: "Logistics", subcategory: "Packaging / Bags" },
+  { key: "other", label: "Other", category: "Overhead", subcategory: "Other Overhead" },
+];
+
+function getLaborSubcategory(activityId: string): string {
+  if (!activityId) return "Casual Labor — Other";
+  if (activityId.includes("harvest")) return "Harvest Labor";
+  if (activityId.includes("earthing")) return "Earthing Up Labor";
+  if (activityId.includes("weed")) return "Weeding Labor";
+  if (activityId.includes("planting")) return "Planting Labor";
+  if (activityId.includes("spray") || activityId.includes("stage")) return "Spraying Labor";
+  return "Casual Labor — Other";
+}
+
 export default function LogActivityScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ activityId?: string }>();
@@ -65,7 +102,7 @@ export default function LogActivityScreen() {
   const [numWorkers, setNumWorkers] = useState("2");
   const [dailyRate, setDailyRate] = useState("500");
   const [daysWorked, setDaysWorked] = useState("1");
-  const [otherCosts, setOtherCosts] = useState<{ type: string; description: string; amount: string }[]>([]);
+  const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -128,7 +165,21 @@ export default function LogActivityScreen() {
   };
 
   const addOtherCost = () => {
-    setOtherCosts((prev) => [...prev, { type: "Transport", description: "", amount: "" }]);
+    const def = OTHER_COST_TYPES[0];
+    setOtherCosts((prev) => [
+      ...prev,
+      { typeKey: def.key, category: def.category, subcategory: def.subcategory, description: "", amount: "" },
+    ]);
+  };
+
+  const setOtherCostType = (idx: number, key: string) => {
+    const found = OTHER_COST_TYPES.find((t) => t.key === key);
+    if (!found) return;
+    setOtherCosts((prev) =>
+      prev.map((c, i) =>
+        i === idx ? { ...c, typeKey: found.key, category: found.category, subcategory: found.subcategory } : c
+      )
+    );
   };
 
   const handleSubmit = async () => {
@@ -196,7 +247,7 @@ export default function LogActivityScreen() {
           season_id: SEASON_SEED.id,
           section_id: sectionId,
           cost_category: "Labor",
-          cost_subcategory: "Spraying Labor",
+          cost_subcategory: getLaborSubcategory(activityType === "planned" ? selectedActivityId : customActivityName.toLowerCase()),
           description: `Labor — ${activityName}`,
           cost_date: date,
           is_pre_planting: isPrePlanting(date, plantingDate),
@@ -262,9 +313,9 @@ export default function LogActivityScreen() {
             farm_id: FARM_SEED.id,
             season_id: SEASON_SEED.id,
             section_id: sectionId,
-            cost_category: "Logistics",
-            cost_subcategory: cost.type,
-            description: cost.description || cost.type,
+            cost_category: cost.category,
+            cost_subcategory: cost.subcategory,
+            description: cost.description || cost.subcategory,
             cost_date: date,
             is_pre_planting: isPrePlanting(date, plantingDate),
             is_historical: isHist,
@@ -609,7 +660,7 @@ export default function LogActivityScreen() {
         {step === 5 && (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Other Costs</Text>
-            <Text style={styles.stepSubtitle}>Transport, meals, accommodation, etc.</Text>
+            <Text style={styles.stepSubtitle}>Transport, meals, accommodation, tokens, fees...</Text>
 
             {otherCosts.map((cost, idx) => (
               <View key={idx} style={styles.otherCostCard}>
@@ -619,25 +670,46 @@ export default function LogActivityScreen() {
                     <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
                   </Pressable>
                 </View>
+
+                <Text style={styles.fieldLabelSm}>Type</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {OTHER_COST_TYPES.map((t) => (
+                      <Pressable
+                        key={t.key}
+                        style={[styles.typeChip, cost.typeKey === t.key && styles.typeChipActive]}
+                        onPress={() => setOtherCostType(idx, t.key)}
+                      >
+                        <Text style={[styles.typeChipText, cost.typeKey === t.key && styles.typeChipTextActive]}>
+                          {t.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
+
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { marginBottom: 8 }]}
                   value={cost.description}
                   onChangeText={(v) =>
                     setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, description: v } : c)))
                   }
-                  placeholder="Description (e.g. Boda boda to market)"
+                  placeholder="Details (e.g. Boda from Nakuru to farm)"
                   placeholderTextColor={COLORS.textMuted}
                 />
-                <TextInput
-                  style={styles.input}
-                  value={cost.amount}
-                  onChangeText={(v) =>
-                    setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, amount: v } : c)))
-                  }
-                  placeholder="Amount KES"
-                  placeholderTextColor={COLORS.textMuted}
-                  keyboardType="numeric"
-                />
+                <View style={styles.amountRow}>
+                  <Text style={styles.kesPre}>KES</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={cost.amount}
+                    onChangeText={(v) =>
+                      setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, amount: v } : c)))
+                    }
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
               </View>
             ))}
 
@@ -647,7 +719,10 @@ export default function LogActivityScreen() {
             </Pressable>
 
             {otherTotal > 0 && (
-              <Text style={styles.productTotal}>Other costs total: {formatKES(otherTotal)}</Text>
+              <View style={styles.laborTotal}>
+                <Text style={styles.laborTotalLabel}>Other Costs Total</Text>
+                <Text style={styles.laborTotalValue}>{formatKES(otherTotal)}</Text>
+              </View>
             )}
           </View>
         )}
@@ -695,6 +770,12 @@ export default function LogActivityScreen() {
                 <Text style={styles.summaryLabel}>Labor</Text>
                 <Text style={styles.summaryValue}>{numWorkers} workers · {formatKES(laborCost)}</Text>
               </View>
+              {otherCosts.filter((c) => parseFloat(c.amount) > 0).map((c, i) => (
+                <View key={i} style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>{OTHER_COST_TYPES.find((t) => t.key === c.typeKey)?.label ?? c.typeKey}</Text>
+                  <Text style={styles.summaryValue}>{formatKES(parseFloat(c.amount))}</Text>
+                </View>
+              ))}
               <View style={[styles.summaryRow, styles.summaryTotal]}>
                 <Text style={styles.summaryTotalLabel}>Total Cost</Text>
                 <Text style={styles.summaryTotalValue}>{formatKES(totalCost)}</Text>
@@ -840,12 +921,21 @@ const styles = StyleSheet.create({
   },
   laborTotalLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
   laborTotalValue: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.primary },
+  amountRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  kesPre: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.primary },
   otherCostCard: {
     backgroundColor: COLORS.background, borderRadius: 10,
     borderWidth: 1.5, borderColor: COLORS.border, padding: 12, gap: 8,
   },
   otherCostHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   otherCostTitle: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
+  typeChip: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: COLORS.borderLight, borderWidth: 1.5, borderColor: COLORS.border,
+  },
+  typeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  typeChipText: { fontFamily: "DMSans_500Medium", fontSize: 12, color: COLORS.textSecondary },
+  typeChipTextActive: { color: COLORS.white },
   summaryCard: {
     backgroundColor: COLORS.borderLight, borderRadius: 14, padding: 16, gap: 10,
   },

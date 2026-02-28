@@ -36,8 +36,9 @@ export const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   "Pre-Planting": { bg: "#FFF3E0", text: "#E65100" },
   "Inputs": { bg: "#E8F5E9", text: "#1B5E20" },
   "Labor": { bg: "#E3F2FD", text: "#1565C0" },
-  "Facilitation & Supervision": { bg: "#F3E5F5", text: "#6A1B9A" },
+  "Facilitation": { bg: "#F3E5F5", text: "#6A1B9A" },
   "Logistics": { bg: "#E0F2F1", text: "#00695C" },
   "Equipment": { bg: "#FBE9E7", text: "#BF360C" },
+  "Community & Goodwill": { bg: "#FCE4EC", text: "#880E4F" },
   "Overhead": { bg: "#F5F5F5", text: "#424242" },
 };

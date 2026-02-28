@@ -109,9 +109,9 @@ export default function AddCostScreen() {
         num_workers: category === "Labor" ? (parseInt(numWorkers) || null) : null,
         days_worked: category === "Labor" ? (parseFloat(daysWorked) || null) : null,
         rate_per_worker_per_day: category === "Labor" ? (parseFloat(ratePerDay) || null) : null,
-        facilitator_name: category === "Facilitation & Supervision" ? facilitatorName || null : null,
-        trip_from: category === "Facilitation & Supervision" ? tripFrom || null : null,
-        trip_to: category === "Facilitation & Supervision" ? tripTo || null : null,
+        facilitator_name: category === "Facilitation" ? facilitatorName || null : null,
+        trip_from: category === "Facilitation" ? tripFrom || null : null,
+        trip_to: category === "Facilitation" ? tripTo || null : null,
         is_deviation: false,
         planned_product: null,
         deviation_reason: null,
@@ -182,7 +182,7 @@ export default function AddCostScreen() {
           <Text style={styles.fieldLabel}>Category</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
             {CATEGORIES.map((cat) => {
-              const short = cat === "Facilitation & Supervision" ? "Facilitation" : cat;
+              const short = cat === "Community & Goodwill" ? "Community" : cat;
               return (
                 <Pressable
                   key={cat}
@@ -355,7 +355,7 @@ export default function AddCostScreen() {
         )}
 
         {/* Facilitation-specific */}
-        {category === "Facilitation & Supervision" && (
+        {category === "Facilitation" && (
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Facilitator Details</Text>
             <TextInput

@@ -18,14 +18,13 @@ import COLORS, { CATEGORY_COLORS } from "@/constants/colors";
 import { CostEntry, formatDate, formatKES } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
-const FILTER_TABS = ["All", "Pre-Planting", "Inputs", "Labor", "Facilitation & Supervision", "Logistics", "Equipment", "Overhead"];
+const FILTER_TABS = ["All", "Pre-Planting", "Inputs", "Labor", "Facilitation", "Logistics", "Equipment", "Community & Goodwill", "Overhead"];
 
 function CategoryChip({ category }: { category: string }) {
   const colors = CATEGORY_COLORS[category] || { bg: COLORS.borderLight, text: COLORS.textSecondary };
-  const shortName = category === "Facilitation & Supervision" ? "Facilitation" : category;
   return (
     <View style={[styles.categoryChip, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.categoryChipText, { color: colors.text }]}>{shortName}</Text>
+      <Text style={[styles.categoryChipText, { color: colors.text }]}>{category}</Text>
     </View>
   );
 }
@@ -199,7 +198,7 @@ export default function CostsScreen() {
       >
         {FILTER_TABS.map((tab) => {
           const isActive = activeFilter === tab;
-          const shortTab = tab === "Facilitation & Supervision" ? "Facilitation" : tab;
+          const shortTab = tab === "Community & Goodwill" ? "Community" : tab;
           return (
             <Pressable
               key={tab}
