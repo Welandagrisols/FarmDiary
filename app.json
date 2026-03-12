@@ -42,6 +42,15 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "a7566311-ca20-44ad-bb59-561b0620877f"
+      }
+    },
+    "owner": "yasinga"
   }
 }
