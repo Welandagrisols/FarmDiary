@@ -24,10 +24,10 @@ export const SECTIONS_SEED = [
     acres: 2,
     planting_date: "2026-02-17",
     estimated_germination: "2026-03-08",
-    estimated_harvest: "2026-06-17",
+    estimated_harvest: "2026-04-30",
     blight_risk: "HIGH",
     notes:
-      "Stephen's variety is highly prone to Late Blight fungal disease. Never skip sprays. If daily rain, reduce spray interval to 7 days.",
+      "Stephen's variety matures in 72 days from planting — harvest April 30. Highly prone to Late Blight. Never skip sprays. Last spray April 22. If daily rain, reduce spray interval to 7 days.",
   },
   {
     id: "section-b",
@@ -38,10 +38,10 @@ export const SECTIONS_SEED = [
     acres: 2,
     planting_date: "2026-02-20",
     estimated_germination: "2026-03-11",
-    estimated_harvest: "2026-06-20",
+    estimated_harvest: "2026-05-21",
     blight_risk: "MEDIUM",
     notes:
-      "Shangi is a fast, heavy grower. Calcium at flowering is critical to prevent hollow heart. Ensure deep earthing up.",
+      "Shangi matures in 72–90 days from planting. Earliest harvest May 3, latest May 21. Calcium at flowering is critical to prevent hollow heart. Ensure deep earthing up.",
   },
 ];
 
@@ -226,9 +226,9 @@ export const PLANNED_SCHEDULE: PlannedActivity[] = [
     stage: "Stage 3 — Flowering & Bulking",
     activityType: "Spray",
     name: "Stage 3 — 1st Spray (Flower Buds)",
-    plannedDateA: "2026-05-03",
-    plannedDateB: "2026-05-06",
-    daysAfterGermA: 55,
+    plannedDateA: "2026-04-22",
+    plannedDateB: "2026-04-25",
+    daysAfterGermA: 45,
     plannedProducts: [
       { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
       { name: "Multi-K", rate: "150g per 20L", qty: "2L for this spray", unitPrice: 400, unit: "L" },
@@ -239,17 +239,17 @@ export const PLANNED_SCHEDULE: PlannedActivity[] = [
     estimatedLaborCost: 1500,
     estimatedTotalCost: 9500,
     purpose:
-      "THE MONEY STAGE. Apply when first flower buds appear. Introduce K-Flex + Multi-K (potassium drives tuber size). Introduce Carbosink Calcium — DIFFERENT from Carbosink — it supplies calcium for cell walls, prevents hollow heart and rot, toughens skin for transport.",
-    alert: "Critical for Shangi — do NOT miss Calcium. Apply when flower buds are forming.",
+      "THE MONEY STAGE. Apply when first flower buds appear. Introduce K-Flex + Multi-K (potassium drives tuber size). Introduce Carbosink Calcium — DIFFERENT from Carbosink — it supplies calcium for cell walls, prevents hollow heart and rot, toughens skin for transport. Section A (Stephen's): this is the LAST spray before maturation — harvest April 30.",
+    alert: "Section A LAST SPRAY. Do not spray Section A after April 22 — harvest April 30. Critical Calcium dose for Shangi.",
   },
   {
     id: "stage3-spray2",
     stage: "Stage 3 — Flowering & Bulking",
     activityType: "Spray",
-    name: "Stage 3 — 2nd Spray (Tuber Bulking)",
-    plannedDateA: "2026-05-17",
-    plannedDateB: "2026-05-20",
-    daysAfterGermA: 69,
+    name: "Stage 3 — 2nd Spray (Shangi Only)",
+    plannedDateA: "2026-04-30",
+    plannedDateB: "2026-05-05",
+    daysAfterGermA: 53,
     plannedProducts: [
       { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
       { name: "Multi-K", rate: "150g per 20L", qty: "from stock", unitPrice: 400, unit: "L" },
@@ -260,37 +260,38 @@ export const PLANNED_SCHEDULE: PlannedActivity[] = [
     estimatedLaborCost: 1500,
     estimatedTotalCost: 9500,
     purpose:
-      "Final bulking push. Maximize tuber weight. Keep canopy alive as long as possible — every extra green day means more starch into tubers.",
-    alert: null,
+      "SECTION B (SHANGI) ONLY. Section A (Stephen's) is being harvested April 30 — no spray needed. Final bulking push for Shangi. Maximize tuber weight. Keep canopy alive as long as possible — every extra green day means more starch into tubers.",
+    alert: "Section A is harvesting today (April 30). Apply to Section B (Shangi) only.",
   },
   {
     id: "maturation",
     stage: "Maturation",
     activityType: "Observation",
     name: "Stop All Spraying — Maturation",
-    plannedDateA: "2026-05-23",
-    plannedDateB: "2026-05-26",
-    daysAfterGermA: 75,
+    plannedDateA: "2026-04-23",
+    plannedDateB: "2026-05-11",
+    daysAfterGermA: 46,
     plannedProducts: [],
     estimatedTotalCost: 0,
-    purpose: "All spraying stops. Allow natural vine die-back and skin hardening. Monitor foliage yellowing.",
-    alert: "STOP all chemical applications from this date.",
+    purpose:
+      "All spraying stops. Section A (Stephen's): stop spraying April 23 — harvest April 30. Section B (Shangi): stop spraying May 11 — harvest May 3–21. Allow natural vine die-back and skin set. Monitor foliage yellowing.",
+    alert: "STOP Section A sprays from April 23. STOP Section B sprays from May 11.",
   },
   {
     id: "harvest",
     stage: "Harvest",
     activityType: "Harvest",
     name: "HARVEST",
-    plannedDateA: "2026-06-17",
-    plannedDateB: "2026-06-20",
-    daysAfterGermA: 100,
+    plannedDateA: "2026-04-30",
+    plannedDateB: "2026-05-21",
+    daysAfterGermA: 53,
     plannedProducts: [],
     estimatedLaborCost: 5000,
     estimatedTotalCost: 5000,
     purpose:
-      "Harvest when foliage is yellowed, stolons separate easily, and skin does not slip on the thumb rub test. Harvest in dry conditions only.",
+      "Section A (Stephen's): harvest April 30 — 72 days from planting. Section B (Shangi): harvest May 3–21 — 72 to 90 days from planting. Harvest when foliage is yellowed, stolons separate easily, and skin does not slip on the thumb rub test. Harvest in dry conditions only.",
     alert:
-      "SKIN SET TEST: Rub thumb firmly on tuber. Skin slips = not ready. Skin holds = harvest time. Never harvest in rain.",
+      "SKIN SET TEST: Rub thumb firmly on tuber. Skin slips = not ready. Skin holds = harvest time. Section B earliest: May 3. Section B latest: May 21. Never harvest in rain.",
   },
 ];
 
