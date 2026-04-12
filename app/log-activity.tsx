@@ -84,6 +84,7 @@ export default function LogActivityScreen() {
   const [customActivityName, setCustomActivityName] = useState("");
   const [section, setSection] = useState<Section>("both");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [showCustomDateInput, setShowCustomDateInput] = useState(false);
   const [weather, setWeather] = useState("Sunny");
   const [products, setProducts] = useState<ProductRow[]>(() => {
     if (preSelected) {
@@ -349,6 +350,32 @@ export default function LogActivityScreen() {
     }
   };
 
+  const formatDateFriendly = (dateStr: string): string => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const months = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"];
+    const parts = dateStr.split("-");
+    if (parts.length !== 3) return dateStr;
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return `${days[d.getDay()]}, ${Number(parts[2])} ${months[d.getMonth()]} ${parts[0]}`;
+  };
+
+  const getQuickDates = (): { label: string; value: string }[] => {
+    const result: { label: string; value: string }[] = [];
+    const today = new Date();
+    for (let i = 0; i <= 5; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const val = d.toISOString().split("T")[0];
+      let label = "";
+      if (i === 0) label = "Today";
+      else if (i === 1) label = "Yesterday";
+      else label = `${i} days ago`;
+      result.push({ label, value: val });
+    }
+    return result;
+  };
+
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const canProceed =
     step === 1 ? (activityType !== "planned" ? !!customActivityName : !!selectedActivityId) : true;
@@ -461,18 +488,55 @@ export default function LogActivityScreen() {
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Date & Weather</Text>
 
-            <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="2026-03-15"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numbers-and-punctuation"
-            />
-            <Text style={styles.fieldHint}>For historical entries, use the actual date it happened.</Text>
+            <Text style={styles.fieldLabel}>When did this activity happen?</Text>
 
-            <Text style={styles.fieldLabel}>Weather Conditions</Text>
+            <View style={styles.dateDisplayBox}>
+              <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.dateDisplayText}>{formatDateFriendly(date)}</Text>
+            </View>
+
+            <View style={styles.quickDateRow}>
+              {getQuickDates().map(({ label, value }) => (
+                <Pressable
+                  key={value}
+                  style={[styles.quickDateChip, date === value && styles.quickDateChipActive]}
+                  onPress={() => {
+                    setDate(value);
+                    setShowCustomDateInput(false);
+                    Haptics.selectionAsync();
+                  }}
+                >
+                  <Text style={[styles.quickDateChipText, date === value && styles.quickDateChipTextActive]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.quickDateChip, showCustomDateInput && styles.quickDateChipActive]}
+                onPress={() => setShowCustomDateInput(true)}
+              >
+                <Text style={[styles.quickDateChipText, showCustomDateInput && styles.quickDateChipTextActive]}>
+                  Earlier...
+                </Text>
+              </Pressable>
+            </View>
+
+            {showCustomDateInput && (
+              <View>
+                <TextInput
+                  style={styles.input}
+                  value={date}
+                  onChangeText={setDate}
+                  placeholder="YYYY-MM-DD e.g. 2026-03-15"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numbers-and-punctuation"
+                  autoFocus
+                />
+                <Text style={styles.fieldHint}>Type the exact date the activity took place.</Text>
+              </View>
+            )}
+
+            <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Weather Conditions</Text>
             <View style={styles.weatherSelector}>
               {WEATHER_OPTIONS.map((w) => (
                 <Pressable
@@ -749,8 +813,8 @@ export default function LogActivityScreen() {
                 <Text style={styles.summaryValue} numberOfLines={2}>{activityName || "—"}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Date</Text>
-                <Text style={styles.summaryValue}>{date}</Text>
+                <Text style={styles.summaryLabel}>Activity Date</Text>
+                <Text style={styles.summaryValue}>{formatDateFriendly(date)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Section</Text>
@@ -880,6 +944,25 @@ const styles = StyleSheet.create({
   sectionOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   sectionOptionText: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
   sectionOptionTextActive: { color: COLORS.white },
+  dateDisplayBox: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: COLORS.primarySurface, borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+    marginBottom: 12,
+  },
+  dateDisplayText: {
+    fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary, flex: 1,
+  },
+  quickDateRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  quickDateChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    backgroundColor: COLORS.borderLight,
+    borderWidth: 1.5, borderColor: COLORS.border,
+  },
+  quickDateChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  quickDateChipText: { fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.textSecondary },
+  quickDateChipTextActive: { color: COLORS.white },
   weatherSelector: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   weatherOption: {
     flexDirection: "row", alignItems: "center", gap: 6,
