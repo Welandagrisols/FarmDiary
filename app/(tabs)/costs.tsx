@@ -126,7 +126,13 @@ function CostRow({
               {cost.notes}
             </Text>
           )}
-          <Text style={styles.deleteHint}>Long press to delete</Text>
+          <Pressable
+            onPress={handleLongPress}
+            style={styles.deleteRowBtn}
+          >
+            <Ionicons name="trash-outline" size={14} color={COLORS.red} />
+            <Text style={styles.deleteRowBtnText}>Delete</Text>
+          </Pressable>
         </View>
       )}
     </Pressable>
@@ -432,11 +438,14 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
     color: COLORS.text,
   },
-  deleteHint: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    marginTop: 4,
+  deleteRowBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    alignSelf: "flex-start", marginTop: 8,
+    backgroundColor: COLORS.redLight,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
+  },
+  deleteRowBtnText: {
+    fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.red,
   },
   emptyState: {
     alignItems: "center",

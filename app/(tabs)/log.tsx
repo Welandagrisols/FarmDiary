@@ -97,7 +97,12 @@ export default function LogScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Logs</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Recent Logs</Text>
+          <Pressable onPress={() => router.push("/all-logs")} hitSlop={8}>
+            <Text style={styles.viewAllLink}>View All</Text>
+          </Pressable>
+        </View>
         {activityLogs.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="clipboard-outline" size={32} color={COLORS.border} />
@@ -283,6 +288,8 @@ const styles = StyleSheet.create({
     width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primarySurface,
     alignItems: "center", justifyContent: "center",
   },
+  sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  viewAllLink: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
   emptyState: {
     alignItems: "center",
     gap: 8,

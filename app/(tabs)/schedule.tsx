@@ -89,8 +89,10 @@ function ActivityCard({ activity, status, onPress }: { activity: PlannedActivity
 }
 
 function ActivityModal({ activity, status, onClose }: { activity: PlannedActivity; status: ActivityStatus; onClose: () => void }) {
+  const { quickCompleteActivity } = useFarm();
   const typeColor = getTypeColor(activity.activityType);
   const daysUntilA = getDaysUntil(activity.plannedDateA);
+  const [completing, setCompleting] = React.useState(false);
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -157,15 +159,30 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
         </ScrollView>
 
         <View style={styles.modalFooter}>
+          {status !== "completed" && (
+            <Pressable
+              style={[styles.quickBtn, completing && { opacity: 0.6 }]}
+              disabled={completing}
+              onPress={async () => {
+                setCompleting(true);
+                await quickCompleteActivity(activity, null);
+                setCompleting(false);
+                onClose();
+              }}
+            >
+              <Ionicons name="checkmark-done-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.quickBtnText}>{completing ? "Saving..." : "Mark Done — No Costs"}</Text>
+            </Pressable>
+          )}
           <Pressable
-            style={styles.logBtn}
+            style={[styles.logBtn, status === "completed" && { opacity: 0.6 }]}
             onPress={() => {
               onClose();
               router.push({ pathname: "/log-activity", params: { activityId: activity.id } });
             }}
           >
             <Ionicons name="clipboard-outline" size={18} color={COLORS.white} />
-            <Text style={styles.logBtnText}>Log This Activity</Text>
+            <Text style={styles.logBtnText}>{status === "completed" ? "Log Again / Amend" : "Log With Costs"}</Text>
           </Pressable>
         </View>
       </View>
@@ -513,6 +530,16 @@ const styles = StyleSheet.create({
     paddingBottom: 34,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
+    gap: 10,
+  },
+  quickBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: COLORS.primarySurface,
+    borderWidth: 1.5, borderColor: COLORS.primaryLight,
+    borderRadius: 14, paddingVertical: 14,
+  },
+  quickBtnText: {
+    fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary,
   },
   logBtn: {
     flexDirection: "row",

@@ -49,7 +49,7 @@ function getActivityTypeIcon(type: string) {
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, activityLogs, isLoading, refresh, totalSpent, getCompletedActivityIds, getNextActivity } = useFarm();
+  const { costs, activityLogs, isLoading, refresh, totalSpent, getCompletedActivityIds, getNextActivity, getLastSprayDate } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -116,6 +116,13 @@ export default function DashboardScreen() {
         const urgencyColor = getUrgencyColor(daysUntilNext);
         const urgencyBg = getUrgencyBg(daysUntilNext);
 
+        const lastSpray = getLastSprayDate(section.id);
+        const daysSinceSpray = lastSpray
+          ? Math.floor((new Date().getTime() - new Date(lastSpray).getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        const sprayWarning = isA && daysSinceSpray !== null && daysSinceSpray >= 10;
+        const sprayAlert = isA && daysSinceSpray !== null && daysSinceSpray >= 12;
+
         return (
           <View key={section.id} style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
@@ -169,6 +176,25 @@ export default function DashboardScreen() {
                 </View>
               </View>
             )}
+
+            <View style={[styles.sprayBar, sprayAlert ? styles.sprayBarAlert : sprayWarning ? styles.sprayBarWarn : styles.sprayBarOk]}>
+              <Ionicons
+                name={sprayAlert ? "warning" : "water-outline"}
+                size={14}
+                color={sprayAlert ? COLORS.red : sprayWarning ? COLORS.amber : COLORS.primary}
+              />
+              {daysSinceSpray !== null ? (
+                <Text style={[styles.sprayBarText, { color: sprayAlert ? COLORS.red : sprayWarning ? COLORS.amber : COLORS.primary }]}>
+                  {sprayAlert
+                    ? `OVERDUE — Last spray ${daysSinceSpray}d ago (max 12d!)`
+                    : sprayWarning
+                    ? `Last spray ${daysSinceSpray}d ago — spray soon`
+                    : `Last spray ${daysSinceSpray}d ago`}
+                </Text>
+              ) : (
+                <Text style={[styles.sprayBarText, { color: COLORS.textMuted }]}>No spray recorded yet</Text>
+              )}
+            </View>
 
             {section.blight_risk === "HIGH" && (
               <View style={styles.blightNote}>
@@ -416,6 +442,14 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_700Bold",
     fontSize: 13,
   },
+  sprayBar: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
+  },
+  sprayBarOk: { backgroundColor: COLORS.primarySurface },
+  sprayBarWarn: { backgroundColor: COLORS.amberLight },
+  sprayBarAlert: { backgroundColor: COLORS.redLight },
+  sprayBarText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, flex: 1 },
   blightNote: {
     flexDirection: "row",
     alignItems: "center",

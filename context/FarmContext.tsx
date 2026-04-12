@@ -20,7 +20,7 @@ import {
   ActivityLog,
   FieldObservation,
 } from "@/lib/storage";
-import { PLANNED_SCHEDULE, PlannedActivity } from "@/constants/farmData";
+import { PLANNED_SCHEDULE, PlannedActivity, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
 
 interface FarmContextValue {
   costs: CostEntry[];
@@ -41,6 +41,8 @@ interface FarmContextValue {
   totalSpent: number;
   getCompletedActivityIds: () => string[];
   getNextActivity: (sectionId: string) => PlannedActivity | null;
+  quickCompleteActivity: (activity: PlannedActivity, sectionId: string | null) => Promise<void>;
+  getLastSprayDate: (sectionId: string) => string | null;
 }
 
 const FarmContext = createContext<FarmContextValue | null>(null);
@@ -141,18 +143,57 @@ export function FarmProvider({ children }: { children: ReactNode }) {
   const getNextActivity = useCallback(
     (sectionId: string): PlannedActivity | null => {
       const completedIds = getCompletedActivityIds();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const isA = sectionId === "section-a";
-
       for (const activity of PLANNED_SCHEDULE) {
         if (completedIds.includes(activity.id)) continue;
-        const dateStr = isA ? activity.plannedDateA : activity.plannedDateB;
         return activity;
       }
       return null;
     },
     [getCompletedActivityIds]
+  );
+
+  const quickCompleteActivity = useCallback(
+    async (activity: PlannedActivity, sectionId: string | null) => {
+      const today = new Date().toISOString().split("T")[0];
+      const isA = sectionId === "section-b" ? false : true;
+      const newLog = await addActivityLog({
+        farm_id: FARM_SEED.id,
+        season_id: SEASON_SEED.id,
+        section_id: sectionId,
+        schedule_activity_id: activity.id,
+        activity_name: activity.name,
+        planned_date: isA ? activity.plannedDateA : activity.plannedDateB,
+        actual_date: today,
+        products_used: [],
+        is_deviation: false,
+        deviation_reason: null,
+        num_workers: 0,
+        labor_cost_kes: 0,
+        total_cost_kes: 0,
+        weather_conditions: null,
+        is_historical: false,
+        notes: "Quick-completed (no costs logged)",
+      });
+      setActivityLogs((prev) => [...prev, newLog]);
+    },
+    []
+  );
+
+  const getLastSprayDate = useCallback(
+    (sectionId: string): string | null => {
+      const sprayLogs = activityLogs
+        .filter((l) => {
+          const isForSection = l.section_id === sectionId || l.section_id === null;
+          const isSpray = l.activity_name.toLowerCase().includes("spray") ||
+            l.activity_name.toLowerCase().includes("fungicide") ||
+            l.activity_name.toLowerCase().includes("blight");
+          return isForSection && isSpray;
+        })
+        .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime());
+      return sprayLogs.length > 0 ? sprayLogs[0].actual_date : null;
+    },
+    [activityLogs]
   );
 
   const value = useMemo<FarmContextValue>(
@@ -175,6 +216,8 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       totalSpent,
       getCompletedActivityIds,
       getNextActivity,
+      quickCompleteActivity,
+      getLastSprayDate,
     }),
     [
       costs,
@@ -195,6 +238,8 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       totalSpent,
       getCompletedActivityIds,
       getNextActivity,
+      quickCompleteActivity,
+      getLastSprayDate,
     ]
   );
 
