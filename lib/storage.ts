@@ -218,6 +218,15 @@ export async function addActivityLog(log: Omit<ActivityLog, "id" | "created_at">
   return newLog;
 }
 
+export async function updateActivityLog(id: string, updates: Partial<Omit<ActivityLog, "id" | "created_at">>): Promise<ActivityLog> {
+  const logs = await getActivityLogs();
+  const idx = logs.findIndex((l) => l.id === id);
+  if (idx < 0) throw new Error("Activity log not found");
+  logs[idx] = { ...logs[idx], ...updates };
+  await AsyncStorage.setItem(KEYS.ACTIVITY_LOGS, JSON.stringify(logs));
+  return logs[idx];
+}
+
 export async function deleteActivityLog(id: string): Promise<void> {
   const logs = await getActivityLogs();
   await AsyncStorage.setItem(KEYS.ACTIVITY_LOGS, JSON.stringify(logs.filter((l) => l.id !== id)));

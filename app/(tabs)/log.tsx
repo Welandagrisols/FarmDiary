@@ -106,7 +106,7 @@ export default function LogScreen() {
         ) : (
           [...activityLogs]
             .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime())
-            .slice(0, 5)
+            .slice(0, 10)
             .map((log) => (
               <View key={log.id} style={styles.recentCard}>
                 <View style={styles.recentDot} />
@@ -117,6 +117,13 @@ export default function LogScreen() {
                 {log.total_cost_kes > 0 && (
                   <Text style={styles.recentCost}>{formatKES(log.total_cost_kes)}</Text>
                 )}
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => router.push({ pathname: "/edit-activity", params: { logId: log.id } })}
+                  hitSlop={8}
+                >
+                  <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                </Pressable>
               </View>
             ))
         )}
@@ -271,6 +278,10 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
     fontSize: 12,
     color: COLORS.primary,
+  },
+  editBtn: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primarySurface,
+    alignItems: "center", justifyContent: "center",
   },
   emptyState: {
     alignItems: "center",

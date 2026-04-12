@@ -38,6 +38,8 @@ interface OtherCostRow {
   subcategory: string;
   description: string;
   amount: string;
+  waterContainers?: string;
+  waterPricePerContainer?: string;
 }
 
 const OTHER_COST_TYPES: { key: string; label: string; category: string; subcategory: string }[] = [
@@ -56,6 +58,7 @@ const OTHER_COST_TYPES: { key: string; label: string; category: string; subcateg
   { key: "security", label: "Local Security", category: "Community & Goodwill", subcategory: "Local Security Contribution" },
   { key: "equipment", label: "Equipment Hire", category: "Equipment", subcategory: "Tractor Hire — Other" },
   { key: "packaging", label: "Packaging / Bags", category: "Logistics", subcategory: "Packaging / Bags" },
+  { key: "water", label: "Water (Spraying)", category: "Inputs", subcategory: "Other Agrochemical" },
   { key: "other", label: "Other", category: "Overhead", subcategory: "Other Overhead" },
 ];
 
@@ -103,6 +106,11 @@ export default function LogActivityScreen() {
   const [numWorkers, setNumWorkers] = useState("2");
   const [dailyRate, setDailyRate] = useState("500");
   const [daysWorked, setDaysWorked] = useState("1");
+  const [laborMode, setLaborMode] = useState<"per_day" | "per_acre" | "per_pump">("per_day");
+  const [acresWorked, setAcresWorked] = useState("2");
+  const [ratePerAcre, setRatePerAcre] = useState("2400");
+  const [numPumps, setNumPumps] = useState("20");
+  const [ratePerPump, setRatePerPump] = useState("50");
   const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -117,7 +125,11 @@ export default function LogActivityScreen() {
       : customActivityName;
 
   const laborCost = Math.round(
-    (parseFloat(numWorkers) || 0) * (parseFloat(dailyRate) || 500) * (parseFloat(daysWorked) || 1)
+    laborMode === "per_day"
+      ? (parseFloat(numWorkers) || 0) * (parseFloat(dailyRate) || 500) * (parseFloat(daysWorked) || 1)
+      : laborMode === "per_acre"
+      ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 2400)
+      : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 50)
   );
 
   const productCost = products.reduce((sum, p) => {
@@ -126,7 +138,13 @@ export default function LogActivityScreen() {
     return sum + qty * price;
   }, 0);
 
-  const otherTotal = otherCosts.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+  const getOtherCostAmount = (c: OtherCostRow): number => {
+    if (c.typeKey === "water") {
+      return Math.round((parseFloat(c.waterContainers || "0") || 0) * (parseFloat(c.waterPricePerContainer || "20") || 20));
+    }
+    return parseFloat(c.amount) || 0;
+  };
+  const otherTotal = otherCosts.reduce((sum, c) => sum + getOtherCostAmount(c), 0);
   const totalCost = laborCost + productCost + otherTotal;
 
   const handleActivitySelect = useCallback(
@@ -178,7 +196,16 @@ export default function LogActivityScreen() {
     if (!found) return;
     setOtherCosts((prev) =>
       prev.map((c, i) =>
-        i === idx ? { ...c, typeKey: found.key, category: found.category, subcategory: found.subcategory } : c
+        i === idx
+          ? {
+              ...c,
+              typeKey: found.key,
+              category: found.category,
+              subcategory: found.subcategory,
+              waterContainers: key === "water" ? (c.waterContainers ?? "") : c.waterContainers,
+              waterPricePerContainer: key === "water" ? (c.waterPricePerContainer ?? "20") : c.waterPricePerContainer,
+            }
+          : c
       )
     );
   };
@@ -309,7 +336,8 @@ export default function LogActivityScreen() {
       }
 
       for (const cost of otherCosts) {
-        if (parseFloat(cost.amount) > 0) {
+        const costAmount = getOtherCostAmount(cost);
+        if (costAmount > 0) {
           await addCostEntry({
             farm_id: FARM_SEED.id,
             season_id: SEASON_SEED.id,
@@ -320,7 +348,7 @@ export default function LogActivityScreen() {
             cost_date: date,
             is_pre_planting: isPrePlanting(date, plantingDate),
             is_historical: isHist,
-            amount_kes: parseFloat(cost.amount) || 0,
+            amount_kes: costAmount,
             quantity: null,
             unit: null,
             unit_price_kes: null,
@@ -683,35 +711,63 @@ export default function LogActivityScreen() {
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Labor</Text>
 
-            <Text style={styles.fieldLabel}>Number of Workers</Text>
-            <TextInput
-              style={styles.input}
-              value={numWorkers}
-              onChangeText={setNumWorkers}
-              keyboardType="numeric"
-              placeholder="2"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            <Text style={styles.fieldLabel}>How is labor paid?</Text>
+            <View style={styles.laborModeRow}>
+              {([
+                { key: "per_day", label: "Per Day" },
+                { key: "per_acre", label: "Per Acre" },
+                { key: "per_pump", label: "Per Pump" },
+              ] as const).map(({ key, label }) => (
+                <Pressable
+                  key={key}
+                  style={[styles.laborModeChip, laborMode === key && styles.laborModeChipActive]}
+                  onPress={() => { setLaborMode(key); Haptics.selectionAsync(); }}
+                >
+                  <Text style={[styles.laborModeChipText, laborMode === key && styles.laborModeChipTextActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
 
-            <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
-            <TextInput
-              style={styles.input}
-              value={dailyRate}
-              onChangeText={setDailyRate}
-              keyboardType="numeric"
-              placeholder="500"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            {laborMode === "per_day" && (
+              <>
+                <Text style={styles.fieldLabel}>Number of Workers</Text>
+                <TextInput style={styles.input} value={numWorkers} onChangeText={setNumWorkers}
+                  keyboardType="numeric" placeholder="2" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
+                <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
+                  keyboardType="numeric" placeholder="500" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldLabel}>Days Worked</Text>
+                <TextInput style={styles.input} value={daysWorked} onChangeText={setDaysWorked}
+                  keyboardType="numeric" placeholder="1" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldHint}>{numWorkers} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
+              </>
+            )}
 
-            <Text style={styles.fieldLabel}>Days Worked</Text>
-            <TextInput
-              style={styles.input}
-              value={daysWorked}
-              onChangeText={setDaysWorked}
-              keyboardType="numeric"
-              placeholder="1"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            {laborMode === "per_acre" && (
+              <>
+                <Text style={styles.fieldLabel}>Acres Worked</Text>
+                <TextInput style={styles.input} value={acresWorked} onChangeText={setAcresWorked}
+                  keyboardType="decimal-pad" placeholder="1.4" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldHint}>E.g. 1.4 acres (decimals allowed)</Text>
+                <Text style={styles.fieldLabel}>Rate per Acre (KES)</Text>
+                <TextInput style={styles.input} value={ratePerAcre} onChangeText={setRatePerAcre}
+                  keyboardType="numeric" placeholder="2400" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldHint}>{acresWorked} acres × KES {ratePerAcre}/acre</Text>
+              </>
+            )}
+
+            {laborMode === "per_pump" && (
+              <>
+                <Text style={styles.fieldLabel}>Total Number of Pumps</Text>
+                <TextInput style={styles.input} value={numPumps} onChangeText={setNumPumps}
+                  keyboardType="numeric" placeholder="20" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldHint}>Total pumps across the section(s) worked</Text>
+                <Text style={styles.fieldLabel}>Rate per Pump (KES)</Text>
+                <TextInput style={styles.input} value={ratePerPump} onChangeText={setRatePerPump}
+                  keyboardType="numeric" placeholder="50" placeholderTextColor={COLORS.textMuted} />
+                <Text style={styles.fieldHint}>{numPumps} pumps × KES {ratePerPump}/pump</Text>
+              </>
+            )}
 
             <View style={styles.laborTotal}>
               <Text style={styles.laborTotalLabel}>Total Labor Cost</Text>
@@ -758,22 +814,60 @@ export default function LogActivityScreen() {
                   onChangeText={(v) =>
                     setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, description: v } : c)))
                   }
-                  placeholder="Details (e.g. Boda from Nakuru to farm)"
+                  placeholder={cost.typeKey === "water" ? "E.g. Water from borehole" : "Details (e.g. Boda from Nakuru to farm)"}
                   placeholderTextColor={COLORS.textMuted}
                 />
-                <View style={styles.amountRow}>
-                  <Text style={styles.kesPre}>KES</Text>
-                  <TextInput
-                    style={[styles.input, { flex: 1 }]}
-                    value={cost.amount}
-                    onChangeText={(v) =>
-                      setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, amount: v } : c)))
-                    }
-                    placeholder="0"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
+                {cost.typeKey === "water" ? (
+                  <View>
+                    <View style={styles.waterRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fieldLabelSm}>No. of 20L Containers</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={cost.waterContainers ?? ""}
+                          onChangeText={(v) =>
+                            setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, waterContainers: v } : c)))
+                          }
+                          placeholder="0"
+                          placeholderTextColor={COLORS.textMuted}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <Text style={styles.waterX}>×</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fieldLabelSm}>KES per container</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={cost.waterPricePerContainer ?? "20"}
+                          onChangeText={(v) =>
+                            setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, waterPricePerContainer: v } : c)))
+                          }
+                          placeholder="20"
+                          placeholderTextColor={COLORS.textMuted}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.laborTotal}>
+                      <Text style={styles.laborTotalLabel}>Water Cost</Text>
+                      <Text style={styles.laborTotalValue}>{formatKES(getOtherCostAmount(cost))}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.amountRow}>
+                    <Text style={styles.kesPre}>KES</Text>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      value={cost.amount}
+                      onChangeText={(v) =>
+                        setOtherCosts((prev) => prev.map((c, i) => (i === idx ? { ...c, amount: v } : c)))
+                      }
+                      placeholder="0"
+                      placeholderTextColor={COLORS.textMuted}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                )}
               </View>
             ))}
 
@@ -963,6 +1057,16 @@ const styles = StyleSheet.create({
   quickDateChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   quickDateChipText: { fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.textSecondary },
   quickDateChipTextActive: { color: COLORS.white },
+  laborModeRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  laborModeChip: {
+    flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10,
+    backgroundColor: COLORS.borderLight, borderWidth: 1.5, borderColor: COLORS.border,
+  },
+  laborModeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  laborModeChipText: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
+  laborModeChipTextActive: { color: COLORS.white },
+  waterRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 8 },
+  waterX: { fontFamily: "DMSans_700Bold", fontSize: 20, color: COLORS.textMuted, paddingBottom: 12 },
   weatherSelector: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   weatherOption: {
     flexDirection: "row", alignItems: "center", gap: 6,

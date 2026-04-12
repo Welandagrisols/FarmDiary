@@ -8,6 +8,7 @@ import {
   addCost,
   addInventoryItem,
   addActivityLog,
+  updateActivityLog,
   addObservation,
   deleteCost,
   deleteInventoryItem,
@@ -33,6 +34,7 @@ interface FarmContextValue {
   addInventory: (item: Omit<InventoryItem, "id" | "created_at">) => Promise<void>;
   removeInventory: (id: string) => Promise<void>;
   logActivity: (log: Omit<ActivityLog, "id" | "created_at">, inventoryUpdates: { name: string; qty: number }[]) => Promise<void>;
+  editActivityLog: (id: string, updates: Partial<Omit<ActivityLog, "id" | "created_at">>) => Promise<void>;
   removeActivityLog: (id: string) => Promise<void>;
   addFieldObservation: (obs: Omit<FieldObservation, "id" | "created_at">) => Promise<void>;
   removeObservation: (id: string) => Promise<void>;
@@ -111,6 +113,11 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     setActivityLogs((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
+  const editActivityLog = useCallback(async (id: string, updates: Partial<Omit<ActivityLog, "id" | "created_at">>) => {
+    const updated = await updateActivityLog(id, updates);
+    setActivityLogs((prev) => prev.map((l) => (l.id === id ? updated : l)));
+  }, []);
+
   const addFieldObservation = useCallback(async (obs: Omit<FieldObservation, "id" | "created_at">) => {
     const newObs = await addObservation(obs);
     setObservations((prev) => [...prev, newObs]);
@@ -161,6 +168,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       addInventory,
       removeInventory,
       logActivity,
+      editActivityLog,
       removeActivityLog,
       addFieldObservation,
       removeObservation,
@@ -180,6 +188,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       addInventory,
       removeInventory,
       logActivity,
+      editActivityLog,
       removeActivityLog,
       addFieldObservation,
       removeObservation,
