@@ -97,11 +97,28 @@ export interface FieldObservation {
   created_at: string;
 }
 
+export interface HarvestRecord {
+  id: string;
+  farm_id: string;
+  season_id: string;
+  section_id: string;
+  harvest_date: string;
+  bags: number;
+  kg_per_bag: number;
+  total_kg: number;
+  price_per_bag_kes: number;
+  total_revenue_kes: number;
+  buyer: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 const KEYS = {
   COSTS: "farm_costs",
   INVENTORY: "farm_inventory",
   ACTIVITY_LOGS: "farm_activity_logs",
   OBSERVATIONS: "farm_observations",
+  HARVEST: "farm_harvest",
   SEEDED: "farm_seeded",
 };
 
@@ -252,6 +269,28 @@ export async function addObservation(obs: Omit<FieldObservation, "id" | "created
 export async function deleteObservation(id: string): Promise<void> {
   const observations = await getObservations();
   await AsyncStorage.setItem(KEYS.OBSERVATIONS, JSON.stringify(observations.filter((o) => o.id !== id)));
+}
+
+export async function getHarvestRecords(): Promise<HarvestRecord[]> {
+  const data = await AsyncStorage.getItem(KEYS.HARVEST);
+  return data ? JSON.parse(data) : [];
+}
+
+export async function addHarvestRecord(record: Omit<HarvestRecord, "id" | "created_at">): Promise<HarvestRecord> {
+  const records = await getHarvestRecords();
+  const newRecord: HarvestRecord = {
+    ...record,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
+  records.push(newRecord);
+  await AsyncStorage.setItem(KEYS.HARVEST, JSON.stringify(records));
+  return newRecord;
+}
+
+export async function deleteHarvestRecord(id: string): Promise<void> {
+  const records = await getHarvestRecords();
+  await AsyncStorage.setItem(KEYS.HARVEST, JSON.stringify(records.filter((r) => r.id !== id)));
 }
 
 export function getGrowthStage(plantingDate: string): string {

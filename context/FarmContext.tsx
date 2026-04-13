@@ -5,20 +5,24 @@ import {
   getInventory,
   getActivityLogs,
   getObservations,
+  getHarvestRecords,
   addCost,
   addInventoryItem,
   addActivityLog,
   updateActivityLog,
   addObservation,
+  addHarvestRecord,
   deleteCost,
   deleteInventoryItem,
   deleteActivityLog,
   deleteObservation,
+  deleteHarvestRecord,
   updateInventoryUsage,
   CostEntry,
   InventoryItem,
   ActivityLog,
   FieldObservation,
+  HarvestRecord,
 } from "@/lib/storage";
 import { PLANNED_SCHEDULE, PlannedActivity, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
 
@@ -27,6 +31,7 @@ interface FarmContextValue {
   inventory: InventoryItem[];
   activityLogs: ActivityLog[];
   observations: FieldObservation[];
+  harvestRecords: HarvestRecord[];
   isLoading: boolean;
   refresh: () => Promise<void>;
   addCostEntry: (cost: Omit<CostEntry, "id" | "created_at">) => Promise<void>;
@@ -43,6 +48,9 @@ interface FarmContextValue {
   getNextActivity: (sectionId: string) => PlannedActivity | null;
   quickCompleteActivity: (activity: PlannedActivity, sectionId: string | null) => Promise<void>;
   getLastSprayDate: (sectionId: string) => string | null;
+  addHarvestEntry: (record: Omit<HarvestRecord, "id" | "created_at">) => Promise<void>;
+  removeHarvestRecord: (id: string) => Promise<void>;
+  totalRevenue: number;
 }
 
 const FarmContext = createContext<FarmContextValue | null>(null);
@@ -52,22 +60,25 @@ export function FarmProvider({ children }: { children: ReactNode }) {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [observations, setObservations] = useState<FieldObservation[]>([]);
+  const [harvestRecords, setHarvestRecords] = useState<HarvestRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       await seedIfNeeded();
-      const [c, inv, logs, obs] = await Promise.all([
+      const [c, inv, logs, obs, harvest] = await Promise.all([
         getCosts(),
         getInventory(),
         getActivityLogs(),
         getObservations(),
+        getHarvestRecords(),
       ]);
       setCosts(c);
       setInventory(inv);
       setActivityLogs(logs);
       setObservations(obs);
+      setHarvestRecords(harvest);
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +142,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const totalSpent = useMemo(() => costs.reduce((sum, c) => sum + c.amount_kes, 0), [costs]);
+  const totalRevenue = useMemo(() => harvestRecords.reduce((sum, r) => sum + r.total_revenue_kes, 0), [harvestRecords]);
 
   const getCompletedActivityIds = useCallback((): string[] => {
     const ids = new Set<string>();
@@ -179,6 +191,16 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const addHarvestEntry = useCallback(async (record: Omit<HarvestRecord, "id" | "created_at">) => {
+    const newRecord = await addHarvestRecord(record);
+    setHarvestRecords((prev) => [...prev, newRecord]);
+  }, []);
+
+  const removeHarvestRecord = useCallback(async (id: string) => {
+    await deleteHarvestRecord(id);
+    setHarvestRecords((prev) => prev.filter((r) => r.id !== id));
+  }, []);
 
   const getLastSprayDate = useCallback(
     (sectionId: string): string | null => {
