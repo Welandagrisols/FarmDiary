@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
@@ -170,23 +171,25 @@ function configureExpoAndLanding(app: express.Application) {
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
 
-  log("Serving static Expo files with dynamic manifest routing");
+  const METRO_URL = "http://localhost:8081";
+
+  const metroProxy = createProxyMiddleware({
+    target: METRO_URL,
+    changeOrigin: true,
+    ws: true,
+  });
+
+  log("Serving Expo via Metro proxy");
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
-
     const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
-    }
+    const isExpoClient = !!platform;
 
-    if (req.path === "/") {
+    if (req.path === "/" && !isExpoClient) {
       return serveLandingPage({
         req,
         res,
@@ -195,13 +198,10 @@ function configureExpoAndLanding(app: express.Application) {
       });
     }
 
-    next();
+    return (metroProxy as any)(req, res, next);
   });
 
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
-  app.use(express.static(path.resolve(process.cwd(), "static-build")));
-
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  log("Expo routing: proxying Expo Go requests to Metro on port 8081");
 }
 
 function setupErrorHandler(app: express.Application) {
