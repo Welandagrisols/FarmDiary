@@ -146,7 +146,7 @@ function serveLandingPage({
   const forwardedHost = req.header("x-forwarded-host");
   const host = forwardedHost || req.get("host");
   const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
+  const expsUrl = process.env.REPLIT_DEV_DOMAIN || host;
 
   log(`baseUrl`, baseUrl);
   log(`expsUrl`, expsUrl);
