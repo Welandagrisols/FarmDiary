@@ -46,7 +46,7 @@ function MenuRow({
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, observations, activityLogs } = useFarm();
+  const { inventory, observations, activityLogs, harvestRecords } = useFarm();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -90,6 +90,20 @@ export default function MoreScreen() {
             color={COLORS.amber}
             onPress={() => router.push("/observations")}
             badge={criticalObservations > 0 ? `${criticalObservations} alert` : undefined}
+          />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Harvest</Text>
+        <View style={styles.menuCard}>
+          <MenuRow
+            icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />}
+            label="Harvest Records"
+            subtitle="Log bags, weight, price and revenue"
+            color={COLORS.primaryLight}
+            onPress={() => router.push("/harvest")}
+            badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined}
           />
         </View>
       </View>
