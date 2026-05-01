@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, FlatList, Pressable, TextInput, Platform,
+  View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -11,7 +11,7 @@ import { formatDate, formatKES, ActivityLog } from "@/lib/storage";
 
 const SECTION_FILTERS = ["All", "Sec A", "Sec B"];
 
-function ActivityRow({ log }: { log: ActivityLog }) {
+function ActivityRow({ log, onDelete }: { log: ActivityLog; onDelete: (id: string, name: string, date: string) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   const sectionLabel =
@@ -45,36 +45,45 @@ function ActivityRow({ log }: { log: ActivityLog }) {
 
       {expanded && (
         <View style={styles.detail}>
-          {log.notes && (
+          {log.notes ? (
             <Text style={styles.detailItem}>
               <Text style={styles.detailLabel}>Notes: </Text>{log.notes}
             </Text>
-          )}
-          {log.weather_conditions && (
+          ) : null}
+          {log.weather_conditions ? (
             <Text style={styles.detailItem}>
               <Text style={styles.detailLabel}>Weather: </Text>{log.weather_conditions}
             </Text>
-          )}
-          {log.num_workers > 0 && (
+          ) : null}
+          {log.num_workers > 0 ? (
             <Text style={styles.detailItem}>
               <Text style={styles.detailLabel}>Workers: </Text>{log.num_workers}
             </Text>
-          )}
+          ) : null}
           {log.products_used.length > 0 && (
             <View style={styles.productsSection}>
               <Text style={styles.detailLabel}>Products:</Text>
               {log.products_used.map((p, i) => (
-                <Text key={i} style={styles.productItem}>  {p.name} — {p.qty} {p.unit}</Text>
+                <Text key={i} style={styles.productItem}>{"  "}{p.name} — {p.qty} {p.unit}</Text>
               ))}
             </View>
           )}
-          <Pressable
-            style={styles.editBtn}
-            onPress={() => router.push({ pathname: "/edit-activity", params: { logId: log.id } })}
-          >
-            <Ionicons name="pencil-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.editBtnText}>Edit</Text>
-          </Pressable>
+          <View style={styles.detailActions}>
+            <Pressable
+              style={styles.editBtn}
+              onPress={() => router.push({ pathname: "/edit-activity", params: { logId: log.id } })}
+            >
+              <Ionicons name="pencil-outline" size={14} color={COLORS.primary} />
+              <Text style={styles.editBtnText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              style={styles.deleteBtn}
+              onPress={() => onDelete(log.id, log.activity_name, log.actual_date)}
+            >
+              <Ionicons name="trash-outline" size={14} color={COLORS.red} />
+              <Text style={styles.deleteBtnText}>Undo / Remove</Text>
+            </Pressable>
+          </View>
         </View>
       )}
     </Pressable>
@@ -83,7 +92,18 @@ function ActivityRow({ log }: { log: ActivityLog }) {
 
 export default function AllLogsScreen() {
   const insets = useSafeAreaInsets();
-  const { activityLogs } = useFarm();
+  const { activityLogs, removeActivityLog } = useFarm();
+
+  const handleDelete = (id: string, name: string, date: string) => {
+    Alert.alert(
+      "Undo Activity",
+      `Remove "${name}" logged on ${formatDate(date)}?\n\nThis will mark the activity as not done and cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => removeActivityLog(id) },
+      ]
+    );
+  };
   const [search, setSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("All");
 
@@ -145,7 +165,7 @@ export default function AllLogsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ActivityRow log={item} />}
+        renderItem={({ item }) => <ActivityRow log={item} onDelete={handleDelete} />}
         contentContainerStyle={[styles.list, { paddingBottom: (Platform.OS === "web" ? 34 : 0) + 40 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -216,13 +236,19 @@ const styles = StyleSheet.create({
   detailLabel: { fontFamily: "DMSans_600SemiBold", color: COLORS.text },
   productsSection: { gap: 2, marginTop: 2 },
   productItem: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  detailActions: { flexDirection: "row", gap: 8, marginTop: 6, flexWrap: "wrap" },
   editBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    alignSelf: "flex-start", marginTop: 6,
     backgroundColor: COLORS.primarySurface, borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 6,
   },
   editBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
+  deleteBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: COLORS.redLight, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  deleteBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.red },
   empty: { alignItems: "center", gap: 10, paddingVertical: 60 },
   emptyText: { fontFamily: "DMSans_500Medium", fontSize: 14, color: COLORS.textMuted },
 });

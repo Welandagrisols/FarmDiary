@@ -37,7 +37,7 @@ function NumericInput({
   onChangeText: (v: string) => void;
   placeholder: string;
   suffix?: string;
-  inputRef?: React.RefObject<TextInput>;
+  inputRef?: React.RefObject<TextInput | null>;
   onSubmitEditing?: () => void;
 }) {
   return (

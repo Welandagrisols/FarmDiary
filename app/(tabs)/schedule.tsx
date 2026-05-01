@@ -7,6 +7,7 @@ import {
   Pressable,
   Modal,
   ScrollView,
+  Alert,
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -163,11 +164,23 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
             <Pressable
               style={[styles.quickBtn, completing && { opacity: 0.6 }]}
               disabled={completing}
-              onPress={async () => {
-                setCompleting(true);
-                await quickCompleteActivity(activity, null);
-                setCompleting(false);
-                onClose();
+              onPress={() => {
+                Alert.alert(
+                  "Confirm Activity Done",
+                  `Mark "${activity.name}" as completed with no costs recorded?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Yes, Mark Done",
+                      onPress: async () => {
+                        setCompleting(true);
+                        await quickCompleteActivity(activity, null);
+                        setCompleting(false);
+                        onClose();
+                      },
+                    },
+                  ]
+                );
               }}
             >
               <Ionicons name="checkmark-done-outline" size={18} color={COLORS.primary} />

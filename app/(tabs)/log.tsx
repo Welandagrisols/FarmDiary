@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, Alert, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,7 +10,7 @@ import { getDaysUntil, formatDate, formatKES } from "@/lib/storage";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds, activityLogs } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog } = useFarm();
   const completedIds = getCompletedActivityIds();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -128,6 +128,22 @@ export default function LogScreen() {
                   hitSlop={8}
                 >
                   <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                </Pressable>
+                <Pressable
+                  style={styles.deleteBtn}
+                  hitSlop={8}
+                  onPress={() =>
+                    Alert.alert(
+                      "Undo Activity",
+                      `Remove "${log.activity_name}" logged on ${formatDate(log.actual_date)}? This will mark it as not done.`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Remove", style: "destructive", onPress: () => removeActivityLog(log.id) },
+                      ]
+                    )
+                  }
+                >
+                  <Ionicons name="trash-outline" size={16} color={COLORS.red} />
                 </Pressable>
               </View>
             ))
@@ -286,6 +302,10 @@ const styles = StyleSheet.create({
   },
   editBtn: {
     width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primarySurface,
+    alignItems: "center", justifyContent: "center",
+  },
+  deleteBtn: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.redLight,
     alignItems: "center", justifyContent: "center",
   },
   sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
