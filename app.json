@@ -46,6 +46,9 @@
     "extra": {
       "router": {
         "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "5f77fef5-6810-4371-9600-4d41d42ec265"
       }
     },
     "owner": "wesley12404"
