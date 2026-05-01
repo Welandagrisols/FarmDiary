@@ -224,6 +224,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       inventory,
       activityLogs,
       observations,
+      harvestRecords,
       isLoading,
       refresh,
       addCostEntry,
@@ -236,10 +237,13 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       addFieldObservation,
       removeObservation,
       totalSpent,
+      totalRevenue,
       getCompletedActivityIds,
       getNextActivity,
       quickCompleteActivity,
       getLastSprayDate,
+      addHarvestEntry,
+      removeHarvestRecord,
     }),
     [
       costs,
@@ -258,10 +262,14 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       addFieldObservation,
       removeObservation,
       totalSpent,
+      totalRevenue,
+      harvestRecords,
       getCompletedActivityIds,
       getNextActivity,
       quickCompleteActivity,
       getLastSprayDate,
+      addHarvestEntry,
+      removeHarvestRecord,
     ]
   );
 

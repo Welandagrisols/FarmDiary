@@ -95,6 +95,19 @@ export default function MoreScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Data</Text>
+        <View style={styles.menuCard}>
+          <MenuRow
+            icon={<Ionicons name="download-outline" size={22} color={COLORS.primary} />}
+            label="Export Data"
+            subtitle="CSV spreadsheets or full JSON backup"
+            color={COLORS.primary}
+            onPress={() => router.push("/export")}
+          />
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Season Overview</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
