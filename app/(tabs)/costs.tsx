@@ -179,9 +179,14 @@ export default function CostsScreen() {
             <Text style={styles.screenTitle}>Costs</Text>
             <Text style={styles.screenSubtitle}>Season Ledger</Text>
           </View>
-          <Pressable style={styles.addBtn} onPress={() => router.push("/add-cost")}>
-            <Ionicons name="add" size={20} color={COLORS.white} />
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <Pressable style={styles.breakdownBtn} onPress={() => router.push("/cost-breakdown")}>
+              <Ionicons name="pie-chart-outline" size={18} color={COLORS.primary} />
+            </Pressable>
+            <Pressable style={styles.addBtn} onPress={() => router.push("/add-cost")}>
+              <Ionicons name="add" size={20} color={COLORS.white} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.totalCard}>
@@ -286,6 +291,17 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  breakdownBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primarySurface,
+    borderWidth: 1,
+    borderColor: COLORS.primary + "40",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,
