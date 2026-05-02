@@ -6,7 +6,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
-      "credentialsSource": "remote",
+      "credentialsSource": "local",
       "android": {
         "buildType": "apk"
       }
