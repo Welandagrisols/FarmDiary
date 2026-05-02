@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, Platform, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -6,12 +6,14 @@ import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 import { PLANNED_SCHEDULE } from "@/constants/farmData";
 import { useFarm } from "@/context/FarmContext";
-import { getDaysUntil, formatDate, formatKES } from "@/lib/storage";
+import { getDaysUntil, formatDate, formatKES, ActivityLog } from "@/lib/storage";
+import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
   const { getCompletedActivityIds, activityLogs, removeActivityLog } = useFarm();
   const completedIds = getCompletedActivityIds();
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -118,7 +120,11 @@ export default function LogScreen() {
             .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime())
             .slice(0, 10)
             .map((log) => (
-              <View key={log.id} style={styles.recentCard}>
+              <Pressable
+                key={log.id}
+                style={({ pressed }) => [styles.recentCard, pressed && { opacity: 0.85 }]}
+                onPress={() => setSelectedLog(log)}
+              >
                 <View style={styles.recentDot} />
                 <View style={styles.recentInfo}>
                   <Text style={styles.recentName} numberOfLines={1}>{log.activity_name}</Text>
@@ -150,10 +156,34 @@ export default function LogScreen() {
                 >
                   <Ionicons name="trash-outline" size={16} color={COLORS.red} />
                 </Pressable>
-              </View>
+              </Pressable>
             ))
         )}
       </View>
+
+      {selectedLog && (
+        <ActivityLogDetailModal
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+          onDelete={() => {
+            Alert.alert(
+              "Undo Activity",
+              `Remove "${selectedLog.activity_name}" logged on ${formatDate(selectedLog.actual_date)}?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Remove",
+                  style: "destructive",
+                  onPress: () => {
+                    removeActivityLog(selectedLog.id);
+                    setSelectedLog(null);
+                  },
+                },
+              ]
+            );
+          }}
+        />
+      )}
     </ScrollView>
   );
 }

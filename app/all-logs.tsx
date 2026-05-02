@@ -3,17 +3,22 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatDate, formatKES, ActivityLog } from "@/lib/storage";
+import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
 const SECTION_FILTERS = ["All", "Sec A", "Sec B"];
 
-function ActivityRow({ log, onDelete }: { log: ActivityLog; onDelete: (id: string, name: string, date: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
-
+function ActivityRow({
+  log,
+  onTap,
+}: {
+  log: ActivityLog;
+  onTap: (log: ActivityLog) => void;
+}) {
   const sectionLabel =
     log.section_id === "section-a" ? "A" :
     log.section_id === "section-b" ? "B" : "A+B";
@@ -22,9 +27,11 @@ function ActivityRow({ log, onDelete }: { log: ActivityLog; onDelete: (id: strin
     log.section_id === "section-a" ? COLORS.primary :
     log.section_id === "section-b" ? COLORS.teal : COLORS.amber;
 
+  const hasDeviations = (log.products_used ?? []).some((p) => p.is_deviation);
+
   return (
     <Pressable
-      onPress={() => setExpanded(!expanded)}
+      onPress={() => onTap(log)}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
     >
       <View style={styles.rowMain}>
@@ -32,60 +39,23 @@ function ActivityRow({ log, onDelete }: { log: ActivityLog; onDelete: (id: strin
           <Text style={styles.sectionDotText}>{sectionLabel}</Text>
         </View>
         <View style={styles.rowInfo}>
-          <Text style={styles.rowName} numberOfLines={expanded ? undefined : 1}>{log.activity_name}</Text>
+          <View style={styles.rowNameRow}>
+            <Text style={styles.rowName} numberOfLines={1}>{log.activity_name}</Text>
+            {hasDeviations && (
+              <View style={styles.deviationDot}>
+                <Ionicons name="swap-horizontal" size={10} color={COLORS.amber} />
+              </View>
+            )}
+          </View>
           <Text style={styles.rowDate}>{formatDate(log.actual_date)}</Text>
         </View>
         <View style={styles.rowRight}>
           {log.total_cost_kes > 0 && (
             <Text style={styles.rowCost}>{formatKES(log.total_cost_kes)}</Text>
           )}
-          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textMuted} />
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </View>
       </View>
-
-      {expanded && (
-        <View style={styles.detail}>
-          {log.notes ? (
-            <Text style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Notes: </Text>{log.notes}
-            </Text>
-          ) : null}
-          {log.weather_conditions ? (
-            <Text style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Weather: </Text>{log.weather_conditions}
-            </Text>
-          ) : null}
-          {log.num_workers > 0 ? (
-            <Text style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Workers: </Text>{log.num_workers}
-            </Text>
-          ) : null}
-          {log.products_used.length > 0 && (
-            <View style={styles.productsSection}>
-              <Text style={styles.detailLabel}>Products:</Text>
-              {log.products_used.map((p, i) => (
-                <Text key={i} style={styles.productItem}>{"  "}{p.name} — {p.qty} {p.unit}</Text>
-              ))}
-            </View>
-          )}
-          <View style={styles.detailActions}>
-            <Pressable
-              style={styles.editBtn}
-              onPress={() => router.push({ pathname: "/edit-activity", params: { logId: log.id } })}
-            >
-              <Ionicons name="pencil-outline" size={14} color={COLORS.primary} />
-              <Text style={styles.editBtnText}>Edit</Text>
-            </Pressable>
-            <Pressable
-              style={styles.deleteBtn}
-              onPress={() => onDelete(log.id, log.activity_name, log.actual_date)}
-            >
-              <Ionicons name="trash-outline" size={14} color={COLORS.red} />
-              <Text style={styles.deleteBtnText}>Undo / Remove</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
     </Pressable>
   );
 }
@@ -93,19 +63,9 @@ function ActivityRow({ log, onDelete }: { log: ActivityLog; onDelete: (id: strin
 export default function AllLogsScreen() {
   const insets = useSafeAreaInsets();
   const { activityLogs, removeActivityLog } = useFarm();
-
-  const handleDelete = (id: string, name: string, date: string) => {
-    Alert.alert(
-      "Undo Activity",
-      `Remove "${name}" logged on ${formatDate(date)}?\n\nThis will mark the activity as not done and cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => removeActivityLog(id) },
-      ]
-    );
-  };
   const [search, setSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("All");
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
@@ -165,7 +125,7 @@ export default function AllLogsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ActivityRow log={item} onDelete={handleDelete} />}
+        renderItem={({ item }) => <ActivityRow log={item} onTap={setSelectedLog} />}
         contentContainerStyle={[styles.list, { paddingBottom: (Platform.OS === "web" ? 34 : 0) + 40 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -175,6 +135,30 @@ export default function AllLogsScreen() {
           </View>
         }
       />
+
+      {selectedLog && (
+        <ActivityLogDetailModal
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+          onDelete={() => {
+            Alert.alert(
+              "Undo Activity",
+              `Remove "${selectedLog.activity_name}" logged on ${formatDate(selectedLog.actual_date)}?\n\nThis will mark the activity as not done.`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Remove",
+                  style: "destructive",
+                  onPress: () => {
+                    removeActivityLog(selectedLog.id);
+                    setSelectedLog(null);
+                  },
+                },
+              ]
+            );
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -224,31 +208,14 @@ const styles = StyleSheet.create({
   },
   sectionDotText: { fontFamily: "DMSans_700Bold", fontSize: 11, color: COLORS.white },
   rowInfo: { flex: 1, gap: 2 },
-  rowName: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
+  rowNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rowName: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text, flex: 1 },
+  deviationDot: {
+    backgroundColor: COLORS.amberLight, borderRadius: 10, padding: 3,
+  },
   rowDate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted },
   rowRight: { alignItems: "flex-end", gap: 4 },
   rowCost: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.primary },
-  detail: {
-    marginTop: 10, paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: COLORS.borderLight, gap: 4,
-  },
-  detailItem: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  detailLabel: { fontFamily: "DMSans_600SemiBold", color: COLORS.text },
-  productsSection: { gap: 2, marginTop: 2 },
-  productItem: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  detailActions: { flexDirection: "row", gap: 8, marginTop: 6, flexWrap: "wrap" },
-  editBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: COLORS.primarySurface, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  editBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
-  deleteBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: COLORS.redLight, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  deleteBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.red },
   empty: { alignItems: "center", gap: 10, paddingVertical: 60 },
   emptyText: { fontFamily: "DMSans_500Medium", fontSize: 14, color: COLORS.textMuted },
 });

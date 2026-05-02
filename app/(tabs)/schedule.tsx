@@ -16,7 +16,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { PLANNED_SCHEDULE, PlannedActivity } from "@/constants/farmData";
-import { getDaysUntil, formatDate, formatKES } from "@/lib/storage";
+import { getDaysUntil, formatDate, formatKES, ActivityLog } from "@/lib/storage";
+import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
 type ActivityStatus = "completed" | "overdue" | "due-soon" | "upcoming";
 
@@ -205,8 +206,9 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog } = useFarm();
   const [selectedActivity, setSelectedActivity] = useState<PlannedActivity | null>(null);
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const completedIds = getCompletedActivityIds();
 
@@ -223,10 +225,21 @@ export default function ScheduleScreen() {
       <ActivityCard
         activity={item}
         status={item.status}
-        onPress={() => setSelectedActivity(item)}
+        onPress={() => {
+          if (item.status === "completed") {
+            const log = [...activityLogs]
+              .filter((l) => l.schedule_activity_id === item.id)
+              .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime())[0];
+            if (log) {
+              setSelectedLog(log);
+              return;
+            }
+          }
+          setSelectedActivity(item);
+        }}
       />
     ),
-    []
+    [activityLogs]
   );
 
   return (
@@ -263,6 +276,30 @@ export default function ScheduleScreen() {
           activity={selectedActivity}
           status={getStatus(selectedActivity, completedIds)}
           onClose={() => setSelectedActivity(null)}
+        />
+      )}
+
+      {selectedLog && (
+        <ActivityLogDetailModal
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+          onDelete={() => {
+            Alert.alert(
+              "Remove Activity",
+              `Remove "${selectedLog.activity_name}" logged on ${formatDate(selectedLog.actual_date)}?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Remove",
+                  style: "destructive",
+                  onPress: () => {
+                    removeActivityLog(selectedLog.id);
+                    setSelectedLog(null);
+                  },
+                },
+              ]
+            );
+          }}
         />
       )}
     </View>
