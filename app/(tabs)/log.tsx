@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Alert, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, Alert, Platform, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,12 +14,17 @@ export default function LogScreen() {
   const completedIds = getCompletedActivityIds();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : 0;
+  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const upcoming = PLANNED_SCHEDULE.filter((a) => !completedIds.includes(a.id)).slice(0, 5);
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <ScrollView
+      style={[styles.container, { paddingTop: topPadding }]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 40 }]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
         <Text style={styles.screenTitle}>Log Activity</Text>
         <Text style={styles.screenSubtitle}>Record field activities quickly</Text>
@@ -149,7 +154,7 @@ export default function LogScreen() {
             ))
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -158,6 +163,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: 16,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   header: {
     paddingTop: 8,
