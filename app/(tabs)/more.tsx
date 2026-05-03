@@ -22,9 +22,10 @@ function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason } = useFarm();
+  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms } = useFarm();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
+
   const lowStockCount = inventory.filter((item) => {
     const remaining = item.quantity_purchased - (item.quantity_used || 0);
     const threshold = item.low_stock_threshold || item.quantity_purchased * 0.2;
@@ -39,6 +40,30 @@ export default function MoreScreen() {
       <View style={styles.header}>
         <Text style={styles.screenTitle}>More</Text>
         <Text style={styles.screenSubtitle}>Tools & Records</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>My Farms</Text>
+        <Pressable
+          style={styles.farmSwitchCard}
+          onPress={() => router.push("/farm-switcher")}
+        >
+          <View style={styles.farmIconWrap}>
+            <Ionicons name="leaf" size={22} color={COLORS.primary} />
+          </View>
+          <View style={styles.farmCardContent}>
+            <Text style={styles.farmName} numberOfLines={1}>{activeFarm?.name || "Rift Valley Potato Farm"}</Text>
+            <Text style={styles.farmMeta} numberOfLines={1}>
+              {activeFarm?.location || "—"}{activeFarm?.total_acres ? ` · ${activeFarm.total_acres} acres` : ""}
+            </Text>
+          </View>
+          <View style={styles.farmRight}>
+            <View style={styles.farmCountBadge}>
+              <Text style={styles.farmCountText}>{farms.length} farm{farms.length !== 1 ? "s" : ""}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+          </View>
+        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -86,13 +111,41 @@ export default function MoreScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Farm Details</Text>
         <View style={styles.infoCard}>
-          <View style={styles.infoRow}><Ionicons name="location-outline" size={16} color={COLORS.textMuted} /><Text style={styles.infoLabel}>Location</Text><Text style={styles.infoValue}>Nakuru / Bomet / Kericho</Text></View>
+          <View style={styles.infoRow}>
+            <Ionicons name="location-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Location</Text>
+            <Text style={styles.infoValue} numberOfLines={1}>{activeFarm?.location || "—"}</Text>
+          </View>
           <View style={styles.separator} />
-          <View style={styles.infoRow}><Ionicons name="resize-outline" size={16} color={COLORS.textMuted} /><Text style={styles.infoLabel}>Total Area</Text><Text style={styles.infoValue}>4 acres</Text></View>
+          <View style={styles.infoRow}>
+            <Ionicons name="resize-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Total Area</Text>
+            <Text style={styles.infoValue}>{activeFarm?.total_acres ? `${activeFarm.total_acres} acres` : "—"}</Text>
+          </View>
           <View style={styles.separator} />
-          <View style={styles.infoRow}><Ionicons name="key-outline" size={16} color={COLORS.textMuted} /><Text style={styles.infoLabel}>Status</Text><Text style={styles.infoValue}>Leased</Text></View>
+          <View style={styles.infoRow}>
+            <Ionicons name="key-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Ownership</Text>
+            <Text style={styles.infoValue}>{activeFarm?.lease_status || "—"}</Text>
+          </View>
           <View style={styles.separator} />
-          <View style={styles.infoRow}><Ionicons name="leaf-outline" size={16} color={COLORS.textMuted} /><Text style={styles.infoLabel}>Active Season</Text><Text style={styles.infoValue}>{activeSeasonName}</Text></View>
+          <View style={styles.infoRow}>
+            <Ionicons name="flower-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Primary Crop</Text>
+            <Text style={styles.infoValue}>{activeFarm?.crop_type || "—"}</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.infoRow}>
+            <Ionicons name="leaf-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Active Season</Text>
+            <Text style={styles.infoValue}>{activeSeasonName}</Text>
+          </View>
+          <View style={styles.separator} />
+          <Pressable style={styles.editFarmRow} onPress={() => router.push({ pathname: "/farm-setup", params: { mode: "edit" } })}>
+            <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.editFarmText}>Edit farm details</Text>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+          </Pressable>
         </View>
       </View>
     </ScrollView>
@@ -106,6 +159,18 @@ const styles = StyleSheet.create({
   screenSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
   section: { paddingHorizontal: 16, marginBottom: 20, gap: 10 },
   sectionTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  farmSwitchCard: {
+    flexDirection: "row", alignItems: "center", gap: 14, padding: 16,
+    backgroundColor: COLORS.cardBg, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.primary + "40",
+    shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+  },
+  farmIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.primarySurface, alignItems: "center", justifyContent: "center" },
+  farmCardContent: { flex: 1, gap: 3 },
+  farmName: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
+  farmMeta: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  farmRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  farmCountBadge: { backgroundColor: COLORS.primarySurface, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  farmCountText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   menuCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: "hidden" },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
   menuIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
@@ -122,5 +187,7 @@ const styles = StyleSheet.create({
   infoCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: "hidden" },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
   infoLabel: { fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.textSecondary, flex: 1 },
-  infoValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
+  infoValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%" },
+  editFarmRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
+  editFarmText: { flex: 1, fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
 });

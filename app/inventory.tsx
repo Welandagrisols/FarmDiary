@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { InventoryItem, formatKES, formatDate } from "@/lib/storage";
-import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { SEASON_SEED } from "@/constants/farmData";
 
 import * as Haptics from "expo-haptics";
 
@@ -117,7 +117,7 @@ function AddStockModal({ onClose, onSubmit, seasonId }: { onClose: () => void; o
       return;
     }
     onSubmit({
-      farm_id: FARM_SEED.id,
+      farm_id: farmId,
       season_id: seasonId,
       product_name: productName.trim(),
       category,
@@ -184,7 +184,7 @@ function AddStockModal({ onClose, onSubmit, seasonId }: { onClose: () => void; o
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, addInventory, removeInventory, activeSeason } = useFarm();
+  const { inventory, addInventory, removeInventory, activeSeason, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [showAdd, setShowAdd] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);

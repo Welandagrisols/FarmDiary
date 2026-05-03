@@ -14,7 +14,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { CROP_TEMPLATES, generatePlannedSchedule, FARM_SEED } from "@/constants/farmData";
+import { CROP_TEMPLATES, generatePlannedSchedule } from "@/constants/farmData";
 import { formatDate, formatKES, addCost } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
@@ -62,7 +62,7 @@ function genId(): string {
 
 export default function SeasonSetupScreen() {
   const insets = useSafeAreaInsets();
-  const { createSeason, seasons } = useFarm();
+  const { createSeason, seasons, farmId } = useFarm();
 
   const nextSeasonNumber = (seasons.length || 0) + 1;
   const TOTAL_STEPS = 5;
@@ -151,7 +151,7 @@ export default function SeasonSetupScreen() {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const newSeason = await createSeason({
-        farm_id: FARM_SEED.id,
+        farm_id: farmId,
         season_number: nextSeasonNumber,
         season_name: seasonName.trim(),
         season_type: seasonType,
@@ -185,7 +185,7 @@ export default function SeasonSetupScreen() {
         const amount = parseFloat(row.amount) || 0;
         if (amount <= 0) continue;
         await addCost({
-          farm_id: FARM_SEED.id,
+          farm_id: farmId,
           season_id: newSeason.id,
           section_id: null,
           cost_category: row.category,

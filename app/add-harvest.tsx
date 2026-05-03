@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatKES } from "@/lib/storage";
-import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { SEASON_SEED } from "@/constants/farmData";
 
 import * as Haptics from "expo-haptics";
 
@@ -61,7 +61,7 @@ function NumericInput({
 
 export default function AddHarvestScreen() {
   const insets = useSafeAreaInsets();
-  const { addHarvestEntry, activeSeason } = useFarm();
+  const { addHarvestEntry, activeSeason, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [saving, setSaving] = useState(false);
 
@@ -99,7 +99,7 @@ export default function AddHarvestScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       await addHarvestEntry({
-        farm_id: FARM_SEED.id,
+        farm_id: farmId,
         season_id: seasonId,
         section_id: sectionId,
         harvest_date: harvestDate,

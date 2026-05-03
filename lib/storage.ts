@@ -1,6 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { INVENTORY_MASTER, SECTIONS_SEED, FARM_SEED, SEASON_SEED, generatePlannedSchedule, CROP_TEMPLATES } from "@/constants/farmData";
 
+export interface FarmRecord {
+  id: string;
+  name: string;
+  location: string;
+  total_acres: number;
+  lease_status: string;
+  crop_type: string;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface CostEntry {
   id: string;
   farm_id: string;
@@ -148,6 +159,8 @@ const KEYS = {
   SEEDED: "farm_seeded",
   SEASONS: "farm_seasons",
   ACTIVE_SEASON_ID: "farm_active_season_id",
+  FARMS: "farm_farms",
+  ACTIVE_FARM_ID: "farm_active_farm_id",
 };
 
 function genId(): string {
@@ -159,6 +172,24 @@ export async function seedIfNeeded(): Promise<void> {
   if (seeded) return;
 
   const today = new Date().toISOString().split("T")[0];
+
+  const defaultFarm: FarmRecord = {
+    id: FARM_SEED.id,
+    name: FARM_SEED.name,
+    location: FARM_SEED.location,
+    total_acres: FARM_SEED.total_acres,
+    lease_status: FARM_SEED.lease_status,
+    crop_type: "Potato",
+    notes: null,
+    created_at: new Date().toISOString(),
+  };
+
+  const existingFarms = await AsyncStorage.getItem(KEYS.FARMS);
+  if (!existingFarms || JSON.parse(existingFarms).length === 0) {
+    await AsyncStorage.setItem(KEYS.FARMS, JSON.stringify([defaultFarm]));
+    await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, FARM_SEED.id);
+  }
+
   const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({
     id: genId(),
     farm_id: FARM_SEED.id,
@@ -222,6 +253,51 @@ export async function seedSeasonIfNeeded(): Promise<void> {
   await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, "season-001");
 }
 
+// ── Farm CRUD ──────────────────────────────────────────────────────────────────
+
+export async function getFarms(): Promise<FarmRecord[]> {
+  const data = await AsyncStorage.getItem(KEYS.FARMS);
+  return data ? JSON.parse(data) : [];
+}
+
+export async function getActiveFarmId(): Promise<string> {
+  const id = await AsyncStorage.getItem(KEYS.ACTIVE_FARM_ID);
+  return id || FARM_SEED.id;
+}
+
+export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
+  const farms = await getFarms();
+  const activeId = await getActiveFarmId();
+  return farms.find((f) => f.id === activeId) || farms[0] || null;
+}
+
+export async function addFarmRecord(farm: Omit<FarmRecord, "id" | "created_at">): Promise<FarmRecord> {
+  const farms = await getFarms();
+  const newFarm: FarmRecord = {
+    ...farm,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
+  farms.push(newFarm);
+  await AsyncStorage.setItem(KEYS.FARMS, JSON.stringify(farms));
+  return newFarm;
+}
+
+export async function updateFarmRecord(id: string, updates: Partial<FarmRecord>): Promise<FarmRecord> {
+  const farms = await getFarms();
+  const idx = farms.findIndex((f) => f.id === id);
+  if (idx < 0) throw new Error("Farm not found");
+  farms[idx] = { ...farms[idx], ...updates };
+  await AsyncStorage.setItem(KEYS.FARMS, JSON.stringify(farms));
+  return farms[idx];
+}
+
+export async function setActiveFarmId(id: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, id);
+}
+
+// ── Seasons ────────────────────────────────────────────────────────────────────
+
 export async function getSeasons(): Promise<SeasonRecord[]> {
   const data = await AsyncStorage.getItem(KEYS.SEASONS);
   return data ? JSON.parse(data) : [];
@@ -270,6 +346,8 @@ export async function closeSeason(id: string): Promise<SeasonRecord> {
   });
 }
 
+// ── Costs ──────────────────────────────────────────────────────────────────────
+
 export async function getCosts(): Promise<CostEntry[]> {
   const data = await AsyncStorage.getItem(KEYS.COSTS);
   return data ? JSON.parse(data) : [];
@@ -300,6 +378,8 @@ export async function deleteCost(id: string): Promise<void> {
   const costs = await getCosts();
   await AsyncStorage.setItem(KEYS.COSTS, JSON.stringify(costs.filter((c) => c.id !== id)));
 }
+
+// ── Inventory ──────────────────────────────────────────────────────────────────
 
 export async function getInventory(): Promise<InventoryItem[]> {
   const data = await AsyncStorage.getItem(KEYS.INVENTORY);
@@ -332,6 +412,8 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.INVENTORY, JSON.stringify(inventory.filter((i) => i.id !== id)));
 }
 
+// ── Activity Logs ──────────────────────────────────────────────────────────────
+
 export async function getActivityLogs(): Promise<ActivityLog[]> {
   const data = await AsyncStorage.getItem(KEYS.ACTIVITY_LOGS);
   return data ? JSON.parse(data) : [];
@@ -363,6 +445,8 @@ export async function deleteActivityLog(id: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.ACTIVITY_LOGS, JSON.stringify(logs.filter((l) => l.id !== id)));
 }
 
+// ── Observations ───────────────────────────────────────────────────────────────
+
 export async function getObservations(): Promise<FieldObservation[]> {
   const data = await AsyncStorage.getItem(KEYS.OBSERVATIONS);
   return data ? JSON.parse(data) : [];
@@ -385,6 +469,8 @@ export async function deleteObservation(id: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.OBSERVATIONS, JSON.stringify(observations.filter((o) => o.id !== id)));
 }
 
+// ── Harvest ────────────────────────────────────────────────────────────────────
+
 export async function getHarvestRecords(): Promise<HarvestRecord[]> {
   const data = await AsyncStorage.getItem(KEYS.HARVEST);
   return data ? JSON.parse(data) : [];
@@ -406,6 +492,8 @@ export async function deleteHarvestRecord(id: string): Promise<void> {
   const records = await getHarvestRecords();
   await AsyncStorage.setItem(KEYS.HARVEST, JSON.stringify(records.filter((r) => r.id !== id)));
 }
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
 
 export function getGrowthStage(plantingDate: string): string {
   const planted = new Date(plantingDate);

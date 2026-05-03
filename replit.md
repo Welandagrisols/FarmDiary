@@ -1,37 +1,41 @@
-# Farm Diary — Potato Farm Management App
+# Farm Diary — Multi-Farm Management App
 
 ## Overview
-A mobile-first farm management app for Rift Valley Potato Farm, Nakuru/Bomet/Kericho, Kenya. Built with Expo React Native, designed to replace the farm manager's physical notebook.
+A mobile-first farm management app supporting multiple farms. Built with Expo React Native, designed to replace the farm manager's physical notebook. The active farm gates all data — switching farms instantly updates every screen.
 
 ## Features
+- **Multi-Farm**: Create unlimited farms, switch active farm from More tab → "My Farms"
+- **Farm Setup**: Create/edit form — name, location, acres, ownership, crop type, notes
+- **Farm Switcher**: List all farms, stats per farm, one-tap switch with confirmation
 - **Dashboard**: Section cards (A & B), growth stage, next activity urgency, budget bar, active season header
 - **Schedule**: Full season activity timeline driven by `currentSchedule` from FarmContext
 - **Log Activity**: 6-step field-optimized form — uses `activeSeason` from context for season ID and planting date
-- **Costs Ledger**: Filterable by category, KES totals, season-scoped
-- **Inventory**: Stock levels with low-stock alerts, usage tracking, season-scoped
-- **Observations**: Daily field scouting log, severity levels, season-scoped
-- **Harvest Records**: Bags/weight/price/revenue, season-scoped
-- **Export**: CSV/JSON data export
-- **Season Control**: View all seasons, close active season, switch season
-- **Season Setup**: 4-step new season wizard — variety → planting date → schedule preview → confirm
+- **Costs Ledger**: Filterable by category, KES totals, season-scoped and farm-scoped
+- **Inventory**: Stock levels with low-stock alerts, usage tracking, farm-scoped
+- **Observations**: Daily field scouting log, severity levels, farm-scoped
+- **Harvest Records**: Bags/weight/price/revenue, farm-scoped
+- **Export**: CSV/JSON data export, uses active farm ID on import
+- **Season Control**: View all seasons for active farm, close/switch seasons
+- **Season Setup**: 5-step new season wizard — variety → planting date → schedule preview → confirm
+
+## Multi-Farm Architecture
+- `FarmRecord` interface in `lib/storage.ts` with full CRUD (`getFarms`, `getActiveFarmRecord`, `addFarmRecord`, `updateFarmRecord`, `setActiveFarmId`)
+- `FarmContext.tsx` exposes: `farms`, `activeFarm`, `farmId`, `createFarm`, `switchFarm`, `updateActiveFarm`
+- On `switchFarm()`: sets active farm in AsyncStorage, reloads all data arrays filtered by new `farm_id`
+- All data (costs, inventory, logs, observations, harvest, seasons) filtered by `activeFarm.id` in context
+- Every record-creation call uses `farmId` from `useFarm()` — never hardcoded
+- Default farm (Rift Valley Potato Farm, `farm-001`) seeded in `seedIfNeeded()` if no farms exist
 
 ## Season Architecture
-- `SeasonRecord` interface in `lib/storage.ts` with full CRUD (`getSeasons`, `getActiveSeason`, `addSeason`, `updateSeason`, `closeSeason`, etc.)
-- `FarmContext.tsx` exposes: `activeSeason`, `currentSchedule` (generated from planting date via crop templates), `seasons`, `createSeason`, `switchSeason`, `closeActiveSeason`
-- `currentSchedule` is computed from `generatePlannedSchedule()` in `constants/farmData.ts` using the active season's planting date — never hardcoded
-- All cost/activity/inventory/observation saves use `activeSeason?.id || SEASON_SEED.id` fallback
+- `SeasonRecord` interface in `lib/storage.ts` with full CRUD
+- `FarmContext.tsx` exposes: `activeSeason`, `currentSchedule`, `seasons` (all filtered by activeFarm.id)
+- `currentSchedule` computed from `generatePlannedSchedule()` using active season's planting date
 - Backward-compat: Season-001 seeded via `seedSeasonIfNeeded()` on first load
 
 ## Data Storage
 - All data persisted in AsyncStorage (local device storage)
-- Auto-seeds farm, season, sections on first load
-
-## Farm Data
-- **Farm**: Rift Valley Potato Farm, 4 acres, leased
-- **Section A**: Stephen's variety, 2 acres (HIGH blight risk)
-- **Section B**: Shangi variety, 2 acres (MEDIUM blight risk)
-- **Activities**: Generated dynamically from `CropTemplate` day-offset rules applied to planting date
-- **Total estimated cost**: ~KES 83,850
+- Keys: `farm_farms`, `farm_active_farm_id`, `farm_seasons`, `farm_active_season_id`, `farm_costs`, `farm_inventory`, `farm_activity_logs`, `farm_observations`, `farm_harvest`
+- Auto-seeds default farm, season, inventory on first load
 
 ## Tech Stack
 - **Frontend**: Expo 54 + React Native + Expo Router (file-based routing)

@@ -35,6 +35,8 @@ function RootLayoutNav() {
       <Stack.Screen name="all-logs" options={{ headerShown: false }} />
       <Stack.Screen name="cost-breakdown" options={{ headerShown: false }} />
       <Stack.Screen name="edit-activity" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="farm-setup" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="farm-switcher" options={{ headerShown: false }} />
     </Stack>
   );
 }

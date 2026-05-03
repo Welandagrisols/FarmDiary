@@ -11,7 +11,6 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatKES, addCost, addInventoryItem, addHarvestRecord, addActivityLog, addObservation } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
-import { FARM_SEED } from "@/constants/farmData";
 
 function escapeCsv(val: string | number | boolean | null | undefined): string {
   if (val === null || val === undefined) return "";
@@ -87,22 +86,22 @@ async function importRows(rows: Record<string, string>[], seasonId: string): Pro
     const isObsRow = kind === "observation" || (!kind && row.description && row.severity);
     try {
       if (isCostRow) {
-        await addCost({ farm_id: FARM_SEED.id, season_id: seasonId, section_id: row.section === "a" ? "section-a" : row.section === "b" ? "section-b" : null, cost_category: row.category || "Inputs", cost_subcategory: row.subcategory || "General", description: row.description || "Imported cost", cost_date: row.date || today, is_pre_planting: (row.pre_planting || "").toLowerCase() === "yes", is_historical: true, amount_kes: parseFloat(row.amount || row.amount_kes || "0") || 0, quantity: row.qty ? parseFloat(row.qty) : null, unit: row.unit || null, unit_price_kes: row.unit_price ? parseFloat(row.unit_price) : null, product_name: row.product || null, supplier: row.supplier || null, receipt_reference: row.receipt || null, num_workers: row.workers ? parseInt(row.workers) : null, days_worked: row.days ? parseFloat(row.days) : null, rate_per_worker_per_day: row.rate ? parseFloat(row.rate) : null, facilitator_name: row.facilitator || null, trip_from: row.from || null, trip_to: row.to || null, is_deviation: false, planned_product: null, deviation_reason: null, notes: row.notes || null, weather_conditions: null });
+        await addCost({ farm_id: farmId, season_id: seasonId, section_id: row.section === "a" ? "section-a" : row.section === "b" ? "section-b" : null, cost_category: row.category || "Inputs", cost_subcategory: row.subcategory || "General", description: row.description || "Imported cost", cost_date: row.date || today, is_pre_planting: (row.pre_planting || "").toLowerCase() === "yes", is_historical: true, amount_kes: parseFloat(row.amount || row.amount_kes || "0") || 0, quantity: row.qty ? parseFloat(row.qty) : null, unit: row.unit || null, unit_price_kes: row.unit_price ? parseFloat(row.unit_price) : null, product_name: row.product || null, supplier: row.supplier || null, receipt_reference: row.receipt || null, num_workers: row.workers ? parseInt(row.workers) : null, days_worked: row.days ? parseFloat(row.days) : null, rate_per_worker_per_day: row.rate ? parseFloat(row.rate) : null, facilitator_name: row.facilitator || null, trip_from: row.from || null, trip_to: row.to || null, is_deviation: false, planned_product: null, deviation_reason: null, notes: row.notes || null, weather_conditions: null });
         imported++;
       } else if (isInventoryRow) {
-        await addInventoryItem({ farm_id: FARM_SEED.id, season_id: seasonId, product_name: row.product || row.product_name || "Imported item", category: row.category || "Inputs", quantity_purchased: parseFloat(row.qty || row.quantity_purchased || "0") || 0, unit: row.unit || "kg", unit_price_kes: parseFloat(row.unit_price || row.unit_price_kes || "0") || 0, quantity_used: parseFloat(row.used || row.quantity_used || "0") || 0, purchase_date: row.date || row.purchase_date || today, supplier: row.supplier || null, low_stock_threshold: null, is_historical: true, notes: row.notes || null });
+        await addInventoryItem({ farm_id: farmId, season_id: seasonId, product_name: row.product || row.product_name || "Imported item", category: row.category || "Inputs", quantity_purchased: parseFloat(row.qty || row.quantity_purchased || "0") || 0, unit: row.unit || "kg", unit_price_kes: parseFloat(row.unit_price || row.unit_price_kes || "0") || 0, quantity_used: parseFloat(row.used || row.quantity_used || "0") || 0, purchase_date: row.date || row.purchase_date || today, supplier: row.supplier || null, low_stock_threshold: null, is_historical: true, notes: row.notes || null });
         imported++;
       } else if (isHarvestRow) {
         const bags = parseFloat(row.bags || "0") || 0;
         const kgPerBag = parseFloat(row.kg_per_bag || "0") || 0;
         const pricePerBag = parseFloat(row.price_per_bag || "0") || 0;
-        await addHarvestRecord({ farm_id: FARM_SEED.id, season_id: seasonId, section_id: row.section === "b" ? "section-b" : "section-a", harvest_date: row.date || row.harvest_date || today, bags, kg_per_bag: kgPerBag, total_kg: parseFloat(row.total_kg || "0") || bags * kgPerBag, price_per_bag_kes: pricePerBag, total_revenue_kes: parseFloat(row.revenue || row.total_revenue_kes || "0") || bags * pricePerBag, buyer: row.buyer || null, notes: row.notes || null });
+        await addHarvestRecord({ farm_id: farmId, season_id: seasonId, section_id: row.section === "b" ? "section-b" : "section-a", harvest_date: row.date || row.harvest_date || today, bags, kg_per_bag: kgPerBag, total_kg: parseFloat(row.total_kg || "0") || bags * kgPerBag, price_per_bag_kes: pricePerBag, total_revenue_kes: parseFloat(row.revenue || row.total_revenue_kes || "0") || bags * pricePerBag, buyer: row.buyer || null, notes: row.notes || null });
         imported++;
       } else if (isActivityRow) {
-        await addActivityLog({ farm_id: FARM_SEED.id, season_id: seasonId, section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null, schedule_activity_id: null, activity_name: row.activity || row.activity_name || "Imported activity", planned_date: row.planned_date || null, actual_date: row.date || row.actual_date || today, products_used: [], is_deviation: false, deviation_reason: null, num_workers: parseInt(row.workers || row.num_workers || "0") || 0, labor_cost_kes: parseFloat(row.labor_cost || "0") || 0, total_cost_kes: parseFloat(row.total_cost || "0") || 0, weather_conditions: null, is_historical: true, notes: row.notes || null });
+        await addActivityLog({ farm_id: farmId, season_id: seasonId, section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null, schedule_activity_id: null, activity_name: row.activity || row.activity_name || "Imported activity", planned_date: row.planned_date || null, actual_date: row.date || row.actual_date || today, products_used: [], is_deviation: false, deviation_reason: null, num_workers: parseInt(row.workers || row.num_workers || "0") || 0, labor_cost_kes: parseFloat(row.labor_cost || "0") || 0, total_cost_kes: parseFloat(row.total_cost || "0") || 0, weather_conditions: null, is_historical: true, notes: row.notes || null });
         imported++;
       } else if (isObsRow) {
-        await addObservation({ farm_id: FARM_SEED.id, season_id: seasonId, section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null, observation_date: row.date || row.observation_date || today, observation_type: row.observation_type || "General", description: row.description || "Imported observation", severity: row.severity || "Medium", action_taken: row.action_taken || null, is_historical: true });
+        await addObservation({ farm_id: farmId, season_id: seasonId, section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null, observation_date: row.date || row.observation_date || today, observation_type: row.observation_type || "General", description: row.description || "Imported observation", severity: row.severity || "Medium", action_taken: row.action_taken || null, is_historical: true });
         imported++;
       } else {
         skipped++;
@@ -116,7 +115,7 @@ async function importRows(rows: Record<string, string>[], seasonId: string): Pro
 
 export default function ExportScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, activityLogs, inventory, observations, harvestRecords, seasonId, refresh, activeSeason } = useFarm();
+  const { costs, activityLogs, inventory, observations, harvestRecords, seasonId, refresh, activeSeason, farmId } = useFarm();
   const [exporting, setExporting] = useState<string | null>(null);
   const [importText, setImportText] = useState("");
   const [showImportHelp, setShowImportHelp] = useState(false);

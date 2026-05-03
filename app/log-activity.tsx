@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { SEASON_SEED } from "@/constants/farmData";
 import { formatKES, isPrePlanting } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
@@ -75,7 +75,7 @@ function getLaborSubcategory(activityId: string): string {
 export default function LogActivityScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ activityId?: string }>();
-  const { logActivity, addCostEntry, activeSeason, currentSchedule } = useFarm();
+  const { logActivity, addCostEntry, activeSeason, currentSchedule, farmId } = useFarm();
 
   const preSelected = params.activityId
     ? currentSchedule.find((a) => a.id === params.activityId)
@@ -247,7 +247,7 @@ export default function LogActivityScreen() {
 
       await logActivity(
         {
-          farm_id: FARM_SEED.id,
+          farm_id: farmId,
           season_id: activeSeasonId,
           section_id: sectionId,
           schedule_activity_id: activityType === "planned" ? selectedActivityId : null,
@@ -272,7 +272,7 @@ export default function LogActivityScreen() {
 
       if (laborCost > 0) {
         await addCostEntry({
-          farm_id: FARM_SEED.id,
+          farm_id: farmId,
           season_id: activeSeasonId,
           section_id: sectionId,
           cost_category: "Labor",
@@ -305,7 +305,7 @@ export default function LogActivityScreen() {
       for (const product of productsUsed) {
         if (product.total > 0) {
           await addCostEntry({
-            farm_id: FARM_SEED.id,
+            farm_id: farmId,
             season_id: activeSeasonId,
             section_id: sectionId,
             cost_category: "Inputs",
@@ -340,7 +340,7 @@ export default function LogActivityScreen() {
         const costAmount = getOtherCostAmount(cost);
         if (costAmount > 0) {
           await addCostEntry({
-            farm_id: FARM_SEED.id,
+            farm_id: farmId,
             season_id: activeSeasonId,
             section_id: sectionId,
             cost_category: cost.category,

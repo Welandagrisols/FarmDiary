@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { FieldObservation, formatDate } from "@/lib/storage";
-import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { SEASON_SEED } from "@/constants/farmData";
 import * as Haptics from "expo-haptics";
 
 const OBS_TYPES = ["Pest", "Disease", "Growth", "Weather", "General"];
@@ -102,7 +102,7 @@ function AddObservationModal({ onClose, onSubmit, seasonId }: {
       return;
     }
     onSubmit({
-      farm_id: FARM_SEED.id,
+      farm_id: farmId,
       season_id: seasonId,
       section_id: sectionId,
       observation_date: date,
@@ -215,7 +215,7 @@ function AddObservationModal({ onClose, onSubmit, seasonId }: {
 
 export default function ObservationsScreen() {
   const insets = useSafeAreaInsets();
-  const { observations, addFieldObservation, removeObservation, activeSeason } = useFarm();
+  const { observations, addFieldObservation, removeObservation, activeSeason, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [showAdd, setShowAdd] = useState(false);
 
