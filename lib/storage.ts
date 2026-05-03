@@ -1,22 +1,20 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { INVENTORY_MASTER, FARM_SEED, SEASON_SEED, generatePlannedSchedule } from "@/constants/farmData";
+import { supabase } from "@/lib/supabase";
+import {
+  INVENTORY_MASTER,
+  FARM_SEED,
+  SEASON_SEED,
+  SECTIONS_SEED,
+  CROP_TEMPLATES,
+} from "@/constants/farmData";
 
 export interface FarmRecord {
   id: string;
-  user_id?: string | null;
   name: string;
   location: string;
   total_acres: number;
   lease_status: string;
   crop_type: string;
   notes: string | null;
-  created_at: string;
-}
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  role: "farmer" | "admin";
   created_at: string;
 }
 
@@ -140,10 +138,21 @@ export interface SeasonRecord {
   season_type: string;
   status: "planning" | "active" | "closed";
   template_id: string;
-  section_a: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
-  section_b: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
+  section_a: {
+    variety: string;
+    planting_date: string;
+    acres: number;
+    blight_risk: "LOW" | "MEDIUM" | "HIGH";
+    notes: string | null;
+  };
+  section_b: {
+    variety: string;
+    planting_date: string;
+    acres: number;
+    blight_risk: "LOW" | "MEDIUM" | "HIGH";
+    notes: string | null;
+  };
   pre_planting_start_date: string | null;
-  budget_kes: number | null;
   total_revenue_kes: number | null;
   total_cost_kes: number | null;
   notes: string | null;
@@ -151,80 +160,86 @@ export interface SeasonRecord {
   closed_at: string | null;
 }
 
-export interface PersonalExpense {
-  id: string;
-  farm_id: string;
-  season_id: string;
-  category: string;
-  subcategory: string;
-  description: string;
-  expense_date: string;
-  amount_kes: number;
-  visitor_name: string | null;
-  visitor_role: string | null;
-  trip_from: string | null;
-  trip_to: string | null;
-  receipt_reference: string | null;
-  notes: string | null;
-  created_at: string;
-}
-
-export const PERSONAL_EXPENSE_CATEGORIES: Record<string, string[]> = {
-  "Meals & Food": ["Breakfast", "Lunch", "Dinner", "Snacks", "Groceries", "Water & Drinks"],
-  "Accommodation": ["Rent", "Utilities", "House Deposit"],
-  "Household Setup": ["Bedding & Furniture", "Kitchen Equipment", "Gas Cylinder", "Cleaning Supplies"],
-  "Personal Care": ["Hygiene Products", "Laundry", "Clothing", "Personal Items"],
-  "Health & Medication": ["Prescription Medicine", "OTC Medicine", "First Aid", "Medical Consultation"],
-  "Protective Gear": ["Masks / Respirators", "Gumboots", "Raincoat", "Gloves", "Overalls / Aprons", "Safety Glasses"],
-  "Farm Transport": ["Home → Farm", "Farm → Home", "Within Farm Area", "Fuel", "Motorbike / Boda-boda", "Public Transport"],
-  "Stakeholder Visits": ["Investor / Partner Visit", "Agronomist / Extension Visit", "Supplier Visit", "Guest / Friend Visit"],
-  "Other": ["Phone & Airtime", "Banking Fees", "Miscellaneous"],
-};
-
-const KEYS = {
-  COSTS: "farm_costs",
-  INVENTORY: "farm_inventory",
-  ACTIVITY_LOGS: "farm_activity_logs",
-  OBSERVATIONS: "farm_observations",
-  HARVEST: "farm_harvest",
-  SEEDED: "farm_seeded",
-  SEASONS: "farm_seasons",
-  ACTIVE_SEASON_ID: "farm_active_season_id",
-  FARMS: "farm_farms",
-  ACTIVE_FARM_ID: "farm_active_farm_id",
-  PERSONAL_EXPENSES: "farm_personal_expenses",
-};
-
 function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
-async function readJson<T>(key: string, fallback: T): Promise<T> {
-  const data = await AsyncStorage.getItem(key);
-  return data ? JSON.parse(data) : fallback;
-}
-
-async function writeJson(key: string, value: unknown): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
-}
-
 export async function seedIfNeeded(): Promise<void> {
-  const seeded = await AsyncStorage.getItem(KEYS.SEEDED);
-  if (seeded) return;
+  const { data: existing } = await supabase
+    .from("farms")
+    .select("id")
+    .limit(1);
+  if (existing && existing.length > 0) return;
+
   const today = new Date().toISOString().split("T")[0];
-  const farm: FarmRecord = { ...FARM_SEED, crop_type: "Potato", notes: null, created_at: new Date().toISOString() };
-  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: FARM_SEED.id, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, budget_kes: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
-  const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({ id: genId(), farm_id: farm.id, season_id: season.id, product_name: item.product, category: item.category, quantity_purchased: item.qty, unit: item.unit, unit_price_kes: item.unitPrice, quantity_used: 0, purchase_date: today, supplier: null, low_stock_threshold: null, is_historical: false, notes: null, created_at: new Date().toISOString() }));
-  await writeJson(KEYS.FARMS, [farm]);
-  await writeJson(KEYS.SEASONS, [season]);
-  await writeJson(KEYS.INVENTORY, inventory);
-  await writeJson(KEYS.COSTS, []);
-  await writeJson(KEYS.ACTIVITY_LOGS, []);
-  await writeJson(KEYS.OBSERVATIONS, []);
-  await writeJson(KEYS.HARVEST, []);
-  await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, farm.id);
-  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, season.id);
-  await AsyncStorage.setItem(KEYS.SEEDED, "true");
+  const now = new Date().toISOString();
+  const sA = SECTIONS_SEED[0];
+  const sB = SECTIONS_SEED[1];
+
+  const farm: FarmRecord = {
+    ...FARM_SEED,
+    crop_type: "Potato",
+    notes: null,
+    created_at: now,
+  };
+
+  const season: SeasonRecord = {
+    id: SEASON_SEED.id,
+    farm_id: FARM_SEED.id,
+    season_number: 1,
+    season_name: SEASON_SEED.season_name,
+    season_type: SEASON_SEED.season_type,
+    status: "active",
+    template_id: CROP_TEMPLATES[0]?.id || "",
+    section_a: {
+      variety: sA.variety,
+      planting_date: sA.planting_date,
+      acres: sA.acres,
+      blight_risk: sA.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+      notes: sA.notes ?? null,
+    },
+    section_b: {
+      variety: sB.variety,
+      planting_date: sB.planting_date,
+      acres: sB.acres,
+      blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+      notes: sB.notes ?? null,
+    },
+    pre_planting_start_date: null,
+    total_revenue_kes: null,
+    total_cost_kes: null,
+    notes: null,
+    created_at: now,
+    closed_at: null,
+  };
+
+  const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({
+    id: genId(),
+    farm_id: farm.id,
+    season_id: season.id,
+    product_name: item.product,
+    category: item.category,
+    quantity_purchased: item.qty,
+    unit: item.unit,
+    unit_price_kes: item.unitPrice,
+    quantity_used: 0,
+    purchase_date: today,
+    supplier: null,
+    low_stock_threshold: null,
+    is_historical: false,
+    notes: null,
+    created_at: now,
+  }));
+
+  await supabase.from("farms").insert(farm);
+  await supabase.from("seasons").insert(season);
+  if (inventory.length > 0) {
+    await supabase.from("inventory").insert(inventory);
+  }
+  await supabase.from("app_meta").upsert([
+    { key: "active_farm_id", value: farm.id },
+    { key: "active_season_id", value: season.id },
+  ]);
 }
 
 export async function seedSeasonIfNeeded(): Promise<void> {
@@ -232,76 +247,332 @@ export async function seedSeasonIfNeeded(): Promise<void> {
   if (seasons.length > 0) return;
   const farms = await getFarms();
   const farmId = farms[0]?.id || FARM_SEED.id;
-  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: farmId, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, budget_kes: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
-  await writeJson(KEYS.SEASONS, [season]);
-  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, season.id);
+  const now = new Date().toISOString();
+  const sA = SECTIONS_SEED[0];
+  const sB = SECTIONS_SEED[1];
+
+  const season: SeasonRecord = {
+    id: SEASON_SEED.id,
+    farm_id: farmId,
+    season_number: 1,
+    season_name: SEASON_SEED.season_name,
+    season_type: SEASON_SEED.season_type,
+    status: "active",
+    template_id: CROP_TEMPLATES[0]?.id || "",
+    section_a: {
+      variety: sA.variety,
+      planting_date: sA.planting_date,
+      acres: sA.acres,
+      blight_risk: sA.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+      notes: sA.notes ?? null,
+    },
+    section_b: {
+      variety: sB.variety,
+      planting_date: sB.planting_date,
+      acres: sB.acres,
+      blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+      notes: sB.notes ?? null,
+    },
+    pre_planting_start_date: null,
+    total_revenue_kes: null,
+    total_cost_kes: null,
+    notes: null,
+    created_at: now,
+    closed_at: null,
+  };
+
+  await supabase.from("seasons").insert(season);
+  await supabase.from("app_meta").upsert([
+    { key: "active_season_id", value: season.id },
+  ]);
 }
 
-export async function getFarms(): Promise<FarmRecord[]> { return readJson(KEYS.FARMS, []); }
-export async function getActiveFarmRecord(): Promise<FarmRecord | null> { const farms = await getFarms(); const id = await AsyncStorage.getItem(KEYS.ACTIVE_FARM_ID); return farms.find((f) => f.id === id) || farms[0] || null; }
-export async function getSeasons(): Promise<SeasonRecord[]> { return readJson(KEYS.SEASONS, []); }
-export async function getActiveSeason(): Promise<SeasonRecord | null> { const seasons = await getSeasons(); const id = await AsyncStorage.getItem(KEYS.ACTIVE_SEASON_ID); return seasons.find((s) => s.id === id) || seasons[0] || null; }
-export async function getCosts(): Promise<CostEntry[]> { return readJson(KEYS.COSTS, []); }
-export async function getInventory(): Promise<InventoryItem[]> { return readJson(KEYS.INVENTORY, []); }
-export async function getActivityLogs(): Promise<ActivityLog[]> { return readJson(KEYS.ACTIVITY_LOGS, []); }
-export async function getObservations(): Promise<ObservationRecord[]> { return readJson(KEYS.OBSERVATIONS, []); }
-export async function getHarvestRecords(): Promise<HarvestRecord[]> { return readJson(KEYS.HARVEST, []); }
+export async function getFarms(): Promise<FarmRecord[]> {
+  const { data, error } = await supabase
+    .from("farms")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
+}
 
-export async function addFarmRecord(farm: Omit<FarmRecord, "id" | "created_at">): Promise<FarmRecord> { const farms = await getFarms(); const record = { ...farm, id: genId(), created_at: new Date().toISOString() }; farms.push(record); await writeJson(KEYS.FARMS, farms); return record; }
-export async function updateFarmRecord(id: string, updates: Partial<FarmRecord>): Promise<FarmRecord> { const farms = await getFarms(); const idx = farms.findIndex((f) => f.id === id); if (idx < 0) throw new Error("Farm not found"); farms[idx] = { ...farms[idx], ...updates }; await writeJson(KEYS.FARMS, farms); return farms[idx]; }
-export async function setActiveFarmId(id: string): Promise<void> { await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, id); }
+export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
+  const [{ data: meta }, farms] = await Promise.all([
+    supabase.from("app_meta").select("value").eq("key", "active_farm_id").maybeSingle(),
+    getFarms(),
+  ]);
+  const id = meta?.value;
+  return farms.find((f) => f.id === id) || farms[0] || null;
+}
 
-export async function addSeason(season: Omit<SeasonRecord, "id" | "created_at">): Promise<SeasonRecord> { const seasons = await getSeasons(); const record = { ...season, id: genId(), created_at: new Date().toISOString() }; seasons.push(record); await writeJson(KEYS.SEASONS, seasons); return record; }
-export async function updateSeason(id: string, updates: Partial<SeasonRecord>): Promise<SeasonRecord> { const seasons = await getSeasons(); const idx = seasons.findIndex((s) => s.id === id); if (idx < 0) throw new Error("Season not found"); seasons[idx] = { ...seasons[idx], ...updates }; await writeJson(KEYS.SEASONS, seasons); return seasons[idx]; }
-export async function setActiveSeasonId(id: string): Promise<void> { await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, id); }
-export async function closeSeason(id: string): Promise<SeasonRecord> { return updateSeason(id, { status: "closed", closed_at: new Date().toISOString() }); }
-export async function reopenSeason(id: string): Promise<SeasonRecord> { return updateSeason(id, { status: "active", closed_at: null }); }
+export async function getSeasons(): Promise<SeasonRecord[]> {
+  const { data, error } = await supabase
+    .from("seasons")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return (data || []) as SeasonRecord[];
+}
 
-export async function addCost(cost: Omit<CostEntry, "id" | "created_at">): Promise<CostEntry> { const items = await getCosts(); const record = { ...cost, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.COSTS, items); return record; }
-export async function addInventoryItem(item: Omit<InventoryItem, "id" | "created_at">): Promise<InventoryItem> { const items = await getInventory(); const record = { ...item, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.INVENTORY, items); return record; }
-export async function addActivityLog(entry: Omit<ActivityLog, "id" | "created_at">): Promise<ActivityLog> { const items = await getActivityLogs(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.ACTIVITY_LOGS, items); return record; }
-export async function addFieldObservation(entry: Omit<ObservationRecord, "id" | "created_at">): Promise<ObservationRecord> { const items = await getObservations(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.OBSERVATIONS, items); return record; }
-export async function addHarvestRecord(entry: Omit<HarvestRecord, "id" | "created_at">): Promise<HarvestRecord> { const items = await getHarvestRecords(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.HARVEST, items); return record; }
+export async function getActiveSeason(): Promise<SeasonRecord | null> {
+  const [{ data: meta }, seasons] = await Promise.all([
+    supabase.from("app_meta").select("value").eq("key", "active_season_id").maybeSingle(),
+    getSeasons(),
+  ]);
+  const id = meta?.value;
+  return (seasons.find((s) => s.id === id) || seasons[0] || null) as SeasonRecord | null;
+}
 
-export async function deleteCost(id: string): Promise<void> { await writeJson(KEYS.COSTS, (await getCosts()).filter((item) => item.id !== id)); }
-export async function deleteInventoryItem(id: string): Promise<void> { await writeJson(KEYS.INVENTORY, (await getInventory()).filter((item) => item.id !== id)); }
-export async function deleteActivityLog(id: string): Promise<void> { await writeJson(KEYS.ACTIVITY_LOGS, (await getActivityLogs()).filter((item) => item.id !== id)); }
-export async function deleteObservation(id: string): Promise<void> { await writeJson(KEYS.OBSERVATIONS, (await getObservations()).filter((item) => item.id !== id)); }
-export async function deleteHarvestRecord(id: string): Promise<void> { await writeJson(KEYS.HARVEST, (await getHarvestRecords()).filter((item) => item.id !== id)); }
+export async function getCosts(): Promise<CostEntry[]> {
+  const { data, error } = await supabase
+    .from("costs")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
+}
 
-export function formatKES(amount: number): string { return "KES " + amount.toLocaleString("en-KE"); }
-export function formatDate(dateStr: string): string { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
-export function isPrePlanting(costDate: string, plantingDate: string): boolean { return costDate < plantingDate; }
+export async function getInventory(): Promise<InventoryItem[]> {
+  const { data, error } = await supabase
+    .from("inventory")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
+}
 
-export async function getPersonalExpenses(): Promise<PersonalExpense[]> { return readJson(KEYS.PERSONAL_EXPENSES, []); }
-export async function addPersonalExpense(expense: Omit<PersonalExpense, "id" | "created_at">): Promise<PersonalExpense> { const items = await getPersonalExpenses(); const record = { ...expense, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.PERSONAL_EXPENSES, items); return record; }
-export async function deletePersonalExpense(id: string): Promise<void> { await writeJson(KEYS.PERSONAL_EXPENSES, (await getPersonalExpenses()).filter((item) => item.id !== id)); }
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  const { data, error } = await supabase
+    .from("activity_logs")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return (data || []) as ActivityLog[];
+}
 
-export function getDaysUntil(dateStr: string): number {
-  if (!dateStr) return 999;
-  const target = new Date(dateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+export async function getObservations(): Promise<ObservationRecord[]> {
+  const { data, error } = await supabase
+    .from("observations")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getHarvestRecords(): Promise<HarvestRecord[]> {
+  const { data, error } = await supabase
+    .from("harvest_records")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addFarmRecord(
+  farm: Omit<FarmRecord, "id" | "created_at">
+): Promise<FarmRecord> {
+  const record = { ...farm, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("farms")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFarmRecord(
+  id: string,
+  updates: Partial<FarmRecord>
+): Promise<FarmRecord> {
+  const { data, error } = await supabase
+    .from("farms")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setActiveFarmId(id: string): Promise<void> {
+  await supabase
+    .from("app_meta")
+    .upsert({ key: "active_farm_id", value: id });
+}
+
+export async function addSeason(
+  season: Omit<SeasonRecord, "id" | "created_at">
+): Promise<SeasonRecord> {
+  const record = { ...season, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("seasons")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as SeasonRecord;
+}
+
+export async function updateSeason(
+  id: string,
+  updates: Partial<SeasonRecord>
+): Promise<SeasonRecord> {
+  const { data, error } = await supabase
+    .from("seasons")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as SeasonRecord;
+}
+
+export async function setActiveSeasonId(id: string): Promise<void> {
+  await supabase
+    .from("app_meta")
+    .upsert({ key: "active_season_id", value: id });
+}
+
+export async function closeSeason(id: string): Promise<SeasonRecord> {
+  return updateSeason(id, {
+    status: "closed",
+    closed_at: new Date().toISOString(),
+  });
+}
+
+export async function reopenSeason(id: string): Promise<SeasonRecord> {
+  return updateSeason(id, { status: "active", closed_at: null });
+}
+
+export async function addCost(
+  cost: Omit<CostEntry, "id" | "created_at">
+): Promise<CostEntry> {
+  const record = { ...cost, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("costs")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function addInventoryItem(
+  item: Omit<InventoryItem, "id" | "created_at">
+): Promise<InventoryItem> {
+  const record = { ...item, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("inventory")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function addActivityLog(
+  entry: Omit<ActivityLog, "id" | "created_at">
+): Promise<ActivityLog> {
+  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("activity_logs")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityLog;
+}
+
+export async function addFieldObservation(
+  entry: Omit<ObservationRecord, "id" | "created_at">
+): Promise<ObservationRecord> {
+  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("observations")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function addHarvestRecord(
+  entry: Omit<HarvestRecord, "id" | "created_at">
+): Promise<HarvestRecord> {
+  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data, error } = await supabase
+    .from("harvest_records")
+    .insert(record)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCost(id: string): Promise<void> {
+  const { error } = await supabase.from("costs").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteInventoryItem(id: string): Promise<void> {
+  const { error } = await supabase.from("inventory").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteActivityLog(id: string): Promise<void> {
+  const { error } = await supabase.from("activity_logs").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteObservation(id: string): Promise<void> {
+  const { error } = await supabase.from("observations").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteHarvestRecord(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("harvest_records")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
 }
 
 export function getDaysSincePlanting(plantingDate: string): number {
-  if (!plantingDate) return 0;
   const planted = new Date(plantingDate);
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  planted.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((today.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24)));
+  return Math.floor(
+    (today.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24)
+  );
+}
+
+export function getDaysUntil(dateStr: string): number {
+  const target = new Date(dateStr);
+  const today = new Date();
+  return Math.floor(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
 }
 
 export function getGrowthStage(plantingDate: string): string {
   const days = getDaysSincePlanting(plantingDate);
-  if (days < 7)   return "Emergence — Sprouting underway";
-  if (days < 21)  return "Seedling — Early leaf development";
-  if (days < 42)  return "Vegetative — Canopy closing";
-  if (days < 63)  return "Tuber Initiation — Stolons forming";
-  if (days < 84)  return "Tuber Bulking — Rapid size gain";
-  if (days < 100) return "Maturation — Skin setting";
-  return "Ready — Harvest window open";
+  if (days < 0) return "Pre-Planting";
+  if (days < 14) return "Germination — Days 0–14";
+  if (days < 28) return "Emergence — Days 14–28";
+  if (days < 44) return "Vegetative — Days 28–44";
+  if (days < 58) return "Flowering & Bulking — Days 44–58";
+  if (days < 70) return "Maturation — Days 58–70";
+  return "Ready for Harvest — Day 70+";
+}
+
+export function formatKES(amount: number): string {
+  return "KES " + amount.toLocaleString("en-KE");
+}
+
+export function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

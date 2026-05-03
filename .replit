@@ -105,3 +105,5 @@ outputType = "console"
 [userenv]
 
 [userenv.shared]
+EXPO_PUBLIC_SUPABASE_URL = "https://ckluambcgnmjxcmpcfvg.supabase.co"
+EXPO_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrbHVhbWJjZ25tanhjbXBjZnZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3OTY5ODUsImV4cCI6MjA5MzM3Mjk4NX0.U-motmHCOJX0-1ZNdHK1A1v1W6BtHqzzS3lmIGu5D4o"
