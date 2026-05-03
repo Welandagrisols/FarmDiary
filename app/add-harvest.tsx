@@ -123,7 +123,7 @@ export default function AddHarvestScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={[styles.container, { paddingTop: topPadding }]}>
+      <View style={[styles.container, { paddingTop: topPadding }]}> 
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />

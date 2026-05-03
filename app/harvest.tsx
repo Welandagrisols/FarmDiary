@@ -14,8 +14,7 @@ function SectionBadge({ sectionId }: { sectionId: string }) {
   const isA = sectionId === "section-a";
   return (
     <View style={[styles.badge, { backgroundColor: isA ? COLORS.primarySurface : COLORS.amberLight }]}>
-      <Text style={[styles.badgeText, { color: isA ? COLORS.primary : COLORS.amberDark }]}>
-        {isA ? "Section A" : "Section B"}
+      <Text style={[styles.badgeText, { color: isA ? COLORS.primary : COLORS.amberDark }]}>        {isA ? "Section A" : "Section B"}
       </Text>
     </View>
   );
@@ -46,14 +45,10 @@ export default function HarvestScreen() {
     ]);
   }, [removeHarvestRecord]);
 
-  const sorted = [...harvestRecords].sort(
-    (a, b) => new Date(b.harvest_date).getTime() - new Date(a.harvest_date).getTime()
-  );
-
+  const sorted = [...harvestRecords].sort((a, b) => new Date(b.harvest_date).getTime() - new Date(a.harvest_date).getTime());
   const totalBags = harvestRecords.reduce((s, r) => s + r.bags, 0);
   const totalKg = harvestRecords.reduce((s, r) => s + r.total_kg, 0);
   const totalRevenue = harvestRecords.reduce((s, r) => s + r.total_revenue_kes, 0);
-
   const sectionA = harvestRecords.filter((r) => r.section_id === "section-a");
   const sectionB = harvestRecords.filter((r) => r.section_id === "section-b");
   const revenueA = sectionA.reduce((s, r) => s + r.total_revenue_kes, 0);
@@ -68,10 +63,7 @@ export default function HarvestScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Harvest Records</Text>
-        <Pressable
-          style={styles.addBtn}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-harvest"); }}
-        >
+        <Pressable style={styles.addBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-harvest"); }}>
           <Ionicons name="add" size={20} color={COLORS.white} />
         </Pressable>
       </View>
@@ -113,9 +105,7 @@ export default function HarvestScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="basket-outline" size={48} color={COLORS.border} />
             <Text style={styles.emptyTitle}>No harvest recorded yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Record each harvest load — bags collected, weight, price and buyer.
-            </Text>
+            <Text style={styles.emptySubtitle}>Record each harvest load — bags collected, weight, price and buyer.</Text>
             <Pressable style={styles.emptyBtn} onPress={() => router.push("/add-harvest")}>
               <Ionicons name="add" size={18} color={COLORS.white} />
               <Text style={styles.emptyBtnText}>Record First Harvest</Text>
@@ -159,9 +149,7 @@ export default function HarvestScreen() {
                       <Text style={styles.recordStatText}>{record.buyer}</Text>
                     </View>
                   )}
-                  {record.notes && (
-                    <Text style={styles.recordNotes}>{record.notes}</Text>
-                  )}
+                  {record.notes && (<Text style={styles.recordNotes}>{record.notes}</Text>)}
                 </View>
 
                 <Text style={styles.longPressHint}>Hold to delete</Text>
@@ -188,35 +176,20 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 12 },
-
-  summaryCard: {
-    backgroundColor: COLORS.primary, borderRadius: 16, padding: 18, gap: 14,
-  },
+  summaryCard: { backgroundColor: COLORS.primary, borderRadius: 16, padding: 18, gap: 14 },
   summaryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   summaryMain: { gap: 4 },
   summaryLabel: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.white, opacity: 0.75 },
   summaryRevenue: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.white },
   summaryMeta: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.white, opacity: 0.8 },
-  sectionSplit: {
-    flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 10, overflow: "hidden",
-  },
+  sectionSplit: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" },
   sectionSplitItem: { flex: 1, padding: 12, gap: 2 },
   splitDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)" },
   sectionSplitLabel: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.white, opacity: 0.75 },
   sectionSplitValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.white },
   sectionSplitRevenue: { fontFamily: "DMSans_500Medium", fontSize: 12, color: COLORS.white, opacity: 0.85 },
-
-  listLabel: {
-    fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textSecondary,
-    textTransform: "uppercase", letterSpacing: 0.4,
-  },
-  recordCard: {
-    backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border, gap: 10,
-    shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-  },
+  listLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.4 },
+  recordCard: { backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: COLORS.border, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
   recordTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   recordLeft: { gap: 6 },
   recordRight: { alignItems: "flex-end" },
@@ -225,27 +198,13 @@ const styles = StyleSheet.create({
   recordStats: { gap: 5 },
   recordStat: { flexDirection: "row", alignItems: "center", gap: 6 },
   recordStatText: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
-  recordNotes: {
-    fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted,
-    fontStyle: "italic", marginTop: 2,
-  },
-  longPressHint: {
-    fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted,
-    textAlign: "right",
-  },
+  recordNotes: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted, fontStyle: "italic", marginTop: 2 },
+  longPressHint: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted, textAlign: "right" },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeText: { fontFamily: "DMSans_700Bold", fontSize: 11 },
-
   emptyState: { alignItems: "center", gap: 10, paddingVertical: 48 },
   emptyTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.textSecondary },
-  emptySubtitle: {
-    fontFamily: "DMSans_400Regular", fontSize: 14, color: COLORS.textMuted,
-    textAlign: "center", lineHeight: 20, paddingHorizontal: 24,
-  },
-  emptyBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: COLORS.primary, borderRadius: 10,
-    paddingHorizontal: 18, paddingVertical: 10, marginTop: 8,
-  },
+  emptySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 20, paddingHorizontal: 24 },
+  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, marginTop: 8 },
   emptyBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.white },
 });
