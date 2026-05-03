@@ -14,6 +14,31 @@ export const SEASON_SEED = {
   status: "Active",
 };
 
+export interface CropTemplateStage {
+  id: string;
+  title: string;
+  offsetDays: number;
+  activityType: string;
+  purpose: string;
+  alert: string | null;
+  products: PlannedProduct[];
+  estimatedLaborCost: number;
+  estimatedTotalCost: number;
+}
+
+export interface CropTemplate {
+  id: string;
+  cropType: string;
+  variety: string;
+  maturityDays: number;
+  germinationDays: number;
+  stopSprayingDaysBeforeHarvest: number;
+  prePlantingLeadDays: number;
+  blightRisk: "LOW" | "MEDIUM" | "HIGH";
+  notes: string;
+  stages: CropTemplateStage[];
+}
+
 export const SECTIONS_SEED = [
   {
     id: "section-a",
@@ -55,6 +80,7 @@ export interface PlannedProduct {
 
 export interface PlannedActivity {
   id: string;
+  templateId?: string;
   stage: string;
   activityType: string;
   name: string;
@@ -68,232 +94,148 @@ export interface PlannedActivity {
   alert: string | null;
 }
 
-export const PLANNED_SCHEDULE: PlannedActivity[] = [
-  {
-    id: "pre-planting",
-    stage: "Pre-Planting",
-    activityType: "Cost Capture",
-    name: "Pre-Planting Costs",
-    plannedDateA: "2026-02-01",
-    plannedDateB: "2026-02-01",
-    daysAfterGermA: null,
-    plannedProducts: [],
-    estimatedTotalCost: 0,
-    purpose:
-      "All costs before planting: land lease, soil testing, ploughing, harrowing, lime, NPSb, seed tubers, compost/manure, DAP at planting, all labor. Enter these retrospectively via Add Cost form with any past date.",
-    alert: "Use 'Add Historical Cost' to capture pre-planting costs already spent.",
-  },
-  {
-    id: "weed-control",
-    stage: "Pre-Emergence",
-    activityType: "Herbicide",
-    name: "Weed Control — Weedal",
-    plannedDateA: "2026-03-01",
-    plannedDateB: "2026-03-04",
-    daysAfterGermA: -7,
-    plannedProducts: [
-      { name: "Weedal 480SL", rate: "200ml per 20L", qty: "2L total", unitPrice: 1000, unit: "L" },
+function offsetDate(dateStr: string, days: number): string {
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split("T")[0];
+}
+
+function buildCropTemplate(): CropTemplate {
+  return {
+    id: "potato-template-stephen-shangi",
+    cropType: "Potato",
+    variety: "Mixed: Stephen's / Shangi",
+    maturityDays: 72,
+    germinationDays: 21,
+    stopSprayingDaysBeforeHarvest: 7,
+    prePlantingLeadDays: 14,
+    blightRisk: "HIGH",
+    notes:
+      "Template-based schedule generated from planting date. Pre-planting, planting, crop protection, bulking, maturation, and harvest are all calculated from rules.",
+    stages: [
+      {
+        id: "pre-planting",
+        title: "Pre-Planting",
+        offsetDays: -14,
+        activityType: "Cost Capture",
+        purpose:
+          "Land preparation, soil testing, seed purchase, fertilizer purchase, transport, labor, and other setup costs.",
+        alert: "Capture historical pre-planting costs here.",
+        products: [],
+        estimatedLaborCost: 0,
+        estimatedTotalCost: 0,
+      },
+      {
+        id: "weed-control",
+        title: "Pre-Emergence",
+        offsetDays: 14,
+        activityType: "Herbicide",
+        purpose:
+          "Kill weeds before potato sprouts emerge. Apply only before hook stage is visible.",
+        alert: "Skip if cracking soil or sprouts are visible.",
+        products: [
+          { name: "Weedal 480SL", rate: "200ml per 20L", qty: "2L total", unitPrice: 1000, unit: "L" },
+        ],
+        estimatedLaborCost: 1000,
+        estimatedTotalCost: 2000,
+      },
+      {
+        id: "stage1-spray1",
+        title: "Stage 1 — Emergence",
+        offsetDays: 28,
+        activityType: "Spray",
+        purpose:
+          "First fungal barrier and crop protection after emergence.",
+        alert: "High-risk blight window. Never skip sprays.",
+        products: [
+          { name: "Kenthane 800WP", rate: "50g per 20L", qty: "2.5kg", unitPrice: 2200, unit: "2.5kg bag" },
+          { name: "Metameta", rate: "70g per 20L", qty: "2.5kg", unitPrice: 4100, unit: "2.5kg bag" },
+          { name: "Flexigold Starter", rate: "20ml per 20L", qty: "2L", unitPrice: 1200, unit: "L" },
+        ],
+        estimatedLaborCost: 1500,
+        estimatedTotalCost: 7500,
+      },
+      {
+        id: "earthing-up-1",
+        title: "Stage 2 — Vegetative",
+        offsetDays: 44,
+        activityType: "Earthing Up + Fertilizer",
+        purpose: "First earthing up and key soil nutrition event.",
+        alert: "Most critical soil nutrition event of the season.",
+        products: [
+          { name: "OCP Fertilizer", rate: "50kg per acre", qty: "4 bags / 200kg", unitPrice: 3200, unit: "50kg bag" },
+          { name: "Konkali", rate: "50kg per acre", qty: "4 bags / 200kg", unitPrice: 3800, unit: "50kg bag" },
+        ],
+        estimatedLaborCost: 3000,
+        estimatedTotalCost: 31000,
+      },
+      {
+        id: "stage3-spray1",
+        title: "Stage 3 — Flowering & Bulking",
+        offsetDays: 58,
+        activityType: "Spray",
+        purpose: "Money stage. Push tuber bulking and calcium support.",
+        alert: "Critical calcium dose for tuber quality.",
+        products: [
+          { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
+          { name: "Multi-K", rate: "150g per 20L", qty: "2L for this spray", unitPrice: 400, unit: "L" },
+          { name: "K-Flex", rate: "2L total for 4 acres", qty: "2L", unitPrice: 800, unit: "L" },
+          { name: "Carbosink Calcium", rate: "20ml per 20L", qty: "1L", unitPrice: 800, unit: "L" },
+        ],
+        estimatedLaborCost: 1500,
+        estimatedTotalCost: 9500,
+      },
+      {
+        id: "maturation",
+        title: "Maturation",
+        offsetDays: 65,
+        activityType: "Observation",
+        purpose: "Stop all spraying and monitor vine die-back and skin set.",
+        alert: "STOP spraying before harvest window.",
+        products: [],
+        estimatedLaborCost: 0,
+        estimatedTotalCost: 0,
+      },
+      {
+        id: "harvest",
+        title: "Harvest",
+        offsetDays: 72,
+        activityType: "Harvest",
+        purpose: "Harvest when foliage yellows and skin set is complete.",
+        alert: "Never harvest in rain.",
+        products: [],
+        estimatedLaborCost: 5000,
+        estimatedTotalCost: 5000,
+      },
     ],
-    estimatedLaborCost: 1000,
-    estimatedTotalCost: 2000,
-    purpose:
-      "Kill weeds before potato sprouts emerge. Apply 12-14 days after planting, BEFORE any sprout is visible.",
-    alert: "If cracking soil or a hook (bent sprout) is visible — DO NOT spray Weedal. Skip it entirely.",
-  },
-  {
-    id: "stage1-spray1",
-    stage: "Stage 1 — Emergence",
-    activityType: "Spray",
-    name: "Stage 1 — 1st Spray",
-    plannedDateA: "2026-03-15",
-    plannedDateB: "2026-03-18",
-    daysAfterGermA: 7,
-    plannedProducts: [
-      { name: "Kenthane 800WP", rate: "50g per 20L", qty: "2.5kg", unitPrice: 2200, unit: "2.5kg bag" },
-      { name: "Metameta", rate: "70g per 20L", qty: "2.5kg", unitPrice: 4100, unit: "2.5kg bag" },
-      { name: "Flexigold Starter", rate: "20ml per 20L", qty: "2L", unitPrice: 1200, unit: "L" },
-      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from 20L stock", unitPrice: 250, unit: "L" },
-      { name: "YaraVita", rate: "200ml per 20L", qty: "1L", unitPrice: 1000, unit: "L" },
-      { name: "Agrozyne", rate: "20ml per 20L", qty: "500ml", unitPrice: 1000, unit: "L" },
-      { name: "Halothrin + Vendex Blend", rate: "10ml each per 20L", qty: "300ml each", unitPrice: 2250, unit: "combined" },
-      { name: "Sands (Sticker/Spreader)", rate: "5-10ml per 20L", qty: "from 1L stock", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 7500,
-    purpose:
-      "First fungal barrier. Kenthane (contact) + Metameta (systemic). Rabbit Urine = organic nitrogen + aphid repellent. Halothrin + Vendex blend kills cutworms and aphids. NEVER spray without Sands sticker — rain washes products off within hours.",
-    alert: "Stephen's = HIGH RISK. Use full 70g Metameta. Do not reduce.",
-  },
-  {
-    id: "stage1-spray2",
-    stage: "Stage 1 — Emergence",
-    activityType: "Spray",
-    name: "Stage 1 — 2nd Spray",
-    plannedDateA: "2026-03-27",
-    plannedDateB: "2026-03-30",
-    daysAfterGermA: 19,
-    plannedProducts: [
-      { name: "Kenthane 800WP", rate: "50g per 20L", qty: "2.5kg", unitPrice: 2200, unit: "2.5kg bag" },
-      { name: "Metameta", rate: "70g per 20L", qty: "2.5kg", unitPrice: 4100, unit: "2.5kg bag" },
-      { name: "Flexigold Starter", rate: "20ml per 20L", qty: "1L", unitPrice: 1200, unit: "L" },
-      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
-      { name: "YaraVita", rate: "200ml per 20L", qty: "1L", unitPrice: 1000, unit: "L" },
-      { name: "Agrozyne", rate: "20ml per 20L", qty: "from stock", unitPrice: 1000, unit: "L" },
-      { name: "Halothrin + Vendex Blend", rate: "10ml each per 20L", qty: "from stock", unitPrice: 2250, unit: "combined" },
-      { name: "Sands (Sticker/Spreader)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 7500,
-    purpose: "Repeat Stage 1. If heavy daily rain, reduce interval from 12 to 7 days.",
-    alert: "In heavy daily rain: spray at 7 days, not 12.",
-  },
-  {
-    id: "earthing-up-1",
-    stage: "Stage 2 — Vegetative",
-    activityType: "Earthing Up + Fertilizer",
-    name: "1st Earthing Up + OCP/Konkali",
-    plannedDateA: "2026-04-01",
-    plannedDateB: "2026-04-04",
-    daysAfterGermA: 23,
-    plannedProducts: [
-      { name: "OCP Fertilizer", rate: "50kg per acre (soil)", qty: "4 bags / 200kg", unitPrice: 3200, unit: "50kg bag" },
-      { name: "Konkali", rate: "50kg per acre (soil)", qty: "4 bags / 200kg", unitPrice: 3800, unit: "50kg bag" },
-    ],
-    estimatedLaborCost: 3000,
-    estimatedTotalCost: 31000,
-    purpose:
-      "BENCHMARK STRATEGY: OCP + Konkali at 44 days from planting. A local farmer achieved 4x yield using this approach. Mound soil 20-25cm. Prevents tuber greening and Potato Tuber Moth access.",
-    alert: "Most critical soil nutrition event of the season. Do not delay.",
-  },
-  {
-    id: "stage2-spray1",
-    stage: "Stage 2 — Vegetative",
-    activityType: "Spray",
-    name: "Stage 2 — 1st Spray",
-    plannedDateA: "2026-04-10",
-    plannedDateB: "2026-04-13",
-    daysAfterGermA: 32,
-    plannedProducts: [
-      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend total", unitPrice: 1950, unit: "kg" },
-      { name: "Flexigold Vegetative", rate: "20ml per 20L", qty: "2L", unitPrice: 1200, unit: "L" },
-      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
-      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-      { name: "Carbosink (Biostimulant)", rate: "20ml per 20L", qty: "500ml", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 8800,
-    purpose:
-      "STAGE 2 TRANSITION: Drop Kenthane — never use again. Switch to Mastergold + Metameta blend. Drop Flexigold Starter — switch to Flexigold Vegetative. Introduce Carbosink (biostimulant / nutrient transporter — NOT a calcium product).",
-    alert: "Kenthane is Stage 1 ONLY. Use Mastergold + Metameta blend from here onward.",
-  },
-  {
-    id: "earthing-up-2",
-    stage: "Stage 2 — Vegetative",
-    activityType: "Earthing Up",
-    name: "2nd Earthing Up (No Fertilizer)",
-    plannedDateA: "2026-04-15",
-    plannedDateB: "2026-04-18",
-    daysAfterGermA: 37,
-    plannedProducts: [],
-    estimatedLaborCost: 4000,
-    estimatedTotalCost: 4000,
-    purpose:
-      "Build ridge to 25-30cm. No fertilizer this time. Prevents greening, blocks Potato Tuber Moth, channels rain away from tubers.",
-    alert: null,
-  },
-  {
-    id: "stage2-spray2",
-    stage: "Stage 2 — Vegetative",
-    activityType: "Spray",
-    name: "Stage 2 — 2nd Spray",
-    plannedDateA: "2026-04-22",
-    plannedDateB: "2026-04-25",
-    daysAfterGermA: 44,
-    plannedProducts: [
-      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
-      { name: "Flexigold Vegetative", rate: "20ml per 20L", qty: "1L", unitPrice: 1200, unit: "L" },
-      { name: "Rabbit Urine", rate: "600ml per 20L", qty: "from stock", unitPrice: 250, unit: "L" },
-      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-      { name: "Carbosink (Biostimulant)", rate: "20ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 8800,
-    purpose: "Maintain systemic blight protection during peak April rains.",
-    alert: "Peak rain period. Reduce to 7-day interval if daily rain.",
-  },
-  {
-    id: "stage3-spray1",
-    stage: "Stage 3 — Flowering & Bulking",
-    activityType: "Spray",
-    name: "Stage 3 — 1st Spray (Flower Buds)",
-    plannedDateA: "2026-04-22",
-    plannedDateB: "2026-04-25",
-    daysAfterGermA: 45,
-    plannedProducts: [
-      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
-      { name: "Multi-K", rate: "150g per 20L", qty: "2L for this spray", unitPrice: 400, unit: "L" },
-      { name: "K-Flex", rate: "2L total for 4 acres", qty: "2L", unitPrice: 800, unit: "L" },
-      { name: "Carbosink Calcium", rate: "20ml per 20L", qty: "1L", unitPrice: 800, unit: "L" },
-      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 9500,
-    purpose:
-      "THE MONEY STAGE. Apply when first flower buds appear. Introduce K-Flex + Multi-K (potassium drives tuber size). Introduce Carbosink Calcium — DIFFERENT from Carbosink — it supplies calcium for cell walls, prevents hollow heart and rot, toughens skin for transport. Section A (Stephen's): this is the LAST spray before maturation — harvest April 30.",
-    alert: "Section A LAST SPRAY. Do not spray Section A after April 22 — harvest April 30. Critical Calcium dose for Shangi.",
-  },
-  {
-    id: "stage3-spray2",
-    stage: "Stage 3 — Flowering & Bulking",
-    activityType: "Spray",
-    name: "Stage 3 — 2nd Spray (Shangi Only)",
-    plannedDateA: "2026-04-30",
-    plannedDateB: "2026-05-05",
-    daysAfterGermA: 53,
-    plannedProducts: [
-      { name: "Mastergold + Metameta Blend", rate: "~35g+35g per 20L", qty: "1.5kg blend", unitPrice: 1950, unit: "kg" },
-      { name: "Multi-K", rate: "150g per 20L", qty: "from stock", unitPrice: 400, unit: "L" },
-      { name: "K-Flex", rate: "2L total for 4 acres", qty: "2L", unitPrice: 800, unit: "L" },
-      { name: "Carbosink Calcium", rate: "20ml per 20L", qty: "from stock", unitPrice: 800, unit: "L" },
-      { name: "Surds (Sticker)", rate: "5-10ml per 20L", qty: "from stock", unitPrice: 1200, unit: "L" },
-    ],
-    estimatedLaborCost: 1500,
-    estimatedTotalCost: 9500,
-    purpose:
-      "SECTION B (SHANGI) ONLY. Section A (Stephen's) is being harvested April 30 — no spray needed. Final bulking push for Shangi. Maximize tuber weight. Keep canopy alive as long as possible — every extra green day means more starch into tubers.",
-    alert: "Section A is harvesting today (April 30). Apply to Section B (Shangi) only.",
-  },
-  {
-    id: "maturation",
-    stage: "Maturation",
-    activityType: "Observation",
-    name: "Stop All Spraying — Maturation",
-    plannedDateA: "2026-04-23",
-    plannedDateB: "2026-05-11",
-    daysAfterGermA: 46,
-    plannedProducts: [],
-    estimatedTotalCost: 0,
-    purpose:
-      "All spraying stops. Section A (Stephen's): stop spraying April 23 — harvest April 30. Section B (Shangi): stop spraying May 11 — harvest May 3–21. Allow natural vine die-back and skin set. Monitor foliage yellowing.",
-    alert: "STOP Section A sprays from April 23. STOP Section B sprays from May 11.",
-  },
-  {
-    id: "harvest",
-    stage: "Harvest",
-    activityType: "Harvest",
-    name: "HARVEST",
-    plannedDateA: "2026-04-30",
-    plannedDateB: "2026-05-21",
-    daysAfterGermA: 53,
-    plannedProducts: [],
-    estimatedLaborCost: 5000,
-    estimatedTotalCost: 5000,
-    purpose:
-      "Section A (Stephen's): harvest April 30 — 72 days from planting. Section B (Shangi): harvest May 3–21 — 72 to 90 days from planting. Harvest when foliage is yellowed, stolons separate easily, and skin does not slip on the thumb rub test. Harvest in dry conditions only.",
-    alert:
-      "SKIN SET TEST: Rub thumb firmly on tuber. Skin slips = not ready. Skin holds = harvest time. Section B earliest: May 3. Section B latest: May 21. Never harvest in rain.",
-  },
-];
+  };
+}
+
+export const CROP_TEMPLATES: CropTemplate[] = [buildCropTemplate()];
+
+export function generatePlannedSchedule(template: CropTemplate, plantingDate: string): PlannedActivity[] {
+  return template.stages.map((stage, index) => {
+    const plannedDateA = offsetDate(plantingDate, stage.offsetDays);
+    const plannedDateB = offsetDate(plantingDate, stage.offsetDays + 3);
+    return {
+      id: stage.id,
+      templateId: template.id,
+      stage: stage.title,
+      activityType: stage.activityType,
+      name: stage.title,
+      plannedDateA,
+      plannedDateB,
+      daysAfterGermA: Math.max(0, stage.offsetDays - template.germinationDays),
+      plannedProducts: stage.products,
+      estimatedLaborCost: stage.estimatedLaborCost || undefined,
+      estimatedTotalCost: stage.estimatedTotalCost,
+      purpose: stage.purpose,
+      alert: stage.alert,
+    };
+  });
+}
+
+export const PLANNED_SCHEDULE: PlannedActivity[] = generatePlannedSchedule(CROP_TEMPLATES[0], "2026-02-17");
 
 export const TOTAL_ESTIMATED_COST = PLANNED_SCHEDULE.reduce((sum, a) => sum + a.estimatedTotalCost, 0);
 
