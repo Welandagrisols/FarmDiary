@@ -347,7 +347,7 @@ export default function CostBreakdownScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 40 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 96 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.viewToggle}>
@@ -377,6 +377,14 @@ export default function CostBreakdownScreen() {
               <Text style={[styles.sectionTabText, sectionTab === i && styles.sectionTabTextActive]}>{tab}</Text>
             </Pressable>
           ))}
+        </View>
+
+        <View style={styles.filteredTotalCard}>
+          <Text style={styles.filteredTotalLabel}>Filtered Total</Text>
+          <Text style={styles.filteredTotalValue}>{isByActivity ? formatKES(activityGrandTotal) : formatKES(grandTotal)}</Text>
+          <Text style={styles.filteredTotalMeta}>
+            {isByActivity ? `${sortedActivities.length} activities` : `${filteredCosts.length} entries`}
+          </Text>
         </View>
 
         {!isByActivity && (
@@ -499,6 +507,31 @@ const styles = StyleSheet.create({
   viewToggleTextActive: { color: COLORS.white },
 
   sectionTabs: { flexDirection: "row", gap: 8 },
+  filteredTotalCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 2,
+  },
+  filteredTotalLabel: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  filteredTotalValue: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 22,
+    color: COLORS.text,
+  },
+  filteredTotalMeta: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
   sectionTab: {
     flex: 1, paddingVertical: 8, borderRadius: 8,
     backgroundColor: COLORS.cardBg, borderWidth: 1, borderColor: COLORS.border,
