@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { INVENTORY_MASTER, SECTIONS_SEED, FARM_SEED, SEASON_SEED, generatePlannedSchedule, CROP_TEMPLATES } from "@/constants/farmData";
+import { INVENTORY_MASTER, FARM_SEED, SEASON_SEED, generatePlannedSchedule } from "@/constants/farmData";
 
 export interface FarmRecord {
   id: string;
@@ -62,6 +62,17 @@ export interface InventoryItem {
   created_at: string;
 }
 
+export interface ProductUsed {
+  name: string;
+  qty: number;
+  unit: string;
+  unit_price: number;
+  total: number;
+  is_deviation: boolean;
+  actual_product: string | null;
+  deviation_reason: string | null;
+}
+
 export interface ActivityLog {
   id: string;
   farm_id: string;
@@ -83,18 +94,7 @@ export interface ActivityLog {
   created_at: string;
 }
 
-export interface ProductUsed {
-  name: string;
-  qty: number;
-  unit: string;
-  unit_price: number;
-  total: number;
-  is_deviation: boolean;
-  actual_product: string | null;
-  deviation_reason: string | null;
-}
-
-export interface FieldObservation {
+export interface ObservationRecord {
   id: string;
   farm_id: string;
   season_id: string;
@@ -124,14 +124,6 @@ export interface HarvestRecord {
   created_at: string;
 }
 
-export interface SeasonSection {
-  variety: string;
-  planting_date: string;
-  acres: number;
-  blight_risk: "LOW" | "MEDIUM" | "HIGH";
-  notes: string | null;
-}
-
 export interface SeasonRecord {
   id: string;
   farm_id: string;
@@ -140,8 +132,8 @@ export interface SeasonRecord {
   season_type: string;
   status: "planning" | "active" | "closed";
   template_id: string;
-  section_a: SeasonSection;
-  section_b: SeasonSection;
+  section_a: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
+  section_b: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
   pre_planting_start_date: string | null;
   total_revenue_kes: number | null;
   total_cost_kes: number | null;
@@ -167,149 +159,75 @@ function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
+async function readJson<T>(key: string, fallback: T): Promise<T> {
+  const data = await AsyncStorage.getItem(key);
+  return data ? JSON.parse(data) : fallback;
+}
+
+async function writeJson(key: string, value: unknown): Promise<void> {
+  await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
 export async function seedIfNeeded(): Promise<void> {
   const seeded = await AsyncStorage.getItem(KEYS.SEEDED);
   if (seeded) return;
-
   const today = new Date().toISOString().split("T")[0];
-
-  const defaultFarm: FarmRecord = {
-    id: FARM_SEED.id,
-    name: FARM_SEED.name,
-    location: FARM_SEED.location,
-    total_acres: FARM_SEED.total_acres,
-    lease_status: FARM_SEED.lease_status,
-    crop_type: "Potato",
-    notes: null,
-    created_at: new Date().toISOString(),
-  };
-
-  const existingFarms = await AsyncStorage.getItem(KEYS.FARMS);
-  if (!existingFarms || JSON.parse(existingFarms).length === 0) {
-    await AsyncStorage.setItem(KEYS.FARMS, JSON.stringify([defaultFarm]));
-    await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, FARM_SEED.id);
-  }
-
-  const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({
-    id: genId(),
-    farm_id: FARM_SEED.id,
-    season_id: SEASON_SEED.id,
-    product_name: item.product,
-    category: item.category,
-    quantity_purchased: item.qty,
-    unit: item.unit,
-    unit_price_kes: item.unitPrice,
-    quantity_used: 0,
-    purchase_date: today,
-    supplier: null,
-    low_stock_threshold: null,
-    is_historical: false,
-    notes: null,
-    created_at: new Date().toISOString(),
-  }));
-
-  await AsyncStorage.setItem(KEYS.INVENTORY, JSON.stringify(inventory));
-  await AsyncStorage.setItem(KEYS.COSTS, JSON.stringify([]));
-  await AsyncStorage.setItem(KEYS.ACTIVITY_LOGS, JSON.stringify([]));
-  await AsyncStorage.setItem(KEYS.OBSERVATIONS, JSON.stringify([]));
+  const farm: FarmRecord = { ...FARM_SEED, crop_type: "Potato", notes: null, created_at: new Date().toISOString() };
+  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: FARM_SEED.id, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
+  const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({ id: genId(), farm_id: farm.id, season_id: season.id, product_name: item.product, category: item.category, quantity_purchased: item.qty, unit: item.unit, unit_price_kes: item.unitPrice, quantity_used: 0, purchase_date: today, supplier: null, low_stock_threshold: null, is_historical: false, notes: null, created_at: new Date().toISOString() }));
+  await writeJson(KEYS.FARMS, [farm]);
+  await writeJson(KEYS.SEASONS, [season]);
+  await writeJson(KEYS.INVENTORY, inventory);
+  await writeJson(KEYS.COSTS, []);
+  await writeJson(KEYS.ACTIVITY_LOGS, []);
+  await writeJson(KEYS.OBSERVATIONS, []);
+  await writeJson(KEYS.HARVEST, []);
+  await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, farm.id);
+  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, season.id);
   await AsyncStorage.setItem(KEYS.SEEDED, "true");
 }
 
 export async function seedSeasonIfNeeded(): Promise<void> {
-  const existing = await AsyncStorage.getItem(KEYS.SEASONS);
-  if (existing && JSON.parse(existing).length > 0) return;
-
-  const defaultSeason: SeasonRecord = {
-    id: SEASON_SEED.id,
-    farm_id: FARM_SEED.id,
-    season_number: 1,
-    season_name: SEASON_SEED.name,
-    season_type: SEASON_SEED.type,
-    status: "active",
-    template_id: SEASON_SEED.templateId,
-    section_a: {
-      variety: SEASON_SEED.section_a.variety,
-      planting_date: SEASON_SEED.section_a.planting_date,
-      acres: SEASON_SEED.section_a.acres,
-      blight_risk: SEASON_SEED.section_a.blight_risk,
-      notes: null,
-    },
-    section_b: {
-      variety: SEASON_SEED.section_b.variety,
-      planting_date: SEASON_SEED.section_b.planting_date,
-      acres: SEASON_SEED.section_b.acres,
-      blight_risk: SEASON_SEED.section_b.blight_risk,
-      notes: null,
-    },
-    pre_planting_start_date: null,
-    total_revenue_kes: null,
-    total_cost_kes: null,
-    notes: null,
-    created_at: new Date().toISOString(),
-    closed_at: null,
-  };
-
-  await AsyncStorage.setItem(KEYS.SEASONS, JSON.stringify([defaultSeason]));
-  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, SEASON_SEED.id);
-}
-
-export async function getSeasons(): Promise<SeasonRecord[]> {
-  const data = await AsyncStorage.getItem(KEYS.SEASONS);
-  return data ? JSON.parse(data) : [];
-}
-
-export async function addSeason(season: Omit<SeasonRecord, "id" | "created_at">): Promise<SeasonRecord> {
   const seasons = await getSeasons();
-  const newSeason: SeasonRecord = {
-    ...season,
-    id: genId(),
-    created_at: new Date().toISOString(),
-  };
-  seasons.push(newSeason);
-  await AsyncStorage.setItem(KEYS.SEASONS, JSON.stringify(seasons));
-  return newSeason;
+  if (seasons.length > 0) return;
+  const farms = await getFarms();
+  const farmId = farms[0]?.id || FARM_SEED.id;
+  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: farmId, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
+  await writeJson(KEYS.SEASONS, [season]);
+  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, season.id);
 }
 
-export async function updateSeason(id: string, updates: Partial<SeasonRecord>): Promise<SeasonRecord> {
-  const seasons = await getSeasons();
-  const idx = seasons.findIndex((s) => s.id === id);
-  if (idx < 0) throw new Error("Season not found");
-  seasons[idx] = { ...seasons[idx], ...updates };
-  await AsyncStorage.setItem(KEYS.SEASONS, JSON.stringify(seasons));
-  return seasons[idx];
-}
+export async function getFarms(): Promise<FarmRecord[]> { return readJson(KEYS.FARMS, []); }
+export async function getActiveFarmRecord(): Promise<FarmRecord | null> { const farms = await getFarms(); const id = await AsyncStorage.getItem(KEYS.ACTIVE_FARM_ID); return farms.find((f) => f.id === id) || farms[0] || null; }
+export async function getSeasons(): Promise<SeasonRecord[]> { return readJson(KEYS.SEASONS, []); }
+export async function getActiveSeason(): Promise<SeasonRecord | null> { const seasons = await getSeasons(); const id = await AsyncStorage.getItem(KEYS.ACTIVE_SEASON_ID); return seasons.find((s) => s.id === id) || seasons[0] || null; }
+export async function getCosts(): Promise<CostEntry[]> { return readJson(KEYS.COSTS, []); }
+export async function getInventory(): Promise<InventoryItem[]> { return readJson(KEYS.INVENTORY, []); }
+export async function getActivityLogs(): Promise<ActivityLog[]> { return readJson(KEYS.ACTIVITY_LOGS, []); }
+export async function getObservations(): Promise<ObservationRecord[]> { return readJson(KEYS.OBSERVATIONS, []); }
+export async function getHarvestRecords(): Promise<HarvestRecord[]> { return readJson(KEYS.HARVEST, []); }
 
-export async function setActiveSeasonId(id: string): Promise<void> {
-  await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, id);
-}
+export async function addFarmRecord(farm: Omit<FarmRecord, "id" | "created_at">): Promise<FarmRecord> { const farms = await getFarms(); const record = { ...farm, id: genId(), created_at: new Date().toISOString() }; farms.push(record); await writeJson(KEYS.FARMS, farms); return record; }
+export async function updateFarmRecord(id: string, updates: Partial<FarmRecord>): Promise<FarmRecord> { const farms = await getFarms(); const idx = farms.findIndex((f) => f.id === id); if (idx < 0) throw new Error("Farm not found"); farms[idx] = { ...farms[idx], ...updates }; await writeJson(KEYS.FARMS, farms); return farms[idx]; }
+export async function setActiveFarmId(id: string): Promise<void> { await AsyncStorage.setItem(KEYS.ACTIVE_FARM_ID, id); }
 
-export async function closeSeason(id: string): Promise<SeasonRecord> {
-  return updateSeason(id, {
-    status: "closed",
-    closed_at: new Date().toISOString(),
-  });
-}
+export async function addSeason(season: Omit<SeasonRecord, "id" | "created_at">): Promise<SeasonRecord> { const seasons = await getSeasons(); const record = { ...season, id: genId(), created_at: new Date().toISOString() }; seasons.push(record); await writeJson(KEYS.SEASONS, seasons); return record; }
+export async function updateSeason(id: string, updates: Partial<SeasonRecord>): Promise<SeasonRecord> { const seasons = await getSeasons(); const idx = seasons.findIndex((s) => s.id === id); if (idx < 0) throw new Error("Season not found"); seasons[idx] = { ...seasons[idx], ...updates }; await writeJson(KEYS.SEASONS, seasons); return seasons[idx]; }
+export async function setActiveSeasonId(id: string): Promise<void> { await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, id); }
+export async function closeSeason(id: string): Promise<SeasonRecord> { return updateSeason(id, { status: "closed", closed_at: new Date().toISOString() }); }
+export async function reopenSeason(id: string): Promise<SeasonRecord> { return updateSeason(id, { status: "active", closed_at: null }); }
 
-export async function reopenSeason(id: string): Promise<SeasonRecord> {
-  return updateSeason(id, {
-    status: "active",
-    closed_at: null,
-  });
-}
+export async function addCost(cost: Omit<CostEntry, "id" | "created_at">): Promise<CostEntry> { const items = await getCosts(); const record = { ...cost, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.COSTS, items); return record; }
+export async function addInventoryItem(item: Omit<InventoryItem, "id" | "created_at">): Promise<InventoryItem> { const items = await getInventory(); const record = { ...item, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.INVENTORY, items); return record; }
+export async function addActivityLog(entry: Omit<ActivityLog, "id" | "created_at">): Promise<ActivityLog> { const items = await getActivityLogs(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.ACTIVITY_LOGS, items); return record; }
+export async function addFieldObservation(entry: Omit<ObservationRecord, "id" | "created_at">): Promise<ObservationRecord> { const items = await getObservations(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.OBSERVATIONS, items); return record; }
+export async function addHarvestRecord(entry: Omit<HarvestRecord, "id" | "created_at">): Promise<HarvestRecord> { const items = await getHarvestRecords(); const record = { ...entry, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.HARVEST, items); return record; }
 
-export async function getCosts(): Promise<CostEntry[]> {
-  const data = await AsyncStorage.getItem(KEYS.COSTS);
-  return data ? JSON.parse(data) : [];
-}
+export async function deleteCost(id: string): Promise<void> { await writeJson(KEYS.COSTS, (await getCosts()).filter((item) => item.id !== id)); }
+export async function deleteInventoryItem(id: string): Promise<void> { await writeJson(KEYS.INVENTORY, (await getInventory()).filter((item) => item.id !== id)); }
+export async function deleteActivityLog(id: string): Promise<void> { await writeJson(KEYS.ACTIVITY_LOGS, (await getActivityLogs()).filter((item) => item.id !== id)); }
+export async function deleteObservation(id: string): Promise<void> { await writeJson(KEYS.OBSERVATIONS, (await getObservations()).filter((item) => item.id !== id)); }
+export async function deleteHarvestRecord(id: string): Promise<void> { await writeJson(KEYS.HARVEST, (await getHarvestRecords()).filter((item) => item.id !== id)); }
 
-export async function addCost(cost: Omit<CostEntry, "id" | "created_at">): Promise<CostEntry> {
-  const costs = await getCosts();
-  const newCost: CostEntry = {
-    ...cost,
-    id: genId(),
-    created_at: new Date().toISOString(),
-  };
-  costs.push(newCost);
-  await AsyncStorage.setItem(KEYS.COSTS, JSON.stringify(costs));
-  return newCost;
-}
+export function formatKES(amount: number): string { return "KES " + amount.toLocaleString("en-KE"); }
+export function formatDate(dateStr: string): string { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
