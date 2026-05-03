@@ -165,6 +165,29 @@ export default function ExportScreen() {
 
   const totalSpent = costs.reduce((s, c) => s + c.amount_kes, 0);
 
+  const parseCsvLine = (line: string) => {
+    const values: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const next = line[i + 1];
+      if (char === '"' && inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        values.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    values.push(current.trim());
+    return values;
+  };
+
   const importCsv = async () => {
     const text = importText.trim();
     if (!text) {
@@ -174,10 +197,10 @@ export default function ExportScreen() {
     setImporting(true);
     try {
       const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
-      const headers = headerLine.split(",").map((h) => h.trim().toLowerCase());
+      const headers = parseCsvLine(headerLine).map((h) => h.trim().toLowerCase());
       let imported = 0;
       for (const line of lines) {
-        const values = line.split(",");
+        const values = parseCsvLine(line);
         const row: Record<string, string> = {};
         headers.forEach((h, i) => { row[h] = (values[i] ?? "").trim(); });
         const kind = (row.type || row.record_type || row.table || "").toLowerCase();
@@ -277,6 +300,37 @@ export default function ExportScreen() {
             is_historical: true,
           });
           imported += 1;
+        } else if (!kind && row.date && row.description && row.amount) {
+          await addCost({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            section_id: null,
+            cost_category: row.category || "Inputs",
+            cost_subcategory: row.subcategory || "General",
+            description: row.description,
+            cost_date: row.date,
+            is_pre_planting: (row.pre_planting || "").toLowerCase() === "yes",
+            is_historical: true,
+            amount_kes: parseFloat(row.amount || "0") || 0,
+            quantity: row.qty ? parseFloat(row.qty) : null,
+            unit: row.unit || null,
+            unit_price_kes: row.unit_price ? parseFloat(row.unit_price) : null,
+            product_name: row.product || null,
+            supplier: row.supplier || null,
+            receipt_reference: row.receipt || null,
+            num_workers: row.workers ? parseInt(row.workers) : null,
+            days_worked: row.days ? parseFloat(row.days) : null,
+            rate_per_worker_per_day: row.rate ? parseFloat(row.rate) : null,
+            facilitator_name: row.facilitator || null,
+            trip_from: row.from || null,
+            trip_to: row.to || null,
+            is_deviation: false,
+            planned_product: null,
+            deviation_reason: null,
+            notes: row.notes || null,
+            weather_conditions: null,
+          });
+          imported += 1;
         }
       }
       setImportText("");
@@ -362,7 +416,7 @@ export default function ExportScreen() {
           <Ionicons name="cloud-upload-outline" size={18} color={COLORS.primary} />
           <Text style={styles.importTitle}>Upload Data</Text>
         </View>
-        <Text style={styles.importText}>Paste CSV rows exported from Excel. Include a type column with cost, inventory, harvest, activity, or observation.</Text>
+        <Text style={styles.importText}>Paste CSV rows exported from Excel. Include a type column, or let it auto-detect simple cost rows with date, description, and amount.</Text>
         <Pressable style={styles.helpBtn} onPress={() => setShowImportHelp((v) => !v)}>
           <Text style={styles.helpBtnText}>{showImportHelp ? "Hide example" : "Show example"}</Text>
         </Pressable>
