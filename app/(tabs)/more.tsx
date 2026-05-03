@@ -63,15 +63,13 @@ export default function MoreScreen() {
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log bags, weight, price and revenue" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined} />
-          <View style={styles.separator} />
-          <MenuRow icon={<Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />} label="Upload Data" subtitle="Import from Excel (.xlsx) or CSV — pick file or paste" color={COLORS.primary} onPress={() => router.push("/export")} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data</Text>
         <View style={styles.menuCard}>
-          <MenuRow icon={<Ionicons name="download-outline" size={22} color={COLORS.primary} />} label="Export Data" subtitle="CSV spreadsheets or full JSON backup" color={COLORS.primary} onPress={() => router.push("/export")} />
+          <MenuRow icon={<Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />} label="Import / Export" subtitle="Upload Excel or CSV, export backups" color={COLORS.primary} onPress={() => router.push("/export")} />
         </View>
       </View>
 
