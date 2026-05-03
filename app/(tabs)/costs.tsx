@@ -207,19 +207,22 @@ export default function CostsScreen() {
         </View>
 
         <View style={styles.reportCard}>
-          <View style={styles.reportRow}>
+          <View style={styles.reportHero}>
+            <Text style={styles.reportLabel}>Net</Text>
+            <Text style={[styles.reportHeroValue, netTotal >= 0 ? styles.profitValue : styles.lossValue]}>
+              {formatKES(netTotal)}
+            </Text>
+            <Text style={styles.reportFooter}>Margin {marginPct}%</Text>
+          </View>
+          <View style={styles.reportGrid}>
             <View style={styles.reportMetric}>
               <Text style={styles.reportLabel}>Revenue</Text>
               <Text style={styles.reportValue}>{formatKES(revenueTotal)}</Text>
             </View>
             <View style={styles.reportMetric}>
-              <Text style={styles.reportLabel}>Net</Text>
-              <Text style={[styles.reportValue, netTotal >= 0 ? styles.profitValue : styles.lossValue]}>
-                {formatKES(netTotal)}
-              </Text>
+              <Text style={styles.reportLabel}>Spent</Text>
+              <Text style={styles.reportValue}>{formatKES(filteredTotal)}</Text>
             </View>
-          </View>
-          <View style={styles.reportRow}>
             <View style={styles.reportMetric}>
               <Text style={styles.reportLabel}>Pre-Planting</Text>
               <Text style={styles.reportValue}>{formatKES(prePlantingTotal)}</Text>
@@ -229,7 +232,6 @@ export default function CostsScreen() {
               <Text style={styles.reportValue}>{formatKES(otherTotal)}</Text>
             </View>
           </View>
-          <Text style={styles.reportFooter}>Margin {marginPct}% · Summary of this view</Text>
         </View>
       </View>
 
@@ -374,12 +376,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  reportRow: {
+  reportHero: {
+    backgroundColor: COLORS.primarySurface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 4,
+    alignItems: "center",
+  },
+  reportHeroValue: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 28,
+    letterSpacing: -0.6,
+  },
+  reportGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   reportMetric: {
-    flex: 1,
+    width: "48%",
     backgroundColor: COLORS.background,
     borderRadius: 12,
     padding: 12,
