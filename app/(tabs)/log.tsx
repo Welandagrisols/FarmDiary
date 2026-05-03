@@ -4,21 +4,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
-import { PLANNED_SCHEDULE } from "@/constants/farmData";
 import { useFarm } from "@/context/FarmContext";
 import { getDaysUntil, formatDate, formatKES, ActivityLog } from "@/lib/storage";
 import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds, activityLogs, removeActivityLog } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule } = useFarm();
   const completedIds = getCompletedActivityIds();
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const upcoming = PLANNED_SCHEDULE.filter((a) => !completedIds.includes(a.id)).slice(0, 5);
+  const upcoming = currentSchedule.filter((a) => !completedIds.includes(a.id)).slice(0, 5);
 
   return (
     <ScrollView

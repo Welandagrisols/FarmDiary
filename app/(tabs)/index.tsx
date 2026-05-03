@@ -13,7 +13,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { SECTIONS_SEED, PLANNED_SCHEDULE, TOTAL_ESTIMATED_COST } from "@/constants/farmData";
+import { TOTAL_ESTIMATED_COST } from "@/constants/farmData";
 import {
   getGrowthStage,
   getDaysSincePlanting,
@@ -49,7 +49,18 @@ function getActivityTypeIcon(type: string) {
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, activityLogs, isLoading, refresh, totalSpent, getCompletedActivityIds, getNextActivity, getLastSprayDate } = useFarm();
+  const {
+    costs,
+    activityLogs,
+    isLoading,
+    refresh,
+    totalSpent,
+    getCompletedActivityIds,
+    getNextActivity,
+    getLastSprayDate,
+    activeSeason,
+    currentSchedule,
+  } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -61,9 +72,10 @@ export default function DashboardScreen() {
 
   const completedIds = getCompletedActivityIds();
 
-  const budgetPercent = Math.min((totalSpent / TOTAL_ESTIMATED_COST) * 100, 100);
+  const estimatedTotal = TOTAL_ESTIMATED_COST;
+  const budgetPercent = Math.min((totalSpent / estimatedTotal) * 100, 100);
 
-  const hasOverdue = PLANNED_SCHEDULE.some((activity) => {
+  const hasOverdue = currentSchedule.some((activity) => {
     if (completedIds.includes(activity.id)) return false;
     const daysUntilA = getDaysUntil(activity.plannedDateA);
     return daysUntilA < -3;
@@ -71,6 +83,37 @@ export default function DashboardScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
+
+  const sections = activeSeason
+    ? [
+        {
+          id: "section-a",
+          label: "Section A",
+          variety: activeSeason.section_a.variety,
+          acres: activeSeason.section_a.acres,
+          planting_date: activeSeason.section_a.planting_date,
+          blight_risk: activeSeason.section_a.blight_risk,
+        },
+        ...(activeSeason.section_b.acres > 0
+          ? [
+              {
+                id: "section-b",
+                label: "Section B",
+                variety: activeSeason.section_b.variety,
+                acres: activeSeason.section_b.acres,
+                planting_date: activeSeason.section_b.planting_date,
+                blight_risk: activeSeason.section_b.blight_risk,
+              },
+            ]
+          : []),
+      ]
+    : [];
+
+  const seasonStatusLabel = activeSeason?.status === "closed"
+    ? "Closed"
+    : activeSeason?.status === "planning"
+    ? "Planning"
+    : "Active";
 
   return (
     <ScrollView
@@ -82,19 +125,26 @@ export default function DashboardScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.farmName}>Rift Valley</Text>
-          <Text style={styles.farmSub}>Potato Farm — Long Rains 2026</Text>
+          <Text style={styles.farmSub}>
+            Potato Farm — {activeSeason?.season_name || "No active season"}
+          </Text>
         </View>
-        <View style={styles.headerBadge}>
-          <Ionicons name="leaf" size={14} color={COLORS.primary} />
-          <Text style={styles.headerBadgeText}>Active</Text>
-        </View>
+        <Pressable
+          style={styles.headerBadge}
+          onPress={() => router.push("/season-control")}
+        >
+          <Ionicons
+            name={activeSeason?.status === "active" ? "leaf" : "leaf-outline"}
+            size={14}
+            color={COLORS.primary}
+          />
+          <Text style={styles.headerBadgeText}>{seasonStatusLabel}</Text>
+        </Pressable>
       </View>
 
-      {/* Alert Banner */}
       {hasOverdue && !dismissedAlert && (
         <View style={styles.alertBanner}>
           <Ionicons name="warning" size={18} color={COLORS.white} />
@@ -105,8 +155,18 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Section Cards */}
-      {SECTIONS_SEED.map((section) => {
+      {!activeSeason && (
+        <Pressable style={styles.noSeasonCard} onPress={() => router.push("/season-setup")}>
+          <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
+          <View style={styles.noSeasonText}>
+            <Text style={styles.noSeasonTitle}>Start your season</Text>
+            <Text style={styles.noSeasonSub}>Set your planting date to generate a full schedule</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </Pressable>
+      )}
+
+      {sections.map((section) => {
         const isA = section.id === "section-a";
         const daysSincePlanting = getDaysSincePlanting(section.planting_date);
         const growthStage = getGrowthStage(section.planting_date);
@@ -120,8 +180,8 @@ export default function DashboardScreen() {
         const daysSinceSpray = lastSpray
           ? Math.floor((new Date().getTime() - new Date(lastSpray).getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        const sprayWarning = isA && daysSinceSpray !== null && daysSinceSpray >= 10;
-        const sprayAlert = isA && daysSinceSpray !== null && daysSinceSpray >= 12;
+        const sprayWarning = section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 10;
+        const sprayAlert = section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 12;
 
         return (
           <View key={section.id} style={styles.sectionCard}>
@@ -206,7 +266,6 @@ export default function DashboardScreen() {
         );
       })}
 
-      {/* Budget Bar */}
       <View style={styles.budgetCard}>
         <View style={styles.budgetHeader}>
           <Text style={styles.budgetTitle}>Season Budget</Text>
@@ -217,7 +276,7 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.budgetFooter}>
           <Text style={styles.budgetSpent}>{formatKES(totalSpent)} spent</Text>
-          <Text style={styles.budgetTotal}>of {formatKES(TOTAL_ESTIMATED_COST)} estimated</Text>
+          <Text style={styles.budgetTotal}>of {formatKES(estimatedTotal)} estimated</Text>
         </View>
         <View style={styles.costBreakdown}>
           <View style={styles.costBreakdownItem}>
@@ -227,13 +286,12 @@ export default function DashboardScreen() {
           <View style={styles.costBreakdownItem}>
             <Text style={styles.breakdownLabel}>Remaining</Text>
             <Text style={[styles.breakdownValue, { color: COLORS.primary }]}>
-              {formatKES(Math.max(0, TOTAL_ESTIMATED_COST - totalSpent))}
+              {formatKES(Math.max(0, estimatedTotal - totalSpent))}
             </Text>
           </View>
         </View>
       </View>
 
-      {/* Quick Actions */}
       <View style={styles.quickActions}>
         <Pressable
           style={[styles.actionBtn, styles.actionBtnPrimary]}
@@ -251,32 +309,37 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {/* Season Info */}
-      <View style={styles.seasonInfo}>
-        <Text style={styles.seasonInfoTitle}>Season Timeline</Text>
-        <View style={styles.seasonDates}>
-          <View style={styles.seasonDate}>
-            <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
-            <Text style={styles.seasonDateLabel}>Sec A Planted</Text>
-            <Text style={styles.seasonDateValue}>{formatDate(SECTIONS_SEED[0].planting_date)}</Text>
-          </View>
-          <View style={styles.seasonDate}>
-            <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
-            <Text style={styles.seasonDateLabel}>Sec B Planted</Text>
-            <Text style={styles.seasonDateValue}>{formatDate(SECTIONS_SEED[1].planting_date)}</Text>
-          </View>
-          <View style={styles.seasonDate}>
-            <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
-            <Text style={styles.seasonDateLabel}>Est. Harvest A</Text>
-            <Text style={styles.seasonDateValue}>{formatDate(SECTIONS_SEED[0].estimated_harvest)}</Text>
-          </View>
-          <View style={styles.seasonDate}>
-            <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
-            <Text style={styles.seasonDateLabel}>Est. Harvest B</Text>
-            <Text style={styles.seasonDateValue}>{formatDate(SECTIONS_SEED[1].estimated_harvest)}</Text>
+      {activeSeason && (
+        <View style={styles.seasonInfo}>
+          <Text style={styles.seasonInfoTitle}>Season Timeline</Text>
+          <View style={styles.seasonDates}>
+            <View style={styles.seasonDate}>
+              <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
+              <Text style={styles.seasonDateLabel}>Sec A Planted</Text>
+              <Text style={styles.seasonDateValue}>{formatDate(activeSeason.section_a.planting_date)}</Text>
+            </View>
+            {activeSeason.section_b.acres > 0 && (
+              <View style={styles.seasonDate}>
+                <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
+                <Text style={styles.seasonDateLabel}>Sec B Planted</Text>
+                <Text style={styles.seasonDateValue}>{formatDate(activeSeason.section_b.planting_date)}</Text>
+              </View>
+            )}
+            <View style={styles.seasonDate}>
+              <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
+              <Text style={styles.seasonDateLabel}>Sec A Variety</Text>
+              <Text style={styles.seasonDateValue}>{activeSeason.section_a.variety}</Text>
+            </View>
+            {activeSeason.section_b.acres > 0 && (
+              <View style={styles.seasonDate}>
+                <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
+                <Text style={styles.seasonDateLabel}>Sec B Variety</Text>
+                <Text style={styles.seasonDateValue}>{activeSeason.section_b.variety}</Text>
+              </View>
+            )}
           </View>
         </View>
-      </View>
+      )}
     </ScrollView>
   );
 }
@@ -337,6 +400,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.white,
   },
+  noSeasonCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: COLORS.primaryLight + "40",
+    borderStyle: "dashed",
+  },
+  noSeasonText: { flex: 1, gap: 3 },
+  noSeasonTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text },
+  noSeasonSub: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
   sectionCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 16,

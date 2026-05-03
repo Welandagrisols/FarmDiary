@@ -15,7 +15,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { PLANNED_SCHEDULE, PlannedActivity } from "@/constants/farmData";
+import { PlannedActivity } from "@/constants/farmData";
 import { getDaysUntil, formatDate, formatKES, ActivityLog } from "@/lib/storage";
 import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
@@ -206,7 +206,7 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds, activityLogs, removeActivityLog } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule, activeSeason } = useFarm();
   const [selectedActivity, setSelectedActivity] = useState<PlannedActivity | null>(null);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
@@ -215,7 +215,7 @@ export default function ScheduleScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const data = PLANNED_SCHEDULE.map((activity) => ({
+  const data = currentSchedule.map((activity) => ({
     ...activity,
     status: getStatus(activity, completedIds),
   }));
@@ -246,7 +246,9 @@ export default function ScheduleScreen() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.headerContainer}>
         <Text style={styles.screenTitle}>Schedule</Text>
-        <Text style={styles.screenSubtitle}>Long Rains 2026 — {PLANNED_SCHEDULE.length} activities</Text>
+        <Text style={styles.screenSubtitle}>
+          {activeSeason?.season_name || "Season"} — {currentSchedule.length} activities
+        </Text>
       </View>
 
       <View style={styles.legend}>

@@ -46,7 +46,7 @@ function MenuRow({
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, observations, activityLogs, harvestRecords } = useFarm();
+  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason } = useFarm();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -61,6 +61,9 @@ export default function MoreScreen() {
     (o) => o.severity === "Critical" || o.severity === "High"
   ).length;
 
+  const activeSeasonName = activeSeason?.season_name || "No season";
+  const seasonStatusLabel = activeSeason?.status === "active" ? "Active" : activeSeason?.status === "closed" ? "Closed" : "Planning";
+
   return (
     <ScrollView
       style={[styles.container]}
@@ -69,6 +72,27 @@ export default function MoreScreen() {
       <View style={styles.header}>
         <Text style={styles.screenTitle}>More</Text>
         <Text style={styles.screenSubtitle}>Tools & Records</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Season Control</Text>
+        <View style={styles.menuCard}>
+          <MenuRow
+            icon={<Ionicons name="leaf-outline" size={22} color={COLORS.primary} />}
+            label="Season Control"
+            subtitle={`${activeSeasonName} · ${seasonStatusLabel} · ${seasons.length} season${seasons.length !== 1 ? "s" : ""}`}
+            color={COLORS.primary}
+            onPress={() => router.push("/season-control")}
+          />
+          <View style={styles.separator} />
+          <MenuRow
+            icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />}
+            label="Start New Season"
+            subtitle="Choose variety, planting date — schedule is auto-generated"
+            color={COLORS.teal}
+            onPress={() => router.push("/season-setup")}
+          />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -169,27 +193,10 @@ export default function MoreScreen() {
           </View>
           <View style={styles.separator} />
           <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
-            <Text style={styles.infoLabel}>Season</Text>
-            <Text style={styles.infoValue}>Long Rains 2026</Text>
+            <Ionicons name="leaf-outline" size={16} color={COLORS.textMuted} />
+            <Text style={styles.infoLabel}>Active Season</Text>
+            <Text style={styles.infoValue}>{activeSeasonName}</Text>
           </View>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Coming in Phase 2</Text>
-        <View style={styles.comingCard}>
-          {[
-            "Multi-farm switcher",
-            "Season history & comparison",
-            "Full P&L report",
-            "Harvest revenue capture",
-          ].map((item, i) => (
-            <View key={i} style={styles.comingItem}>
-              <Ionicons name="time-outline" size={14} color={COLORS.textMuted} />
-              <Text style={styles.comingText}>{item}</Text>
-            </View>
-          ))}
         </View>
       </View>
     </ScrollView>
@@ -332,21 +339,5 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
     fontSize: 13,
     color: COLORS.text,
-  },
-  comingCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  comingItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  comingText: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: COLORS.textMuted,
   },
 });

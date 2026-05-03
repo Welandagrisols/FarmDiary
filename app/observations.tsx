@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { FieldObservation, formatDate } from "@/lib/storage";
-import { FARM_SEED, SEASON_SEED, SECTIONS_SEED } from "@/constants/farmData";
+import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
 import * as Haptics from "expo-haptics";
 
 const OBS_TYPES = ["Pest", "Disease", "Growth", "Weather", "General"];
@@ -83,9 +83,10 @@ function ObservationCard({ obs, onDelete }: { obs: FieldObservation; onDelete: (
   );
 }
 
-function AddObservationModal({ onClose, onSubmit }: {
+function AddObservationModal({ onClose, onSubmit, seasonId }: {
   onClose: () => void;
   onSubmit: (obs: Omit<FieldObservation, "id" | "created_at">) => void;
+  seasonId: string;
 }) {
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -102,7 +103,7 @@ function AddObservationModal({ onClose, onSubmit }: {
     }
     onSubmit({
       farm_id: FARM_SEED.id,
-      season_id: SEASON_SEED.id,
+      season_id: seasonId,
       section_id: sectionId,
       observation_date: date,
       observation_type: type,
@@ -214,7 +215,8 @@ function AddObservationModal({ onClose, onSubmit }: {
 
 export default function ObservationsScreen() {
   const insets = useSafeAreaInsets();
-  const { observations, addFieldObservation, removeObservation } = useFarm();
+  const { observations, addFieldObservation, removeObservation, activeSeason } = useFarm();
+  const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [showAdd, setShowAdd] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -270,7 +272,7 @@ export default function ObservationsScreen() {
         }
       />
 
-      {showAdd && <AddObservationModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
+      {showAdd && <AddObservationModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} />}
     </View>
   );
 }

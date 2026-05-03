@@ -25,6 +25,14 @@ function RootLayoutNav() {
       <Stack.Screen name="observations" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="add-cost" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="log-activity" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="season-control" options={{ headerShown: false }} />
+      <Stack.Screen name="season-setup" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="harvest" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="add-harvest" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="export" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="all-logs" options={{ headerShown: false }} />
+      <Stack.Screen name="cost-breakdown" options={{ headerShown: false }} />
+      <Stack.Screen name="edit-activity" options={{ headerShown: false, presentation: "modal" }} />
     </Stack>
   );
 }

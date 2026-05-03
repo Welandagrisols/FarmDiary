@@ -17,6 +17,7 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { InventoryItem, formatKES, formatDate } from "@/lib/storage";
 import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+
 import * as Haptics from "expo-haptics";
 
 function StockBar({ item }: { item: InventoryItem }) {
@@ -100,7 +101,7 @@ function InventoryCard({ item, onPress, onDelete }: { item: InventoryItem; onPre
   );
 }
 
-function AddStockModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (item: Omit<InventoryItem, "id" | "created_at">) => void }) {
+function AddStockModal({ onClose, onSubmit, seasonId }: { onClose: () => void; onSubmit: (item: Omit<InventoryItem, "id" | "created_at">) => void; seasonId: string }) {
   const [productName, setProductName] = useState("");
   const [category, setCategory] = useState("Fungicide");
   const [qty, setQty] = useState("");
@@ -117,7 +118,7 @@ function AddStockModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
     }
     onSubmit({
       farm_id: FARM_SEED.id,
-      season_id: SEASON_SEED.id,
+      season_id: seasonId,
       product_name: productName.trim(),
       category,
       quantity_purchased: parseFloat(qty) || 0,
@@ -183,7 +184,8 @@ function AddStockModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, addInventory, removeInventory } = useFarm();
+  const { inventory, addInventory, removeInventory, activeSeason } = useFarm();
+  const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [showAdd, setShowAdd] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
 
@@ -252,7 +254,7 @@ export default function InventoryScreen() {
         }
       />
 
-      {showAdd && <AddStockModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
+      {showAdd && <AddStockModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} />}
 
       {selectedItem && (
         <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={() => setSelectedItem(null)}>

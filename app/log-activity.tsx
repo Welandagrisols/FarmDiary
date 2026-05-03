@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { PLANNED_SCHEDULE, SECTIONS_SEED, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
 import { formatKES, isPrePlanting } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
@@ -75,10 +75,10 @@ function getLaborSubcategory(activityId: string): string {
 export default function LogActivityScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ activityId?: string }>();
-  const { logActivity, addCostEntry } = useFarm();
+  const { logActivity, addCostEntry, activeSeason, currentSchedule } = useFarm();
 
   const preSelected = params.activityId
-    ? PLANNED_SCHEDULE.find((a) => a.id === params.activityId)
+    ? currentSchedule.find((a) => a.id === params.activityId)
     : null;
 
   const [step, setStep] = useState(1);
@@ -116,7 +116,7 @@ export default function LogActivityScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const selectedActivity = selectedActivityId
-    ? PLANNED_SCHEDULE.find((a) => a.id === selectedActivityId)
+    ? currentSchedule.find((a) => a.id === selectedActivityId)
     : null;
 
   const activityName =
@@ -150,7 +150,7 @@ export default function LogActivityScreen() {
   const handleActivitySelect = useCallback(
     (id: string) => {
       setSelectedActivityId(id);
-      const activity = PLANNED_SCHEDULE.find((a) => a.id === id);
+      const activity = currentSchedule.find((a) => a.id === id);
       if (activity) {
         setProducts(
           activity.plannedProducts.map((p) => ({
@@ -221,7 +221,8 @@ export default function LogActivityScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       const sectionId = section === "section-a" ? "section-a" : section === "section-b" ? "section-b" : null;
-      const plantingDate = SECTIONS_SEED[0].planting_date;
+      const plantingDate = activeSeason?.section_a.planting_date || "2026-02-17";
+      const activeSeasonId = activeSeason?.id || SEASON_SEED.id;
       const isHist = activityType === "historical";
 
       const productsUsed = products
@@ -247,7 +248,7 @@ export default function LogActivityScreen() {
       await logActivity(
         {
           farm_id: FARM_SEED.id,
-          season_id: SEASON_SEED.id,
+          season_id: activeSeasonId,
           section_id: sectionId,
           schedule_activity_id: activityType === "planned" ? selectedActivityId : null,
           activity_name: activityName,
@@ -272,7 +273,7 @@ export default function LogActivityScreen() {
       if (laborCost > 0) {
         await addCostEntry({
           farm_id: FARM_SEED.id,
-          season_id: SEASON_SEED.id,
+          season_id: activeSeasonId,
           section_id: sectionId,
           cost_category: "Labor",
           cost_subcategory: getLaborSubcategory(activityType === "planned" ? selectedActivityId : customActivityName.toLowerCase()),
@@ -305,7 +306,7 @@ export default function LogActivityScreen() {
         if (product.total > 0) {
           await addCostEntry({
             farm_id: FARM_SEED.id,
-            season_id: SEASON_SEED.id,
+            season_id: activeSeasonId,
             section_id: sectionId,
             cost_category: "Inputs",
             cost_subcategory: "Fungicide",
@@ -340,7 +341,7 @@ export default function LogActivityScreen() {
         if (costAmount > 0) {
           await addCostEntry({
             farm_id: FARM_SEED.id,
-            season_id: SEASON_SEED.id,
+            season_id: activeSeasonId,
             section_id: sectionId,
             cost_category: cost.category,
             cost_subcategory: cost.subcategory,
@@ -458,7 +459,7 @@ export default function LogActivityScreen() {
             {activityType === "planned" && (
               <View style={styles.activityList}>
                 <Text style={styles.fieldLabel}>Select Activity</Text>
-                {PLANNED_SCHEDULE.map((activity) => (
+                {currentSchedule.map((activity) => (
                   <Pressable
                     key={activity.id}
                     style={[styles.activityOption, selectedActivityId === activity.id && styles.activityOptionSelected]}

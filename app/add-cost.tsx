@@ -14,7 +14,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { COST_CATEGORIES, SECTIONS_SEED, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import { COST_CATEGORIES, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
 import { isPrePlanting } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
@@ -24,7 +24,7 @@ const CATEGORIES = Object.keys(COST_CATEGORIES);
 
 export default function AddCostScreen() {
   const insets = useSafeAreaInsets();
-  const { addCostEntry } = useFarm();
+  const { addCostEntry, activeSeason } = useFarm();
 
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [subcategory, setSubcategory] = useState(COST_CATEGORIES[CATEGORIES[0]][0]);
@@ -87,11 +87,12 @@ export default function AddCostScreen() {
     setSubmitting(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const plantingDate = SECTIONS_SEED[0].planting_date;
+      const plantingDate = activeSeason?.section_a.planting_date || "2026-02-17";
+      const seasonId = activeSeason?.id || SEASON_SEED.id;
 
       await addCostEntry({
         farm_id: FARM_SEED.id,
-        season_id: SEASON_SEED.id,
+        season_id: seasonId,
         section_id: sectionId,
         cost_category: category,
         cost_subcategory: subcategory,

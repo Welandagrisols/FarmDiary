@@ -1,11 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import {
   seedIfNeeded,
+  seedSeasonIfNeeded,
   getCosts,
   getInventory,
   getActivityLogs,
   getObservations,
   getHarvestRecords,
+  getSeasons,
+  getActiveSeason,
+  addSeason,
+  updateSeason,
+  setActiveSeasonId,
+  closeSeason,
   addCost,
   addInventoryItem,
   addActivityLog,
@@ -23,8 +30,16 @@ import {
   ActivityLog,
   FieldObservation,
   HarvestRecord,
+  SeasonRecord,
 } from "@/lib/storage";
-import { PLANNED_SCHEDULE, PlannedActivity, FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+import {
+  PLANNED_SCHEDULE,
+  PlannedActivity,
+  FARM_SEED,
+  SEASON_SEED,
+  CROP_TEMPLATES,
+  generatePlannedSchedule,
+} from "@/constants/farmData";
 
 interface FarmContextValue {
   costs: CostEntry[];
@@ -32,6 +47,9 @@ interface FarmContextValue {
   activityLogs: ActivityLog[];
   observations: FieldObservation[];
   harvestRecords: HarvestRecord[];
+  seasons: SeasonRecord[];
+  activeSeason: SeasonRecord | null;
+  currentSchedule: PlannedActivity[];
   isLoading: boolean;
   refresh: () => Promise<void>;
   addCostEntry: (cost: Omit<CostEntry, "id" | "created_at">) => Promise<void>;
@@ -51,9 +69,18 @@ interface FarmContextValue {
   addHarvestEntry: (record: Omit<HarvestRecord, "id" | "created_at">) => Promise<void>;
   removeHarvestRecord: (id: string) => Promise<void>;
   totalRevenue: number;
+  createSeason: (season: Omit<SeasonRecord, "id" | "created_at">) => Promise<SeasonRecord>;
+  switchSeason: (seasonId: string) => Promise<void>;
+  closeActiveSeason: () => Promise<void>;
+  updateActiveSeason: (updates: Partial<SeasonRecord>) => Promise<void>;
 }
 
 const FarmContext = createContext<FarmContextValue | null>(null);
+
+function buildScheduleFromSeason(season: SeasonRecord): PlannedActivity[] {
+  const template = CROP_TEMPLATES.find((t) => t.id === season.template_id) || CROP_TEMPLATES[0];
+  return generatePlannedSchedule(template, season.section_a.planting_date);
+}
 
 export function FarmProvider({ children }: { children: ReactNode }) {
   const [costs, setCosts] = useState<CostEntry[]>([]);
@@ -61,24 +88,36 @@ export function FarmProvider({ children }: { children: ReactNode }) {
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [observations, setObservations] = useState<FieldObservation[]>([]);
   const [harvestRecords, setHarvestRecords] = useState<HarvestRecord[]>([]);
+  const [seasons, setSeasons] = useState<SeasonRecord[]>([]);
+  const [activeSeason, setActiveSeason] = useState<SeasonRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const currentSchedule = useMemo<PlannedActivity[]>(() => {
+    if (activeSeason) return buildScheduleFromSeason(activeSeason);
+    return PLANNED_SCHEDULE;
+  }, [activeSeason]);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       await seedIfNeeded();
-      const [c, inv, logs, obs, harvest] = await Promise.all([
+      await seedSeasonIfNeeded();
+      const [c, inv, logs, obs, harvest, allSeasons, active] = await Promise.all([
         getCosts(),
         getInventory(),
         getActivityLogs(),
         getObservations(),
         getHarvestRecords(),
+        getSeasons(),
+        getActiveSeason(),
       ]);
       setCosts(c);
       setInventory(inv);
       setActivityLogs(logs);
       setObservations(obs);
       setHarvestRecords(harvest);
+      setSeasons(allSeasons);
+      setActiveSeason(active);
     } finally {
       setIsLoading(false);
     }
@@ -141,41 +180,55 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     setObservations((prev) => prev.filter((o) => o.id !== id));
   }, []);
 
-  const totalSpent = useMemo(() => costs.reduce((sum, c) => sum + c.amount_kes, 0), [costs]);
-  const totalRevenue = useMemo(() => harvestRecords.reduce((sum, r) => sum + r.total_revenue_kes, 0), [harvestRecords]);
+  const totalSpent = useMemo(() => {
+    if (!activeSeason) return costs.reduce((sum, c) => sum + c.amount_kes, 0);
+    return costs
+      .filter((c) => c.season_id === activeSeason.id)
+      .reduce((sum, c) => sum + c.amount_kes, 0);
+  }, [costs, activeSeason]);
+
+  const totalRevenue = useMemo(() => {
+    if (!activeSeason) return harvestRecords.reduce((sum, r) => sum + r.total_revenue_kes, 0);
+    return harvestRecords
+      .filter((r) => r.season_id === activeSeason.id)
+      .reduce((sum, r) => sum + r.total_revenue_kes, 0);
+  }, [harvestRecords, activeSeason]);
 
   const getCompletedActivityIds = useCallback((): string[] => {
     const ids = new Set<string>();
-    activityLogs.forEach((log) => {
+    const seasonLogs = activeSeason
+      ? activityLogs.filter((l) => l.season_id === activeSeason.id)
+      : activityLogs;
+    seasonLogs.forEach((log) => {
       if (log.schedule_activity_id) ids.add(log.schedule_activity_id);
     });
     return Array.from(ids);
-  }, [activityLogs]);
+  }, [activityLogs, activeSeason]);
 
   const getNextActivity = useCallback(
     (sectionId: string): PlannedActivity | null => {
       const completedIds = getCompletedActivityIds();
-      const isA = sectionId === "section-a";
-      for (const activity of PLANNED_SCHEDULE) {
+      for (const activity of currentSchedule) {
         if (completedIds.includes(activity.id)) continue;
         return activity;
       }
       return null;
     },
-    [getCompletedActivityIds]
+    [getCompletedActivityIds, currentSchedule]
   );
 
   const quickCompleteActivity = useCallback(
     async (activity: PlannedActivity, sectionId: string | null) => {
       const today = new Date().toISOString().split("T")[0];
-      const isA = sectionId === "section-b" ? false : true;
+      const isB = sectionId === "section-b";
+      const seasonId = activeSeason?.id || SEASON_SEED.id;
       const newLog = await addActivityLog({
         farm_id: FARM_SEED.id,
-        season_id: SEASON_SEED.id,
+        season_id: seasonId,
         section_id: sectionId,
         schedule_activity_id: activity.id,
         activity_name: activity.name,
-        planned_date: isA ? activity.plannedDateA : activity.plannedDateB,
+        planned_date: isB ? activity.plannedDateB : activity.plannedDateA,
         actual_date: today,
         products_used: [],
         is_deviation: false,
@@ -189,7 +242,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       });
       setActivityLogs((prev) => [...prev, newLog]);
     },
-    []
+    [activeSeason]
   );
 
   const addHarvestEntry = useCallback(async (record: Omit<HarvestRecord, "id" | "created_at">) => {
@@ -204,10 +257,14 @@ export function FarmProvider({ children }: { children: ReactNode }) {
 
   const getLastSprayDate = useCallback(
     (sectionId: string): string | null => {
-      const sprayLogs = activityLogs
+      const seasonLogs = activeSeason
+        ? activityLogs.filter((l) => l.season_id === activeSeason.id)
+        : activityLogs;
+      const sprayLogs = seasonLogs
         .filter((l) => {
           const isForSection = l.section_id === sectionId || l.section_id === null;
-          const isSpray = l.activity_name.toLowerCase().includes("spray") ||
+          const isSpray =
+            l.activity_name.toLowerCase().includes("spray") ||
             l.activity_name.toLowerCase().includes("fungicide") ||
             l.activity_name.toLowerCase().includes("blight");
           return isForSection && isSpray;
@@ -215,8 +272,41 @@ export function FarmProvider({ children }: { children: ReactNode }) {
         .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime());
       return sprayLogs.length > 0 ? sprayLogs[0].actual_date : null;
     },
-    [activityLogs]
+    [activityLogs, activeSeason]
   );
+
+  const createSeason = useCallback(async (season: Omit<SeasonRecord, "id" | "created_at">) => {
+    const newSeason = await addSeason(season);
+    setSeasons((prev) => [...prev, newSeason]);
+    await setActiveSeasonId(newSeason.id);
+    setActiveSeason(newSeason);
+    return newSeason;
+  }, []);
+
+  const switchSeason = useCallback(async (seasonId: string) => {
+    await setActiveSeasonId(seasonId);
+    const allSeasons = await getSeasons();
+    const target = allSeasons.find((s) => s.id === seasonId) || null;
+    setActiveSeason(target);
+    const [c, logs, harvest] = await Promise.all([getCosts(), getActivityLogs(), getHarvestRecords()]);
+    setCosts(c);
+    setActivityLogs(logs);
+    setHarvestRecords(harvest);
+  }, []);
+
+  const closeActiveSeason = useCallback(async () => {
+    if (!activeSeason) return;
+    const updated = await closeSeason(activeSeason.id);
+    setSeasons((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    setActiveSeason(updated);
+  }, [activeSeason]);
+
+  const updateActiveSeason = useCallback(async (updates: Partial<SeasonRecord>) => {
+    if (!activeSeason) return;
+    const updated = await updateSeason(activeSeason.id, updates);
+    setSeasons((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    setActiveSeason(updated);
+  }, [activeSeason]);
 
   const value = useMemo<FarmContextValue>(
     () => ({
@@ -225,6 +315,9 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       activityLogs,
       observations,
       harvestRecords,
+      seasons,
+      activeSeason,
+      currentSchedule,
       isLoading,
       refresh,
       addCostEntry,
@@ -244,12 +337,20 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       getLastSprayDate,
       addHarvestEntry,
       removeHarvestRecord,
+      createSeason,
+      switchSeason,
+      closeActiveSeason,
+      updateActiveSeason,
     }),
     [
       costs,
       inventory,
       activityLogs,
       observations,
+      harvestRecords,
+      seasons,
+      activeSeason,
+      currentSchedule,
       isLoading,
       refresh,
       addCostEntry,
@@ -263,13 +364,16 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       removeObservation,
       totalSpent,
       totalRevenue,
-      harvestRecords,
       getCompletedActivityIds,
       getNextActivity,
       quickCompleteActivity,
       getLastSprayDate,
       addHarvestEntry,
       removeHarvestRecord,
+      createSeason,
+      switchSeason,
+      closeActiveSeason,
+      updateActiveSeason,
     ]
   );
 

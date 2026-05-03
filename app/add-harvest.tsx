@@ -10,6 +10,7 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatKES } from "@/lib/storage";
 import { FARM_SEED, SEASON_SEED } from "@/constants/farmData";
+
 import * as Haptics from "expo-haptics";
 
 const SECTIONS = [
@@ -60,7 +61,8 @@ function NumericInput({
 
 export default function AddHarvestScreen() {
   const insets = useSafeAreaInsets();
-  const { addHarvestEntry } = useFarm();
+  const { addHarvestEntry, activeSeason } = useFarm();
+  const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [saving, setSaving] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -98,7 +100,7 @@ export default function AddHarvestScreen() {
     try {
       await addHarvestEntry({
         farm_id: FARM_SEED.id,
-        season_id: SEASON_SEED.id,
+        season_id: seasonId,
         section_id: sectionId,
         harvest_date: harvestDate,
         bags: numBags,
