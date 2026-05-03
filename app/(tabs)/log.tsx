@@ -23,7 +23,7 @@ export default function LogScreen() {
   return (
     <ScrollView
       style={[styles.container, { paddingTop: topPadding }]}
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 40 }]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 120 }]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
