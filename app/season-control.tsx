@@ -185,7 +185,7 @@ export default function SeasonControlScreen() {
   const sortedSeasons = [...seasons].sort((a, b) => b.season_number - a.season_number);
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <View style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
@@ -224,7 +224,7 @@ export default function SeasonControlScreen() {
               </View>
               <View style={styles.panelStatDivider} />
               <View style={styles.panelStat}>
-                <Text style={[styles.panelStatValue, { color: activeSeasonRevenue > 0 ? COLORS.primary : COLORS.textMuted }]}>
+                <Text style={[styles.panelStatValue, { color: activeSeasonRevenue > 0 ? COLORS.primary : COLORS.textMuted }]}> 
                   {activeSeasonRevenue > 0 ? formatKES(activeSeasonRevenue) : "—"}
                 </Text>
                 <Text style={styles.panelStatLabel}>Revenue</Text>
@@ -282,10 +282,10 @@ export default function SeasonControlScreen() {
                     {activeSeasonRevenue > 0 ? (activeSeasonRevenue - activeSeasonCosts >= 0 ? "Profit" : "Loss") : "In progress"}
                   </Text>
                 </View>
-                <Pressable style={styles.reportBtn} onPress={() => router.push("/season-report") }>
+                <View style={styles.reportBtn}>
                   <Ionicons name="receipt-outline" size={14} color={COLORS.primary} />
-                  <Text style={styles.reportBtnText}>Final report</Text>
-                </Pressable>
+                  <Text style={styles.reportBtnText} onPress={() => router.push("/season-report")}>Final report</Text>
+                </View>
               </View>
               <View style={styles.closeoutGrid}>
                 <View style={styles.closeoutStat}>
