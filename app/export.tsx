@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert,
+  View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert, TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -9,8 +9,9 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES, formatDate } from "@/lib/storage";
+import { formatKES, formatDate, addCost, addInventoryItem, addHarvestRecord, addActivityLog, addObservation } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
+import { FARM_SEED } from "@/constants/farmData";
 
 function escapeCsv(val: string | number | boolean | null | undefined): string {
   if (val === null || val === undefined) return "";
@@ -54,8 +55,11 @@ async function shareFile(filename: string, content: string, mimeType: string) {
 
 export default function ExportScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, activityLogs, inventory, observations, harvestRecords } = useFarm();
+  const { costs, activityLogs, inventory, observations, harvestRecords, seasonId, refresh, activeSeason } = useFarm();
   const [exporting, setExporting] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [showImportHelp, setShowImportHelp] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
@@ -161,6 +165,130 @@ export default function ExportScreen() {
 
   const totalSpent = costs.reduce((s, c) => s + c.amount_kes, 0);
 
+  const importCsv = async () => {
+    const text = importText.trim();
+    if (!text) {
+      Alert.alert("Paste data", "Paste CSV data first.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
+      const headers = headerLine.split(",").map((h) => h.trim().toLowerCase());
+      let imported = 0;
+      for (const line of lines) {
+        const values = line.split(",");
+        const row: Record<string, string> = {};
+        headers.forEach((h, i) => { row[h] = (values[i] ?? "").trim(); });
+        const kind = (row.type || row.record_type || row.table || "").toLowerCase();
+        if (kind === "cost") {
+          await addCost({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            section_id: null,
+            cost_category: row.category || "Inputs",
+            cost_subcategory: row.subcategory || "General",
+            description: row.description || "Imported cost",
+            cost_date: row.date || new Date().toISOString().split("T")[0],
+            is_pre_planting: (row.pre_planting || "").toLowerCase() === "yes",
+            is_historical: true,
+            amount_kes: parseFloat(row.amount || "0") || 0,
+            quantity: row.qty ? parseFloat(row.qty) : null,
+            unit: row.unit || null,
+            unit_price_kes: row.unit_price ? parseFloat(row.unit_price) : null,
+            product_name: row.product || null,
+            supplier: row.supplier || null,
+            receipt_reference: row.receipt || null,
+            num_workers: row.workers ? parseInt(row.workers) : null,
+            days_worked: row.days ? parseFloat(row.days) : null,
+            rate_per_worker_per_day: row.rate ? parseFloat(row.rate) : null,
+            facilitator_name: row.facilitator || null,
+            trip_from: row.from || null,
+            trip_to: row.to || null,
+            is_deviation: false,
+            planned_product: null,
+            deviation_reason: null,
+            notes: row.notes || null,
+            weather_conditions: null,
+          });
+          imported += 1;
+        } else if (kind === "inventory") {
+          await addInventoryItem({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            product_name: row.product || "Imported item",
+            category: row.category || "Inputs",
+            quantity_purchased: parseFloat(row.qty || "0") || 0,
+            unit: row.unit || "kg",
+            unit_price_kes: parseFloat(row.unit_price || "0") || 0,
+            quantity_used: parseFloat(row.used || "0") || 0,
+            purchase_date: row.date || new Date().toISOString().split("T")[0],
+            supplier: row.supplier || null,
+            low_stock_threshold: null,
+            is_historical: true,
+            notes: row.notes || null,
+          });
+          imported += 1;
+        } else if (kind === "harvest") {
+          await addHarvestRecord({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            section_id: row.section === "b" ? "section-b" : "section-a",
+            harvest_date: row.date || new Date().toISOString().split("T")[0],
+            bags: parseFloat(row.bags || "0") || 0,
+            kg_per_bag: parseFloat(row.kg_per_bag || "0") || 0,
+            total_kg: parseFloat(row.total_kg || "0") || 0,
+            price_per_bag_kes: parseFloat(row.price_per_bag || "0") || 0,
+            total_revenue_kes: parseFloat(row.revenue || "0") || 0,
+            buyer: row.buyer || null,
+            notes: row.notes || null,
+          });
+          imported += 1;
+        } else if (kind === "activity") {
+          await addActivityLog({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null,
+            schedule_activity_id: null,
+            activity_name: row.activity || "Imported activity",
+            planned_date: row.planned_date || null,
+            actual_date: row.date || new Date().toISOString().split("T")[0],
+            products_used: [],
+            is_deviation: false,
+            deviation_reason: null,
+            num_workers: parseInt(row.workers || "0") || 0,
+            labor_cost_kes: parseFloat(row.labor_cost || "0") || 0,
+            total_cost_kes: parseFloat(row.total_cost || "0") || 0,
+            weather_conditions: null,
+            is_historical: true,
+            notes: row.notes || null,
+          });
+          imported += 1;
+        } else if (kind === "observation") {
+          await addObservation({
+            farm_id: FARM_SEED.id,
+            season_id: seasonId,
+            section_id: row.section === "b" ? "section-b" : row.section === "a" ? "section-a" : null,
+            observation_date: row.date || new Date().toISOString().split("T")[0],
+            observation_type: row.observation_type || "General",
+            description: row.description || "Imported observation",
+            severity: row.severity || "Medium",
+            action_taken: row.action_taken || null,
+            is_historical: true,
+          });
+          imported += 1;
+        }
+      }
+      setImportText("");
+      await refresh();
+      Alert.alert("Imported", `${imported} record${imported === 1 ? "" : "s"} added to ${activeSeason?.season_name || "the active season"}.`);
+    } catch {
+      Alert.alert("Import failed", "Make sure the CSV has a type column and valid values.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const EXPORTS: {
     key: string;
     icon: string;
@@ -228,6 +356,29 @@ export default function ExportScreen() {
               : "Files open your phone's share sheet — send via WhatsApp, email, Google Drive, or save to Files."}
           </Text>
         </View>
+
+      <View style={styles.importCard}>
+        <View style={styles.importHeader}>
+          <Ionicons name="cloud-upload-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.importTitle}>Upload Data</Text>
+        </View>
+        <Text style={styles.importText}>Paste CSV rows exported from Excel. Include a type column with cost, inventory, harvest, activity, or observation.</Text>
+        <Pressable style={styles.helpBtn} onPress={() => setShowImportHelp((v) => !v)}>
+          <Text style={styles.helpBtnText}>{showImportHelp ? "Hide example" : "Show example"}</Text>
+        </Pressable>
+        {showImportHelp ? <Text style={styles.exampleText}>type,date,description,amount{`\n`}cost,2026-02-01,Seed purchase,12000</Text> : null}
+        <TextInput
+          value={importText}
+          onChangeText={setImportText}
+          placeholder="Paste CSV here"
+          placeholderTextColor={COLORS.textMuted}
+          multiline
+          style={styles.importInput}
+        />
+        <Pressable style={styles.importBtn} onPress={importCsv} disabled={importing}>
+          <Text style={styles.importBtnText}>{importing ? "Importing..." : "Import CSV"}</Text>
+        </Pressable>
+      </View>
 
         <Text style={styles.sectionLabel}>Choose what to export</Text>
 
@@ -313,4 +464,14 @@ const styles = StyleSheet.create({
   },
   noteTitle: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text, marginBottom: 2 },
   noteText: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  importCard: { backgroundColor: COLORS.cardBg, borderRadius: 12, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  importHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  importTitle: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
+  importText: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
+  helpBtn: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySurface },
+  helpBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
+  exampleText: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted },
+  importInput: { minHeight: 120, borderRadius: 12, borderWidth: 1, borderColor: COLORS.borderLight, padding: 12, textAlignVertical: "top", fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.text, backgroundColor: COLORS.background },
+  importBtn: { backgroundColor: COLORS.primary, borderRadius: 12, alignItems: "center", paddingVertical: 12 },
+  importBtnText: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.white },
 });
