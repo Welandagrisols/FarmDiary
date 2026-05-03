@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,8 +18,13 @@ import {
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  const pathname = usePathname();
+  const showPickerFirst = pathname === "/";
+
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="farm-picker" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="inventory" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="observations" options={{ headerShown: false, presentation: "modal" }} />
