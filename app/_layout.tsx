@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { FarmProvider } from "@/context/FarmContext";
 import { migrateFromAsyncStorage } from "@/lib/migration";
+import { seedIfNeeded } from "@/lib/storage";
 import {
   useFonts,
   DMSans_400Regular,
@@ -54,7 +55,10 @@ export default function RootLayout() {
   const [migrationDone, setMigrationDone] = useState(false);
 
   useEffect(() => {
-    migrateFromAsyncStorage().finally(() => setMigrationDone(true));
+    migrateFromAsyncStorage()
+      .then(() => seedIfNeeded())
+      .catch((err) => console.warn("[layout] seed error:", err))
+      .finally(() => setMigrationDone(true));
   }, []);
 
   useEffect(() => {
