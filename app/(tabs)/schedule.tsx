@@ -206,7 +206,7 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule, activeSeason } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule, activeSeason, costs } = useFarm();
   const [selectedActivity, setSelectedActivity] = useState<PlannedActivity | null>(null);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
@@ -220,6 +220,8 @@ export default function ScheduleScreen() {
   );
 
   const upcoming = data.filter((item) => item.status !== "completed").slice(0, 3);
+  const prePlantingCosts = costs.filter((cost) => cost.season_id === activeSeason?.id && cost.is_pre_planting);
+  const prePlantingTotal = prePlantingCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
 
   const renderItem = useCallback(
     ({ item }: { item: typeof data[0] }) => (
@@ -265,6 +267,35 @@ export default function ScheduleScreen() {
           </Pressable>
         ))}
       </View>
+
+      {activeSeason && (
+        <View style={styles.costSummaryCard}>
+          <View style={styles.costSummaryHeader}>
+            <View>
+              <Text style={styles.costSummaryLabel}>Pre-Planting Costs</Text>
+              <Text style={styles.costSummaryTitle}>{formatKES(prePlantingTotal)}</Text>
+            </View>
+            <View style={styles.costSummaryBadge}>
+              <Text style={styles.costSummaryBadgeText}>{prePlantingCosts.length} items</Text>
+            </View>
+          </View>
+          {prePlantingCosts.length > 0 ? (
+            <View style={styles.costSummaryList}>
+              {prePlantingCosts.slice(0, 3).map((cost) => (
+                <View key={cost.id} style={styles.costSummaryRow}>
+                  <Text style={styles.costSummaryRowText} numberOfLines={1}>{cost.description}</Text>
+                  <Text style={styles.costSummaryRowValue}>{formatKES(cost.amount_kes)}</Text>
+                </View>
+              ))}
+              {prePlantingCosts.length > 3 && (
+                <Text style={styles.costSummaryMore}>+{prePlantingCosts.length - 3} more items</Text>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.costSummaryEmpty}>No pre-planting costs saved yet.</Text>
+          )}
+        </View>
+      )}
 
       <View style={styles.legend}>
         {[
@@ -336,6 +367,18 @@ const styles = StyleSheet.create({
   upcomingTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   upcomingName: { flex: 1, fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
   upcomingDate: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  costSummaryCard: { marginHorizontal: 16, marginBottom: 10, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  costSummaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  costSummaryLabel: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  costSummaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 22, color: COLORS.text, marginTop: 2 },
+  costSummaryBadge: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  costSummaryBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  costSummaryList: { gap: 8 },
+  costSummaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  costSummaryRowText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  costSummaryRowValue: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text },
+  costSummaryMore: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  costSummaryEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted },
   legend: { flexDirection: "row", paddingHorizontal: 16, paddingBottom: 12, gap: 16, flexWrap: "wrap" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   legendDot: { width: 7, height: 7, borderRadius: 4 },

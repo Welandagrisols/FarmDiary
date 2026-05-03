@@ -133,6 +133,10 @@ export default function SeasonControlScreen() {
   const activeSeasonRevenue = activeSeason
     ? harvestRecords.filter((r) => r.season_id === activeSeason.id).reduce((s, r) => s + r.total_revenue_kes, 0)
     : 0;
+  const activeSeasonPrePlantingCosts = activeSeason
+    ? costs.filter((c) => c.season_id === activeSeason.id && c.is_pre_planting)
+    : [];
+  const activeSeasonPrePlantingTotal = activeSeasonPrePlantingCosts.reduce((s, c) => s + c.amount_kes, 0);
 
   const handleSwitch = (seasonId: string) => {
     Alert.alert(
@@ -236,6 +240,37 @@ export default function SeasonControlScreen() {
                 </Text>
                 <Text style={styles.panelStatLabel}>Net P&L</Text>
               </View>
+            </View>
+
+            <View style={styles.costSnapshot}>
+              <View style={styles.costSnapshotHeader}>
+                <View>
+                  <Text style={styles.costSnapshotLabel}>Pre-planting costs</Text>
+                  <Text style={styles.costSnapshotValue}>{formatKES(activeSeasonPrePlantingTotal)}</Text>
+                </View>
+                <View style={styles.costSnapshotBadge}>
+                  <Text style={styles.costSnapshotBadgeText}>{activeSeasonPrePlantingCosts.length} items</Text>
+                </View>
+              </View>
+              {activeSeasonPrePlantingCosts.length > 0 ? (
+                <View style={styles.costSnapshotList}>
+                  {activeSeasonPrePlantingCosts.slice(0, 3).map((cost) => (
+                    <View key={cost.id} style={styles.costSnapshotRow}>
+                      <Text style={styles.costSnapshotRowText} numberOfLines={1}>
+                        {cost.description}
+                      </Text>
+                      <Text style={styles.costSnapshotRowValue}>{formatKES(cost.amount_kes)}</Text>
+                    </View>
+                  ))}
+                  {activeSeasonPrePlantingCosts.length > 3 && (
+                    <Text style={styles.costSnapshotMore}>
+                      +{activeSeasonPrePlantingCosts.length - 3} more
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.costSnapshotEmpty}>No pre-planting costs recorded yet.</Text>
+              )}
             </View>
 
             <View style={styles.sectionSummary}>
@@ -344,6 +379,18 @@ const styles = StyleSheet.create({
   panelStatValue: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
   panelStatLabel: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textMuted },
   panelStatDivider: { width: 1, backgroundColor: COLORS.border, marginVertical: 4 },
+  costSnapshot: { backgroundColor: COLORS.primarySurface, borderRadius: 14, padding: 14, gap: 10 },
+  costSnapshotHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  costSnapshotLabel: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  costSnapshotValue: { fontFamily: "DMSans_700Bold", fontSize: 20, color: COLORS.primary, marginTop: 2 },
+  costSnapshotBadge: { backgroundColor: COLORS.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  costSnapshotBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  costSnapshotList: { gap: 8 },
+  costSnapshotRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  costSnapshotRowText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  costSnapshotRowValue: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text },
+  costSnapshotMore: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  costSnapshotEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
   sectionSummary: { gap: 8 },
   sectionSummaryItem: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   sectionSummaryText: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 19 },
