@@ -25,7 +25,6 @@ export default function MoreScreen() {
   const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms } = useFarm();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
-
   const lowStockCount = inventory.filter((item) => {
     const remaining = item.quantity_purchased - (item.quantity_used || 0);
     const threshold = item.low_stock_threshold || item.quantity_purchased * 0.2;
@@ -71,6 +70,8 @@ export default function MoreScreen() {
           <MenuRow icon={<Ionicons name="leaf-outline" size={22} color={COLORS.primary} />} label="Season Control" subtitle={`${activeSeasonName} · ${seasonStatusLabel} · ${seasons.length} season${seasons.length !== 1 ? "s" : ""}`} color={COLORS.primary} onPress={() => router.push("/season-control")} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />} label="Start New Season" subtitle="Choose variety, planting date — schedule is auto-generated" color={COLORS.teal} onPress={() => router.push("/season-setup")} />
+          <View style={styles.separator} />
+          <MenuRow icon={<Ionicons name="time-outline" size={22} color={COLORS.primaryLight} />} label="Season History" subtitle="Review closed seasons and compare results" color={COLORS.primaryLight} onPress={() => router.push("/season-history")} />
         </View>
       </View>
 
@@ -87,6 +88,8 @@ export default function MoreScreen() {
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log bags, weight, price and revenue" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined} />
+          <View style={styles.separator} />
+          <MenuRow icon={<Ionicons name="bar-chart-outline" size={22} color={COLORS.primary} />} label="Full P&L Report" subtitle="Revenue, cost, and profit for the active season" color={COLORS.primary} onPress={() => router.push("/season-report")} />
         </View>
       </View>
 

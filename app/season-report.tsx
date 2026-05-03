@@ -10,13 +10,10 @@ import { formatKES, formatDate } from "@/lib/storage";
 export default function SeasonReportScreen() {
   const insets = useSafeAreaInsets();
   const { activeSeason, costs, harvestRecords } = useFarm();
-
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
-
   const seasonCosts = activeSeason ? costs.filter((c) => c.season_id === activeSeason.id) : [];
   const seasonHarvests = activeSeason ? harvestRecords.filter((r) => r.season_id === activeSeason.id) : [];
-
   const totalSpent = seasonCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
   const prePlantingSpent = seasonCosts.filter((cost) => cost.is_pre_planting).reduce((sum, cost) => sum + cost.amount_kes, 0);
   const totalRevenue = seasonHarvests.reduce((sum, record) => sum + record.total_revenue_kes, 0);
@@ -42,22 +39,10 @@ export default function SeasonReportScreen() {
         </View>
 
         <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{formatKES(totalRevenue)}</Text>
-            <Text style={styles.metricLabel}>Revenue</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{formatKES(totalSpent)}</Text>
-            <Text style={styles.metricLabel}>Costs</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, { color: netProfit >= 0 ? COLORS.primary : COLORS.red }]}>{formatKES(netProfit)}</Text>
-            <Text style={styles.metricLabel}>Net</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{totalYield.toLocaleString()}</Text>
-            <Text style={styles.metricLabel}>Yield kg</Text>
-          </View>
+          <View style={styles.metricCard}><Text style={styles.metricValue}>{formatKES(totalRevenue)}</Text><Text style={styles.metricLabel}>Revenue</Text></View>
+          <View style={styles.metricCard}><Text style={styles.metricValue}>{formatKES(totalSpent)}</Text><Text style={styles.metricLabel}>Costs</Text></View>
+          <View style={styles.metricCard}><Text style={[styles.metricValue, { color: netProfit >= 0 ? COLORS.primary : COLORS.red }]}>{formatKES(netProfit)}</Text><Text style={styles.metricLabel}>Net</Text></View>
+          <View style={styles.metricCard}><Text style={styles.metricValue}>{totalYield.toLocaleString()}</Text><Text style={styles.metricLabel}>Yield kg</Text></View>
         </View>
 
         <View style={styles.detailCard}>
@@ -84,9 +69,9 @@ export default function SeasonReportScreen() {
           )}
         </View>
 
-        <Pressable style={styles.primaryBtn} onPress={() => router.push("/season-control") }>
-          <Ionicons name="options-outline" size={18} color={COLORS.white} />
-          <Text style={styles.primaryBtnText}>Back to Season Control</Text>
+        <Pressable style={styles.primaryBtn} onPress={() => router.push("/season-history") }>
+          <Ionicons name="time-outline" size={18} color={COLORS.white} />
+          <Text style={styles.primaryBtnText}>Back to Season History</Text>
         </Pressable>
       </ScrollView>
     </View>

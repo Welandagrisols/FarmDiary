@@ -10,14 +10,25 @@ import { formatDate, formatKES } from "@/lib/storage";
 export default function SeasonHistoryScreen() {
   const insets = useSafeAreaInsets();
   const { seasons, costs, harvestRecords } = useFarm();
-
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const closedSeasons = [...seasons].filter((season) => season.status === "closed").sort((a, b) => b.season_number - a.season_number);
+  const comparison = closedSeasons.map((season) => {
+    const seasonCosts = costs.filter((c) => c.season_id === season.id);
+    const seasonHarvests = harvestRecords.filter((r) => r.season_id === season.id);
+    const spent = seasonCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
+    const revenue = seasonHarvests.reduce((sum, record) => sum + record.total_revenue_kes, 0);
+    const net = revenue - spent;
+    const yieldKg = seasonHarvests.reduce((sum, record) => sum + record.total_kg, 0);
+    const avgPrice = yieldKg > 0 ? revenue / yieldKg : 0;
+    return { season, spent, revenue, net, yieldKg, avgPrice };
+  });
+
+  const bestProfit = comparison.reduce((best, item) => (item.net > best.net ? item : best), comparison[0] || null);
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <View style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
@@ -27,6 +38,19 @@ export default function SeasonHistoryScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPadding + 90, gap: 12 }} showsVerticalScrollIndicator={false}>
+        <Pressable style={styles.compareBtn} onPress={() => router.push("/season-report")}> 
+          <Ionicons name="stats-chart-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.compareText}>Open full season report</Text>
+        </Pressable>
+
+        {comparison.length > 1 ? (
+          <View style={styles.compareCard}>
+            <Text style={styles.compareTitle}>Best performing season</Text>
+            <Text style={styles.compareSeason}>{bestProfit?.season.season_name}</Text>
+            <Text style={styles.compareMeta}>{bestProfit ? `${formatKES(bestProfit.net)} net profit · ${bestProfit.yieldKg.toLocaleString()} kg` : ""}</Text>
+          </View>
+        ) : null}
+
         {closedSeasons.length > 0 ? (
           closedSeasons.map((season) => {
             const seasonCosts = costs.filter((c) => c.season_id === season.id);
@@ -54,11 +78,6 @@ export default function SeasonHistoryScreen() {
                   <View style={styles.stat}><Text style={[styles.value, net >= 0 ? styles.good : styles.bad]}>{formatKES(net)}</Text><Text style={styles.label}>Net</Text></View>
                   <View style={styles.stat}><Text style={styles.value}>{yieldKg.toLocaleString()}</Text><Text style={styles.label}>Yield kg</Text></View>
                 </View>
-
-                <Pressable style={styles.button} onPress={() => router.push("/season-report")}>
-                  <Ionicons name="receipt-outline" size={16} color={COLORS.primary} />
-                  <Text style={styles.buttonText}>View report</Text>
-                </Pressable>
               </View>
             );
           })
@@ -78,6 +97,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.cardBg },
   title: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
+  compareBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primarySurface, borderRadius: 14, paddingVertical: 13 },
+  compareText: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.primary },
+  compareCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: COLORS.primary + "40" },
+  compareTitle: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase" },
+  compareSeason: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
+  compareMeta: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
   card: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 12, borderWidth: 1, borderColor: COLORS.border },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   cardTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text },
@@ -90,8 +115,6 @@ const styles = StyleSheet.create({
   label: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textSecondary },
   good: { color: COLORS.primary },
   bad: { color: COLORS.red },
-  button: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.primarySurface, borderRadius: 12, paddingVertical: 11 },
-  buttonText: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.primary },
   emptyCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 18, alignItems: "center", gap: 6, borderWidth: 1, borderColor: COLORS.border },
   emptyTitle: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
   emptySub: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, textAlign: "center" },
