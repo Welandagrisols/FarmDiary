@@ -52,7 +52,6 @@ export default function DashboardScreen() {
   const {
     costs,
     activityLogs,
-    isLoading,
     refresh,
     totalSpent,
     getCompletedActivityIds,
@@ -60,6 +59,7 @@ export default function DashboardScreen() {
     getLastSprayDate,
     activeSeason,
     currentSchedule,
+    harvestRecords,
   } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,9 +71,11 @@ export default function DashboardScreen() {
   }, [refresh]);
 
   const completedIds = getCompletedActivityIds();
-
   const estimatedTotal = TOTAL_ESTIMATED_COST;
   const budgetPercent = Math.min((totalSpent / estimatedTotal) * 100, 100);
+  const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
+  const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
+  const netProfit = totalRevenue - totalSpent;
 
   const hasOverdue = currentSchedule.some((activity) => {
     if (completedIds.includes(activity.id)) return false;
@@ -145,6 +147,38 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
+      {activeSeason && (
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeader}>
+            <View>
+              <Text style={styles.summaryLabel}>Season Summary</Text>
+              <Text style={styles.summaryTitle}>{activeSeason.season_name}</Text>
+            </View>
+            <Pressable style={styles.summaryAction} onPress={() => router.push("/season-control") }>
+              <Text style={styles.summaryActionText}>Manage</Text>
+            </Pressable>
+          </View>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{formatKES(netProfit)}</Text>
+              <Text style={styles.summaryText}>Net profit</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{totalAcres}</Text>
+              <Text style={styles.summaryText}>Planted acres</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{currentSchedule.length - completedIds.length}</Text>
+              <Text style={styles.summaryText}>Pending tasks</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{budgetPercent.toFixed(0)}%</Text>
+              <Text style={styles.summaryText}>Budget used</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {hasOverdue && !dismissedAlert && (
         <View style={styles.alertBanner}>
           <Ionicons name="warning" size={18} color={COLORS.white} />
@@ -156,7 +190,7 @@ export default function DashboardScreen() {
       )}
 
       {!activeSeason && (
-        <Pressable style={styles.noSeasonCard} onPress={() => router.push("/season-setup")}>
+        <Pressable style={styles.noSeasonCard} onPress={() => router.push("/season-setup") }>
           <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
           <View style={styles.noSeasonText}>
             <Text style={styles.noSeasonTitle}>Start your season</Text>
@@ -255,434 +289,60 @@ export default function DashboardScreen() {
                 <Text style={[styles.sprayBarText, { color: COLORS.textMuted }]}>No spray recorded yet</Text>
               )}
             </View>
-
-            {section.blight_risk === "HIGH" && (
-              <View style={styles.blightNote}>
-                <Ionicons name="information-circle-outline" size={13} color={COLORS.red} />
-                <Text style={styles.blightNoteText}>Never skip sprays. Max 12-day interval.</Text>
-              </View>
-            )}
           </View>
         );
       })}
-
-      <View style={styles.budgetCard}>
-        <View style={styles.budgetHeader}>
-          <Text style={styles.budgetTitle}>Season Budget</Text>
-          <Text style={styles.budgetPercent}>{Math.round(budgetPercent)}%</Text>
-        </View>
-        <View style={styles.budgetBar}>
-          <View style={[styles.budgetFill, { width: `${budgetPercent}%` }]} />
-        </View>
-        <View style={styles.budgetFooter}>
-          <Text style={styles.budgetSpent}>{formatKES(totalSpent)} spent</Text>
-          <Text style={styles.budgetTotal}>of {formatKES(estimatedTotal)} estimated</Text>
-        </View>
-        <View style={styles.costBreakdown}>
-          <View style={styles.costBreakdownItem}>
-            <Text style={styles.breakdownLabel}>Entries</Text>
-            <Text style={styles.breakdownValue}>{costs.length}</Text>
-          </View>
-          <View style={styles.costBreakdownItem}>
-            <Text style={styles.breakdownLabel}>Remaining</Text>
-            <Text style={[styles.breakdownValue, { color: COLORS.primary }]}>
-              {formatKES(Math.max(0, estimatedTotal - totalSpent))}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.quickActions}>
-        <Pressable
-          style={[styles.actionBtn, styles.actionBtnPrimary]}
-          onPress={() => router.push("/log-activity")}
-        >
-          <Ionicons name="clipboard-outline" size={20} color={COLORS.white} />
-          <Text style={styles.actionBtnTextPrimary}>Log Activity</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.actionBtn, styles.actionBtnSecondary]}
-          onPress={() => router.push("/add-cost")}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.actionBtnTextSecondary}>Add Cost</Text>
-        </Pressable>
-      </View>
-
-      {activeSeason && (
-        <View style={styles.seasonInfo}>
-          <Text style={styles.seasonInfoTitle}>Season Timeline</Text>
-          <View style={styles.seasonDates}>
-            <View style={styles.seasonDate}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
-              <Text style={styles.seasonDateLabel}>Sec A Planted</Text>
-              <Text style={styles.seasonDateValue}>{formatDate(activeSeason.section_a.planting_date)}</Text>
-            </View>
-            {activeSeason.section_b.acres > 0 && (
-              <View style={styles.seasonDate}>
-                <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
-                <Text style={styles.seasonDateLabel}>Sec B Planted</Text>
-                <Text style={styles.seasonDateValue}>{formatDate(activeSeason.section_b.planting_date)}</Text>
-              </View>
-            )}
-            <View style={styles.seasonDate}>
-              <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
-              <Text style={styles.seasonDateLabel}>Sec A Variety</Text>
-              <Text style={styles.seasonDateValue}>{activeSeason.section_a.variety}</Text>
-            </View>
-            {activeSeason.section_b.acres > 0 && (
-              <View style={styles.seasonDate}>
-                <Ionicons name="sunny-outline" size={14} color={COLORS.amber} />
-                <Text style={styles.seasonDateLabel}>Sec B Variety</Text>
-                <Text style={styles.seasonDateValue}>{activeSeason.section_b.variety}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 4,
-  },
-  farmName: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 28,
-    color: COLORS.text,
-    letterSpacing: -0.5,
-  },
-  farmSub: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  headerBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.primarySurface,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  headerBadgeText: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 12,
-    color: COLORS.primary,
-  },
-  alertBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: COLORS.red,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  alertText: {
-    flex: 1,
-    fontFamily: "DMSans_500Medium",
-    fontSize: 13,
-    color: COLORS.white,
-  },
-  noSeasonCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: COLORS.primaryLight + "40",
-    borderStyle: "dashed",
-  },
-  noSeasonText: { flex: 1, gap: 3 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  content: { paddingHorizontal: 16, gap: 14 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  farmName: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.text },
+  farmSub: { marginTop: 4, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
+  headerBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  headerBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
+  summaryCard: { backgroundColor: COLORS.cardBg, borderRadius: 18, padding: 16, gap: 14, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  summaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  summaryLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text, marginTop: 2 },
+  summaryAction: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  summaryActionText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
+  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  summaryItem: { flexGrow: 1, flexBasis: "48%", backgroundColor: COLORS.primarySurface, borderRadius: 14, padding: 12, gap: 4 },
+  summaryValue: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.primary },
+  summaryText: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  alertBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.red, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  alertText: { flex: 1, color: COLORS.white, fontFamily: "DMSans_600SemiBold", fontSize: 12 },
+  noSeasonCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  noSeasonText: { flex: 1 },
   noSeasonTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text },
-  noSeasonSub: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  sectionCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 12,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sectionLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  sectionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  sectionBadgeText: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 12,
-    color: COLORS.white,
-  },
-  sectionVariety: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  blightBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  blightText: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
-  sectionStats: {
-    flexDirection: "row",
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 12,
-    padding: 12,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  statValue: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 20,
-    color: COLORS.text,
-  },
-  statLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 2,
-  },
-  nextActivity: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-    borderRadius: 10,
-  },
-  nextActivityLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  nextActivityText: {
-    flex: 1,
-    gap: 2,
-  },
-  nextActivityName: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 13,
-  },
-  nextActivityDate: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  daysUntilBadge: {
-    marginLeft: 8,
-  },
-  daysUntilText: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 13,
-  },
-  sprayBar: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
-  },
+  noSeasonSub: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  sectionCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 12, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 7, elevation: 2 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sectionLabelRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  sectionBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  sectionBadgeText: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.white },
+  sectionVariety: { flex: 1, fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
+  blightBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  blightText: { fontFamily: "DMSans_700Bold", fontSize: 11 },
+  sectionStats: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: COLORS.background, borderRadius: 14, padding: 12 },
+  statItem: { flex: 1, alignItems: "center" },
+  statValue: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
+  statLabel: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  statDivider: { width: 1, height: 28, backgroundColor: COLORS.borderLight },
+  nextActivity: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 14, padding: 12 },
+  nextActivityLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  nextActivityText: { flex: 1 },
+  nextActivityName: { fontFamily: "DMSans_700Bold", fontSize: 14 },
+  nextActivityDate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  daysUntilBadge: { backgroundColor: COLORS.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  daysUntilText: { fontFamily: "DMSans_700Bold", fontSize: 11 },
+  sprayBar: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   sprayBarOk: { backgroundColor: COLORS.primarySurface },
   sprayBarWarn: { backgroundColor: COLORS.amberLight },
   sprayBarAlert: { backgroundColor: COLORS.redLight },
   sprayBarText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, flex: 1 },
-  blightNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingTop: 4,
-  },
-  blightNoteText: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.red,
-    flex: 1,
-  },
-  budgetCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 10,
-  },
-  budgetHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  budgetTitle: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 15,
-    color: COLORS.text,
-  },
-  budgetPercent: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 15,
-    color: COLORS.primary,
-  },
-  budgetBar: {
-    height: 8,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  budgetFill: {
-    height: "100%",
-    backgroundColor: COLORS.primary,
-    borderRadius: 4,
-  },
-  budgetFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  budgetSpent: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  budgetTotal: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  costBreakdown: {
-    flexDirection: "row",
-    gap: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-    paddingTop: 10,
-  },
-  costBreakdownItem: {
-    gap: 2,
-  },
-  breakdownLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  breakdownValue: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  quickActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    minHeight: 52,
-  },
-  actionBtnPrimary: {
-    backgroundColor: COLORS.primary,
-  },
-  actionBtnSecondary: {
-    backgroundColor: COLORS.primarySurface,
-    borderWidth: 1.5,
-    borderColor: COLORS.primaryLight,
-  },
-  actionBtnTextPrimary: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  actionBtnTextSecondary: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.primary,
-  },
-  seasonInfo: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 12,
-  },
-  seasonInfoTitle: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  seasonDates: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  seasonDate: {
-    width: "47%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 8,
-    padding: 8,
-  },
-  seasonDateLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    flex: 1,
-  },
-  seasonDateValue: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 11,
-    color: COLORS.text,
-  },
 });
