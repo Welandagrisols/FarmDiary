@@ -62,17 +62,11 @@ export default function AddCostScreen() {
       const rate = parseFloat(ratePerDay) || 500;
       return workers * days * rate;
     }
-    if (useQtyMode) {
-      return (parseFloat(qty) || 0) * (parseFloat(unitPrice) || 0);
-    }
+    if (useQtyMode) return (parseFloat(qty) || 0) * (parseFloat(unitPrice) || 0);
     return parseFloat(amount) || 0;
   })();
 
-  const sectionId =
-    sectionChoice === "section-a" ? "section-a"
-      : sectionChoice === "section-b" ? "section-b"
-      : sectionChoice === "both" ? null
-      : null;
+  const sectionId = sectionChoice === "section-a" ? "section-a" : sectionChoice === "section-b" ? "section-b" : null;
 
   const handleSubmit = async () => {
     if (!description.trim()) {
@@ -120,7 +114,7 @@ export default function AddCostScreen() {
       });
 
       router.back();
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to save cost. Please try again.");
     } finally {
       setSubmitting(false);
@@ -130,14 +124,25 @@ export default function AddCostScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <View style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={12}><Ionicons name="close" size={22} color={COLORS.text} /></Pressable>
+        <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={12}>
+          <Ionicons name="close" size={22} color={COLORS.text} />
+        </Pressable>
         <Text style={styles.headerTitle}>Add Cost</Text>
         <View style={{ width: 36 }} />
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.field}><Text style={styles.fieldLabel}>Section</Text><View style={styles.sectionRow}>{(["farm", "section-a", "section-b", "both"] as SectionChoice[]).map((opt) => (<Pressable key={opt} style={[styles.chip, sectionChoice === opt && styles.chipActive]} onPress={() => setSectionChoice(opt)}><Text style={[styles.chipText, sectionChoice === opt && styles.chipTextActive]}>{opt === "farm" ? "Farm" : opt === "section-a" ? "Sec A" : opt === "section-b" ? "Sec B" : "Both"}</Text></Pressable>))}</View></View>
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Section</Text>
+          <View style={styles.sectionRow}>
+            {(["farm", "section-a", "section-b", "both"] as SectionChoice[]).map((opt) => (
+              <Pressable key={opt} style={[styles.chip, sectionChoice === opt && styles.chipActive]} onPress={() => setSectionChoice(opt)}>
+                <Text style={[styles.chipText, sectionChoice === opt && styles.chipTextActive]}>{opt === "farm" ? "Farm" : opt === "section-a" ? "Sec A" : opt === "section-b" ? "Sec B" : "Both"}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </ScrollView>
     </View>
   );

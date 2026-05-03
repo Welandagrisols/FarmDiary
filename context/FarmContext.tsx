@@ -183,17 +183,9 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     setObservations((prev) => prev.filter((o) => o.id !== id));
   }, []);
 
-  const totalSpent = useMemo(() => {
-    return costs
-      .filter((c) => c.season_id === seasonId)
-      .reduce((sum, c) => sum + c.amount_kes, 0);
-  }, [costs, seasonId]);
+  const totalSpent = useMemo(() => costs.filter((c) => c.season_id === seasonId).reduce((sum, c) => sum + c.amount_kes, 0), [costs, seasonId]);
 
-  const totalRevenue = useMemo(() => {
-    return harvestRecords
-      .filter((r) => r.season_id === seasonId)
-      .reduce((sum, r) => sum + r.total_revenue_kes, 0);
-  }, [harvestRecords, seasonId]);
+  const totalRevenue = useMemo(() => harvestRecords.filter((r) => r.season_id === seasonId).reduce((sum, r) => sum + r.total_revenue_kes, 0), [harvestRecords, seasonId]);
 
   const getCompletedActivityIds = useCallback((): string[] => {
     const ids = new Set<string>();

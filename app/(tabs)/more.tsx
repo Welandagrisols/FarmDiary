@@ -6,21 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 
-function MenuRow({
-  icon,
-  label,
-  subtitle,
-  color,
-  onPress,
-  badge,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  subtitle: string;
-  color: string;
-  onPress: () => void;
-  badge?: string;
-}) {
+function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React.ReactNode; label: string; subtitle: string; color: string; onPress: () => void; badge?: string }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.85 }]}>
       <View style={[styles.menuIcon, { backgroundColor: color + "20" }]}>{icon}</View>
@@ -28,7 +14,7 @@ function MenuRow({
         <Text style={styles.menuLabel}>{label}</Text>
         <Text style={styles.menuSubtitle}>{subtitle}</Text>
       </View>
-      {badge && <View style={styles.menuBadge}><Text style={styles.menuBadgeText}>{badge}</Text></View>}
+      {badge ? <View style={styles.menuBadge}><Text style={styles.menuBadgeText}>{badge}</Text></View> : null}
       <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
     </Pressable>
   );
@@ -37,16 +23,13 @@ function MenuRow({
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason } = useFarm();
-
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
-
   const lowStockCount = inventory.filter((item) => {
     const remaining = item.quantity_purchased - (item.quantity_used || 0);
     const threshold = item.low_stock_threshold || item.quantity_purchased * 0.2;
     return remaining < threshold && remaining >= 0;
   }).length;
-
   const criticalObservations = observations.filter((o) => o.severity === "Critical" || o.severity === "High").length;
   const activeSeasonName = activeSeason?.season_name || "No season";
   const seasonStatusLabel = activeSeason?.status === "active" ? "Active" : activeSeason?.status === "closed" ? "Closed" : "Planning";
@@ -80,6 +63,8 @@ export default function MoreScreen() {
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log bags, weight, price and revenue" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined} />
+          <View style={styles.separator} />
+          <MenuRow icon={<Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />} label="Upload Data" subtitle="Import pre-planting data from Excel/CSV" color={COLORS.primary} onPress={() => router.push("/export")} />
         </View>
       </View>
 
