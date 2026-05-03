@@ -21,11 +21,11 @@ export default function SeasonHistoryScreen() {
     const revenue = seasonHarvests.reduce((sum, record) => sum + record.total_revenue_kes, 0);
     const net = revenue - spent;
     const yieldKg = seasonHarvests.reduce((sum, record) => sum + record.total_kg, 0);
-    const avgPrice = yieldKg > 0 ? revenue / yieldKg : 0;
-    return { season, spent, revenue, net, yieldKg, avgPrice };
+    return { season, spent, revenue, net, yieldKg };
   });
 
   const bestProfit = comparison.reduce((best, item) => (item.net > best.net ? item : best), comparison[0] || null);
+  const worstProfit = comparison.reduce((worst, item) => (item.net < worst.net ? item : worst), comparison[0] || null);
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}> 
@@ -38,16 +38,16 @@ export default function SeasonHistoryScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPadding + 90, gap: 12 }} showsVerticalScrollIndicator={false}>
-        <Pressable style={styles.compareBtn} onPress={() => router.push("/season-report")}> 
+        <Pressable style={styles.compareBtn} onPress={() => router.push("/season-report") }>
           <Ionicons name="stats-chart-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.compareText}>Open full season report</Text>
+          <Text style={styles.compareText}>Open full P&L</Text>
         </Pressable>
 
-        {comparison.length > 1 ? (
+        {comparison.length > 0 ? (
           <View style={styles.compareCard}>
-            <Text style={styles.compareTitle}>Best performing season</Text>
-            <Text style={styles.compareSeason}>{bestProfit?.season.season_name}</Text>
-            <Text style={styles.compareMeta}>{bestProfit ? `${formatKES(bestProfit.net)} net profit · ${bestProfit.yieldKg.toLocaleString()} kg` : ""}</Text>
+            <Text style={styles.compareTitle}>Comparison</Text>
+            <Text style={styles.compareLine}>{bestProfit ? `Best: ${bestProfit.season.season_name} · ${formatKES(bestProfit.net)}` : ""}</Text>
+            <Text style={styles.compareLine}>{worstProfit ? `Lowest: ${worstProfit.season.season_name} · ${formatKES(worstProfit.net)}` : ""}</Text>
           </View>
         ) : null}
 
@@ -71,7 +71,6 @@ export default function SeasonHistoryScreen() {
                     <Text style={styles.badgeText}>Closed</Text>
                   </View>
                 </View>
-
                 <View style={styles.grid}>
                   <View style={styles.stat}><Text style={styles.value}>{formatKES(revenue)}</Text><Text style={styles.label}>Revenue</Text></View>
                   <View style={styles.stat}><Text style={styles.value}>{formatKES(spent)}</Text><Text style={styles.label}>Costs</Text></View>
@@ -101,8 +100,7 @@ const styles = StyleSheet.create({
   compareText: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.primary },
   compareCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: COLORS.primary + "40" },
   compareTitle: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase" },
-  compareSeason: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
-  compareMeta: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  compareLine: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
   card: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 12, borderWidth: 1, borderColor: COLORS.border },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   cardTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text },
