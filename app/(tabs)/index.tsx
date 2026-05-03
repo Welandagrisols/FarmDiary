@@ -150,17 +150,26 @@ export default function DashboardScreen() {
       {activeSeason && (
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
-            <View>
-              <Text style={styles.summaryLabel}>Season Summary</Text>
+            <View style={styles.summaryTitleWrap}>
+              <View style={styles.summaryKicker}>
+                <Ionicons name="leaf-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.summaryKickerText}>Season Summary</Text>
+              </View>
               <Text style={styles.summaryTitle}>{activeSeason.season_name}</Text>
+              <Text style={styles.summarySubtitle}>
+                {seasonStatusLabel} · {activeSeason.season_type} · {totalAcres} acres
+              </Text>
             </View>
-            <Pressable style={styles.summaryAction} onPress={() => router.push("/season-control") }>
-              <Text style={styles.summaryActionText}>Manage</Text>
+            <Pressable style={styles.summaryAction} onPress={() => router.push("/season-control")}>
+              <Ionicons name="options-outline" size={16} color={COLORS.primary} />
             </Pressable>
           </View>
+
           <View style={styles.summaryGrid}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{formatKES(netProfit)}</Text>
+              <Text style={[styles.summaryValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                {formatKES(netProfit)}
+              </Text>
               <Text style={styles.summaryText}>Net profit</Text>
             </View>
             <View style={styles.summaryItem}>
@@ -174,6 +183,21 @@ export default function DashboardScreen() {
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>{budgetPercent.toFixed(0)}%</Text>
               <Text style={styles.summaryText}>Budget used</Text>
+            </View>
+          </View>
+
+          <View style={styles.summaryFooter}>
+            <View style={styles.summaryPill}>
+              <Ionicons name="calendar-outline" size={12} color={COLORS.textSecondary} />
+              <Text style={styles.summaryPillText}>{currentSchedule.length} planned</Text>
+            </View>
+            <View style={styles.summaryPill}>
+              <Ionicons name="checkmark-circle-outline" size={12} color={COLORS.textSecondary} />
+              <Text style={styles.summaryPillText}>{completedIds.length} done</Text>
+            </View>
+            <View style={styles.summaryPill}>
+              <Ionicons name="wallet-outline" size={12} color={COLORS.textSecondary} />
+              <Text style={styles.summaryPillText}>{formatKES(totalSpent)} spent</Text>
             </View>
           </View>
         </View>
@@ -304,16 +328,56 @@ const styles = StyleSheet.create({
   farmSub: { marginTop: 4, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
   headerBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   headerBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
-  summaryCard: { backgroundColor: COLORS.cardBg, borderRadius: 18, padding: 16, gap: 14, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  summaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  summaryLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
-  summaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text, marginTop: 2 },
-  summaryAction: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  summaryActionText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.primary },
+  summaryCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight + "25",
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  summaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  summaryTitleWrap: { flex: 1, gap: 4 },
+  summaryKicker: { flexDirection: "row", alignItems: "center", gap: 6 },
+  summaryKickerText: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 11,
+    color: COLORS.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  summarySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, lineHeight: 17 },
+  summaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
+  summaryAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primarySurface,
+  },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  summaryItem: { flexGrow: 1, flexBasis: "48%", backgroundColor: COLORS.primarySurface, borderRadius: 14, padding: 12, gap: 4 },
+  summaryItem: { flexGrow: 1, flexBasis: "48%", backgroundColor: COLORS.background, borderRadius: 14, padding: 12, gap: 4 },
   summaryValue: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.primary },
+  summaryPositive: { color: COLORS.primary },
+  summaryNegative: { color: COLORS.red },
   summaryText: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  summaryFooter: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  summaryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  summaryPillText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.textSecondary },
   alertBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.red, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   alertText: { flex: 1, color: COLORS.white, fontFamily: "DMSans_600SemiBold", fontSize: 12 },
   noSeasonCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
