@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -47,44 +47,45 @@ function StatusChip({ status }: { status: ActivityStatus }) {
 
 function getTypeColor(type: string) {
   switch (type) {
-    case "Spray": return { bg: "#E3F2FD", color: "#1565C0" };
-    case "Herbicide": return { bg: "#F3E5F5", color: "#6A1B9A" };
+    case "Spray": return { bg: COLORS.primarySurface, color: COLORS.primary };
+    case "Herbicide": return { bg: COLORS.amberLight, color: COLORS.amber };
     case "Earthing Up + Fertilizer":
-    case "Earthing Up": return { bg: "#FFF8E1", color: "#E65100" };
-    case "Harvest": return { bg: "#E8F5E9", color: "#1B5E20" };
-    case "Observation": return { bg: "#F5F5F5", color: "#616161" };
+    case "Earthing Up": return { bg: COLORS.primarySurface, color: COLORS.teal };
+    case "Harvest": return { bg: COLORS.primarySurface, color: COLORS.primaryLight };
+    case "Observation": return { bg: COLORS.borderLight, color: COLORS.textSecondary };
     default: return { bg: COLORS.borderLight, color: COLORS.textSecondary };
   }
 }
 
 function ActivityCard({ activity, status, onPress }: { activity: PlannedActivity; status: ActivityStatus; onPress: () => void }) {
   const typeColor = getTypeColor(activity.activityType);
+  const daysUntil = getDaysUntil(activity.plannedDateA);
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.activityCard, pressed && { opacity: 0.85 }]}
-      onPress={onPress}
-    >
-      <View style={styles.cardLeft}>
-        <View style={[styles.stageBadge, { backgroundColor: typeColor.bg }]}>
-          <Text style={[styles.stageBadgeText, { color: typeColor.color }]}>{activity.activityType}</Text>
+    <Pressable style={({ pressed }) => [styles.activityCard, pressed && { opacity: 0.85 }]} onPress={onPress}>
+      <View style={styles.timelineCol}>
+        <View style={[styles.timelineDot, status === "completed" ? styles.dotCompleted : status === "overdue" ? styles.dotOverdue : status === "due-soon" ? styles.dotSoon : styles.dotUpcoming]} />
+        <View style={styles.timelineLine} />
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <View style={[styles.stageBadge, { backgroundColor: typeColor.bg }]}>
+            <Text style={[styles.stageBadgeText, { color: typeColor.color }]}>{activity.activityType}</Text>
+          </View>
+          <StatusChip status={status} />
         </View>
         <Text style={styles.activityName} numberOfLines={2}>{activity.name}</Text>
+        <Text style={styles.activityStage}>{activity.stage}</Text>
         <View style={styles.datesRow}>
-          <View style={styles.dateItem}>
-            <Text style={styles.dateSectionLabel}>Sec A</Text>
-            <Text style={styles.dateValue}>{formatDate(activity.plannedDateA)}</Text>
-          </View>
-          <View style={styles.dateDot} />
-          <View style={styles.dateItem}>
-            <Text style={styles.dateSectionLabel}>Sec B</Text>
-            <Text style={styles.dateValue}>{formatDate(activity.plannedDateB)}</Text>
-          </View>
+          <Text style={styles.dateValue}>Sec A · {formatDate(activity.plannedDateA)}</Text>
+          <Text style={styles.dateValue}>Sec B · {formatDate(activity.plannedDateB)}</Text>
         </View>
-      </View>
-      <View style={styles.cardRight}>
-        <StatusChip status={status} />
-        <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        <View style={styles.cardFooter}>
+          <Text style={[styles.dueText, { color: status === "overdue" ? COLORS.red : status === "due-soon" ? COLORS.amber : COLORS.textSecondary }]}>
+            {daysUntil === 0 ? "Due today" : daysUntil < 0 ? `${Math.abs(daysUntil)} days late` : `${daysUntil} days left`}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </View>
       </View>
     </Pressable>
   );
@@ -93,7 +94,6 @@ function ActivityCard({ activity, status, onPress }: { activity: PlannedActivity
 function ActivityModal({ activity, status, onClose }: { activity: PlannedActivity; status: ActivityStatus; onClose: () => void }) {
   const { quickCompleteActivity } = useFarm();
   const typeColor = getTypeColor(activity.activityType);
-  const daysUntilA = getDaysUntil(activity.plannedDateA);
   const [completing, setCompleting] = React.useState(false);
 
   return (
@@ -211,14 +211,15 @@ export default function ScheduleScreen() {
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const completedIds = getCompletedActivityIds();
-
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const data = currentSchedule.map((activity) => ({
-    ...activity,
-    status: getStatus(activity, completedIds),
-  }));
+  const data = useMemo(
+    () => currentSchedule.map((activity) => ({ ...activity, status: getStatus(activity, completedIds) })),
+    [currentSchedule, completedIds]
+  );
+
+  const upcoming = data.filter((item) => item.status !== "completed").slice(0, 3);
 
   const renderItem = useCallback(
     ({ item }: { item: typeof data[0] }) => (
@@ -246,9 +247,23 @@ export default function ScheduleScreen() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.headerContainer}>
         <Text style={styles.screenTitle}>Schedule</Text>
-        <Text style={styles.screenSubtitle}>
-          {activeSeason?.season_name || "Season"} — {currentSchedule.length} activities
-        </Text>
+        <Text style={styles.screenSubtitle}>{activeSeason?.season_name || "Season"} — {currentSchedule.length} activities</Text>
+      </View>
+
+      <View style={styles.upcomingStrip}>
+        <View style={styles.upcomingHeader}>
+          <Text style={styles.upcomingTitle}>Upcoming</Text>
+          <Text style={styles.upcomingCount}>{upcoming.length}</Text>
+        </View>
+        {upcoming.map((item) => (
+          <Pressable key={item.id} style={styles.upcomingCard} onPress={() => setSelectedActivity(item)}>
+            <View style={styles.upcomingTop}>
+              <Text style={styles.upcomingName} numberOfLines={1}>{item.name}</Text>
+              <StatusChip status={item.status} />
+            </View>
+            <Text style={styles.upcomingDate}>{formatDate(item.plannedDateA)} · {item.activityType}</Text>
+          </Pressable>
+        ))}
       </View>
 
       <View style={styles.legend}>
@@ -309,302 +324,69 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  headerContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    paddingTop: 8,
-    gap: 2,
-  },
-  screenTitle: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 28,
-    color: COLORS.text,
-    letterSpacing: -0.5,
-  },
-  screenSubtitle: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  legend: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 16,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  legendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  legendLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  activityCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  cardLeft: {
-    flex: 1,
-    gap: 6,
-  },
-  cardRight: {
-    alignItems: "flex-end",
-    gap: 10,
-    paddingLeft: 8,
-  },
-  stageBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  stageBadgeText: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 0.3,
-  },
-  activityName: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.text,
-    lineHeight: 20,
-  },
-  datesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  dateItem: {
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "center",
-  },
-  dateSectionLabel: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  dateValue: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  dateDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-  },
-  statusChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusChipText: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 0.3,
-  },
-  // Modal styles
-  modalContainer: {
-    flex: 1,
-    backgroundColor: COLORS.cardBg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingTop: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.borderLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalScroll: {
-    flex: 1,
-    padding: 16,
-  },
-  modalTitle: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 22,
-    color: COLORS.text,
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  modalStage: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: 16,
-  },
-  modalDates: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
-  },
-  modalDateCard: {
-    flex: 1,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
-  },
-  modalDateLabel: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  modalDateValue: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  alertBox: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-start",
-    backgroundColor: COLORS.amberLight,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-  },
-  alertBoxText: {
-    flex: 1,
-    fontFamily: "DMSans_500Medium",
-    fontSize: 13,
-    color: COLORS.amberDark,
-    lineHeight: 19,
-  },
-  modalSection: {
-    marginBottom: 20,
-    gap: 10,
-  },
-  modalSectionTitle: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  purposeText: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 14,
-    color: COLORS.text,
-    lineHeight: 21,
-  },
-  productRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  productDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
-    marginTop: 5,
-  },
-  productInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  productName: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  productRate: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  productPrice: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 12,
-    color: COLORS.text,
-  },
-  costSummary: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: COLORS.primarySurface,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 20,
-  },
-  costSummaryLabel: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 14,
-    color: COLORS.primary,
-  },
-  costSummaryValue: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 16,
-    color: COLORS.primary,
-  },
-  modalFooter: {
-    padding: 16,
-    paddingBottom: 34,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-    gap: 10,
-  },
-  quickBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: COLORS.primarySurface,
-    borderWidth: 1.5, borderColor: COLORS.primaryLight,
-    borderRadius: 14, paddingVertical: 14,
-  },
-  quickBtnText: {
-    fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary,
-  },
-  logBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
-  },
-  logBtnText: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 16,
-    color: COLORS.white,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  headerContainer: { paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, gap: 2 },
+  screenTitle: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.text, letterSpacing: -0.5 },
+  screenSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
+  upcomingStrip: { marginHorizontal: 16, marginBottom: 10, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  upcomingHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  upcomingTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  upcomingCount: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.primary },
+  upcomingCard: { backgroundColor: COLORS.primarySurface, borderRadius: 12, padding: 12, gap: 4 },
+  upcomingTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
+  upcomingName: { flex: 1, fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  upcomingDate: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  legend: { flexDirection: "row", paddingHorizontal: 16, paddingBottom: 12, gap: 16, flexWrap: "wrap" },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendLabel: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
+  activityCard: { flexDirection: "row", gap: 12, marginHorizontal: 16, backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 14, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  timelineCol: { width: 12, alignItems: "center" },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 3 },
+  dotCompleted: { backgroundColor: COLORS.primary },
+  dotOverdue: { backgroundColor: COLORS.red },
+  dotSoon: { backgroundColor: COLORS.amber },
+  dotUpcoming: { backgroundColor: COLORS.textMuted },
+  timelineLine: { flex: 1, width: 2, backgroundColor: COLORS.borderLight, marginTop: 6, borderRadius: 1 },
+  cardBody: { flex: 1, gap: 6 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
+  stageBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  stageBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 10, letterSpacing: 0.3 },
+  activityName: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.text, lineHeight: 20 },
+  activityStage: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
+  datesRow: { gap: 2 },
+  dateValue: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
+  cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  dueText: { fontFamily: "DMSans_600SemiBold", fontSize: 12 },
+  statusChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusChipText: { fontFamily: "DMSans_600SemiBold", fontSize: 10, letterSpacing: 0.3 },
+  modalContainer: { flex: 1, backgroundColor: COLORS.cardBg },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, paddingTop: 20, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.borderLight, alignItems: "center", justifyContent: "center" },
+  modalScroll: { flex: 1, padding: 16 },
+  modalTitle: { fontFamily: "DMSans_700Bold", fontSize: 22, color: COLORS.text, letterSpacing: -0.3, marginBottom: 4 },
+  modalStage: { fontFamily: "DMSans_400Regular", fontSize: 14, color: COLORS.textSecondary, marginBottom: 16 },
+  modalDates: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  modalDateCard: { flex: 1, backgroundColor: COLORS.borderLight, borderRadius: 12, padding: 12, gap: 6 },
+  modalDateLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+  modalDateValue: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  alertBox: { flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: COLORS.amberLight, borderRadius: 10, padding: 12, marginBottom: 16 },
+  alertBoxText: { flex: 1, fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.amberDark, lineHeight: 19 },
+  modalSection: { marginBottom: 20, gap: 10 },
+  modalSectionTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  purposeText: { fontFamily: "DMSans_400Regular", fontSize: 14, color: COLORS.text, lineHeight: 21 },
+  productRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  productDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginTop: 5 },
+  productInfo: { flex: 1, gap: 2 },
+  productName: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
+  productRate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
+  productPrice: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
+  costSummary: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: COLORS.primarySurface, borderRadius: 10, padding: 14, marginBottom: 20 },
+  costSummaryLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
+  costSummaryValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
+  modalFooter: { padding: 16, paddingBottom: 34, borderTopWidth: 1, borderTopColor: COLORS.borderLight, gap: 10 },
+  quickBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primarySurface, borderWidth: 1.5, borderColor: COLORS.primaryLight, borderRadius: 14, paddingVertical: 14 },
+  quickBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary },
+  logBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 16 },
+  logBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 16, color: COLORS.white },
 });
