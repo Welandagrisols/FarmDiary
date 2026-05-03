@@ -75,6 +75,7 @@ export default function DashboardScreen() {
   const budgetPercent = Math.min((totalSpent / estimatedTotal) * 100, 100);
   const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
   const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
+  const totalYield = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_kg, 0);
   const netProfit = totalRevenue - totalSpent;
 
   const hasOverdue = currentSchedule.some((activity) => {
@@ -201,6 +202,38 @@ export default function DashboardScreen() {
             </View>
           </View>
         </View>
+      )}
+
+      {activeSeason && (
+        <Pressable style={styles.harvestCard} onPress={() => router.push("/season-report")}>
+          <View style={styles.harvestHeader}>
+            <View>
+              <Text style={styles.harvestLabel}>Harvest Report</Text>
+              <Text style={styles.harvestTitle}>
+                {harvestRecords.some((r) => r.season_id === activeSeason.id) ? "Season complete" : "Harvest pending"}
+              </Text>
+            </View>
+            <View style={styles.harvestBadge}>
+              <Ionicons name="receipt-outline" size={14} color={COLORS.primary} />
+            </View>
+          </View>
+          <View style={styles.harvestGrid}>
+            <View style={styles.harvestItem}>
+              <Text style={styles.harvestValue}>{totalYield.toLocaleString()}</Text>
+              <Text style={styles.harvestText}>Yield kg</Text>
+            </View>
+            <View style={styles.harvestItem}>
+              <Text style={styles.harvestValue}>{formatKES(totalRevenue)}</Text>
+              <Text style={styles.harvestText}>Revenue</Text>
+            </View>
+            <View style={styles.harvestItem}>
+              <Text style={[styles.harvestValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                {formatKES(netProfit)}
+              </Text>
+              <Text style={styles.harvestText}>Net</Text>
+            </View>
+          </View>
+        </Pressable>
       )}
 
       {hasOverdue && !dismissedAlert && (
@@ -378,6 +411,33 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   summaryPillText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.textSecondary },
+  harvestCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  harvestHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  harvestLabel: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  harvestTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text, marginTop: 2 },
+  harvestBadge: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.primarySurface },
+  harvestGrid: { flexDirection: "row", gap: 8 },
+  harvestItem: { flex: 1, backgroundColor: COLORS.background, borderRadius: 14, padding: 10, gap: 3 },
+  harvestValue: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  harvestText: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textSecondary },
   alertBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.red, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   alertText: { flex: 1, color: COLORS.white, fontFamily: "DMSans_600SemiBold", fontSize: 12 },
   noSeasonCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
