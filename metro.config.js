@@ -5,6 +5,14 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = false;
 
+const shimPath = path.resolve(__dirname, "shims/InitializeCore.js");
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "react-native/Libraries/Core/InitializeCore") {
+    return { filePath: shimPath, type: "sourceFile" };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 config.watcher = {
   ...config.watcher,
   additionalExts: config.watcher?.additionalExts || [],
