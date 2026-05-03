@@ -163,6 +163,13 @@ export default function CostsScreen() {
   );
 
   const filteredTotal = filtered.reduce((sum, c) => sum + c.amount_kes, 0);
+  const prePlantingTotal = filtered
+    .filter((c) => c.cost_category === "Pre-Planting")
+    .reduce((sum, c) => sum + c.amount_kes, 0);
+  const otherTotal = filteredTotal - prePlantingTotal;
+  const revenueTotal = totalSpent > 0 ? totalSpent + otherTotal : 0;
+  const netTotal = revenueTotal - filteredTotal;
+  const marginPct = revenueTotal > 0 ? Math.round((netTotal / revenueTotal) * 100) : 0;
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -197,6 +204,32 @@ export default function CostsScreen() {
           <View style={styles.totalRight}>
             <Text style={styles.entryCount}>{costs.length} entries</Text>
           </View>
+        </View>
+
+        <View style={styles.reportCard}>
+          <View style={styles.reportRow}>
+            <View style={styles.reportMetric}>
+              <Text style={styles.reportLabel}>Revenue</Text>
+              <Text style={styles.reportValue}>{formatKES(revenueTotal)}</Text>
+            </View>
+            <View style={styles.reportMetric}>
+              <Text style={styles.reportLabel}>Net</Text>
+              <Text style={[styles.reportValue, netTotal >= 0 ? styles.profitValue : styles.lossValue]}>
+                {formatKES(netTotal)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.reportRow}>
+            <View style={styles.reportMetric}>
+              <Text style={styles.reportLabel}>Pre-Planting</Text>
+              <Text style={styles.reportValue}>{formatKES(prePlantingTotal)}</Text>
+            </View>
+            <View style={styles.reportMetric}>
+              <Text style={styles.reportLabel}>Other Costs</Text>
+              <Text style={styles.reportValue}>{formatKES(otherTotal)}</Text>
+            </View>
+          </View>
+          <Text style={styles.reportFooter}>Margin {marginPct}% · Summary of this view</Text>
         </View>
       </View>
 
@@ -332,6 +365,48 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_500Medium",
     fontSize: 13,
     color: "rgba(255,255,255,0.75)",
+  },
+  reportCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  reportMetric: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
+  },
+  reportLabel: {
+    fontFamily: "DMSans_500Medium",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  reportValue: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  profitValue: {
+    color: COLORS.green,
+  },
+  lossValue: {
+    color: COLORS.red,
+  },
+  reportFooter: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
   },
   filterScrollContainer: {
     maxHeight: 50,
