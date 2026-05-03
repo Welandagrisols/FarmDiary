@@ -137,6 +137,7 @@ export default function SeasonControlScreen() {
     ? costs.filter((c) => c.season_id === activeSeason.id && c.is_pre_planting)
     : [];
   const activeSeasonPrePlantingTotal = activeSeasonPrePlantingCosts.reduce((s, c) => s + c.amount_kes, 0);
+  const activeSeasonCostRate = activeSeasonRevenue > 0 ? (activeSeasonCosts / activeSeasonRevenue) * 100 : null;
 
   const handleSwitch = (seasonId: string) => {
     Alert.alert(
@@ -273,6 +274,41 @@ export default function SeasonControlScreen() {
               )}
             </View>
 
+            <View style={styles.closeoutCard}>
+              <View style={styles.closeoutHeader}>
+                <View>
+                  <Text style={styles.closeoutLabel}>Season closeout</Text>
+                  <Text style={styles.closeoutTitle}>
+                    {activeSeasonRevenue > 0 ? (activeSeasonRevenue - activeSeasonCosts >= 0 ? "Profit" : "Loss") : "In progress"}
+                  </Text>
+                </View>
+                <View style={styles.closeoutBadge}>
+                  <Text style={styles.closeoutBadgeText}>
+                    {activeSeasonRevenue > 0 ? `${activeSeasonCostRate?.toFixed(0)}% cost ratio` : "No sales yet"}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.closeoutGrid}>
+                <View style={styles.closeoutStat}>
+                  <Text style={styles.closeoutStatValue}>{formatKES(activeSeasonCosts)}</Text>
+                  <Text style={styles.closeoutStatLabel}>Spent</Text>
+                </View>
+                <View style={styles.closeoutStat}>
+                  <Text style={styles.closeoutStatValue}>{activeSeasonRevenue > 0 ? formatKES(activeSeasonRevenue) : "—"}</Text>
+                  <Text style={styles.closeoutStatLabel}>Revenue</Text>
+                </View>
+                <View style={styles.closeoutStat}>
+                  <Text style={[styles.closeoutStatValue, { color: activeSeasonRevenue - activeSeasonCosts >= 0 ? COLORS.primary : COLORS.red }]}>
+                    {activeSeasonRevenue > 0 ? formatKES(activeSeasonRevenue - activeSeasonCosts) : "—"}
+                  </Text>
+                  <Text style={styles.closeoutStatLabel}>Net</Text>
+                </View>
+              </View>
+              <Text style={styles.closeoutNote}>
+                This season can be closed once harvesting is complete. Closing preserves the full record for future review.
+              </Text>
+            </View>
+
             <View style={styles.sectionSummary}>
               <View style={styles.sectionSummaryItem}>
                 <View style={[styles.sectionDot, { backgroundColor: COLORS.primary }]} />
@@ -391,6 +427,17 @@ const styles = StyleSheet.create({
   costSnapshotRowValue: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text },
   costSnapshotMore: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   costSnapshotEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  closeoutCard: { backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 14, gap: 10, borderWidth: 1, borderColor: COLORS.border },
+  closeoutHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  closeoutLabel: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  closeoutTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text, marginTop: 2 },
+  closeoutBadge: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  closeoutBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  closeoutGrid: { flexDirection: "row", gap: 8 },
+  closeoutStat: { flex: 1, backgroundColor: COLORS.background, borderRadius: 12, padding: 10, gap: 3 },
+  closeoutStatValue: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  closeoutStatLabel: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textSecondary },
+  closeoutNote: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
   sectionSummary: { gap: 8 },
   sectionSummaryItem: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   sectionSummaryText: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 19 },
