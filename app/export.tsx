@@ -269,6 +269,8 @@ export default function ExportScreen() {
   };
 
   const totalSpent = costs.reduce((s, c) => s + c.amount_kes, 0);
+  const prePlantingCosts = costs.filter((c) => c.is_pre_planting);
+  const prePlantingTotal = prePlantingCosts.reduce((s, c) => s + c.amount_kes, 0);
   const exportItems = [
     { key: "costs", icon: "wallet-outline", title: "Cost Ledger", subtitle: "All spending entries as a spreadsheet", count: `${costs.length} entries · ${formatKES(totalSpent)}`, color: COLORS.primary, onPress: exportCostsCsv },
     { key: "activities", icon: "clipboard-outline", title: "Activity Log", subtitle: "All logged field activities", count: `${activityLogs.length} activities`, color: COLORS.teal, onPress: exportActivitiesCsv },
@@ -364,6 +366,33 @@ export default function ExportScreen() {
           <Text style={styles.infoText}>{Platform.OS === "web" ? "Files download directly to your device." : "Files open your phone's share sheet — send via WhatsApp, email, Google Drive, or save to Files."}</Text>
         </View>
 
+        <View style={styles.breakdownCard}>
+          <View style={styles.breakdownHeader}>
+            <View>
+              <Text style={styles.breakdownLabel}>Pre-planting cost breakdown</Text>
+              <Text style={styles.breakdownValue}>{formatKES(prePlantingTotal)}</Text>
+            </View>
+            <View style={styles.breakdownBadge}>
+              <Text style={styles.breakdownBadgeText}>{prePlantingCosts.length} items</Text>
+            </View>
+          </View>
+          {prePlantingCosts.length > 0 ? (
+            <View style={styles.breakdownList}>
+              {prePlantingCosts.slice(0, 4).map((cost) => (
+                <View key={cost.id} style={styles.breakdownRow}>
+                  <Text style={styles.breakdownRowText} numberOfLines={1}>{cost.description}</Text>
+                  <Text style={styles.breakdownRowValue}>{formatKES(cost.amount_kes)}</Text>
+                </View>
+              ))}
+              {prePlantingCosts.length > 4 && (
+                <Text style={styles.breakdownMore}>+{prePlantingCosts.length - 4} more items</Text>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.breakdownEmpty}>No pre-planting costs recorded yet.</Text>
+          )}
+        </View>
+
         {exportItems.map((item) => {
           const isLoading = exporting === item.key;
           return (
@@ -433,6 +462,18 @@ const styles = StyleSheet.create({
   confirmBtnText: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.white },
   infoCard: { flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: COLORS.primarySurface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: COLORS.primary + "30" },
   infoText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.primary, lineHeight: 19 },
+  breakdownCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  breakdownHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  breakdownLabel: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  breakdownValue: { fontFamily: "DMSans_700Bold", fontSize: 22, color: COLORS.text, marginTop: 2 },
+  breakdownBadge: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  breakdownBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  breakdownList: { gap: 8 },
+  breakdownRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  breakdownRowText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  breakdownRowValue: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text },
+  breakdownMore: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  breakdownEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted },
   exportCard: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   cardDimmed: { opacity: 0.45 },
   exportIcon: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
