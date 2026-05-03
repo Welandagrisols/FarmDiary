@@ -282,11 +282,10 @@ export default function SeasonControlScreen() {
                     {activeSeasonRevenue > 0 ? (activeSeasonRevenue - activeSeasonCosts >= 0 ? "Profit" : "Loss") : "In progress"}
                   </Text>
                 </View>
-                <View style={styles.closeoutBadge}>
-                  <Text style={styles.closeoutBadgeText}>
-                    {activeSeasonRevenue > 0 ? `${activeSeasonCostRate?.toFixed(0)}% cost ratio` : "No sales yet"}
-                  </Text>
-                </View>
+                <Pressable style={styles.reportBtn} onPress={() => router.push("/season-report") }>
+                  <Ionicons name="receipt-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.reportBtnText}>Final report</Text>
+                </Pressable>
               </View>
               <View style={styles.closeoutGrid}>
                 <View style={styles.closeoutStat}>
@@ -305,7 +304,9 @@ export default function SeasonControlScreen() {
                 </View>
               </View>
               <Text style={styles.closeoutNote}>
-                This season can be closed once harvesting is complete. Closing preserves the full record for future review.
+                {activeSeasonRevenue > 0 && activeSeasonCostRate !== null
+                  ? `${activeSeasonCostRate.toFixed(0)}% of revenue went into costs after harvest.`
+                  : "This season can be closed once harvesting is complete. Closing preserves the full record for future review."}
               </Text>
             </View>
 
@@ -431,8 +432,8 @@ const styles = StyleSheet.create({
   closeoutHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
   closeoutLabel: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
   closeoutTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text, marginTop: 2 },
-  closeoutBadge: { backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  closeoutBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  reportBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.primarySurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  reportBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   closeoutGrid: { flexDirection: "row", gap: 8 },
   closeoutStat: { flex: 1, backgroundColor: COLORS.background, borderRadius: 12, padding: 10, gap: 3 },
   closeoutStatValue: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
@@ -440,6 +441,7 @@ const styles = StyleSheet.create({
   closeoutNote: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
   sectionSummary: { gap: 8 },
   sectionSummaryItem: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  sectionDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
   sectionSummaryText: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 19 },
   closeSeasonBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
@@ -487,7 +489,6 @@ const styles = StyleSheet.create({
   activePillText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   sectionRow: { flexDirection: "row", gap: 16 },
   sectionItem: { flexDirection: "row", alignItems: "flex-start", gap: 8, flex: 1 },
-  sectionDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
   sectionItemLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.textSecondary },
   sectionItemValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
   sectionItemSub: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted },
