@@ -379,14 +379,6 @@ export default function CostBreakdownScreen() {
           ))}
         </View>
 
-        <View style={styles.filteredTotalCard}>
-          <Text style={styles.filteredTotalLabel}>Filtered Total</Text>
-          <Text style={styles.filteredTotalValue}>{isByActivity ? formatKES(activityGrandTotal) : formatKES(grandTotal)}</Text>
-          <Text style={styles.filteredTotalMeta}>
-            {isByActivity ? `${sortedActivities.length} activities` : `${filteredCosts.length} entries`}
-          </Text>
-        </View>
-
         {!isByActivity && (
           <>
             <View style={styles.summaryRow}>
@@ -435,6 +427,12 @@ export default function CostBreakdownScreen() {
                 <Text style={styles.emptySubtitle}>Add costs to see your spending breakdown</Text>
               </View>
             )}
+
+            <View style={styles.categoryTotalCard}>
+              <Text style={styles.categoryTotalLabel}>Selected Category Total</Text>
+              <Text style={styles.categoryTotalValue}>{formatKES(grandTotal)}</Text>
+              <Text style={styles.categoryTotalMeta}>{filteredCosts.length} entries in this view</Text>
+            </View>
           </>
         )}
 
@@ -507,7 +505,7 @@ const styles = StyleSheet.create({
   viewToggleTextActive: { color: COLORS.white },
 
   sectionTabs: { flexDirection: "row", gap: 8 },
-  filteredTotalCard: {
+  categoryTotalCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 14,
     padding: 14,
@@ -515,19 +513,19 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     gap: 2,
   },
-  filteredTotalLabel: {
+  categoryTotalLabel: {
     fontFamily: "DMSans_400Regular",
     fontSize: 11,
     color: COLORS.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
-  filteredTotalValue: {
+  categoryTotalValue: {
     fontFamily: "DMSans_700Bold",
     fontSize: 22,
     color: COLORS.text,
   },
-  filteredTotalMeta: {
+  categoryTotalMeta: {
     fontFamily: "DMSans_400Regular",
     fontSize: 11,
     color: COLORS.textMuted,
