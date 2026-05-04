@@ -142,6 +142,36 @@ export interface SeasonRecord {
   closed_at: string | null;
 }
 
+export interface PersonalExpense {
+  id: string;
+  farm_id: string;
+  season_id: string;
+  category: string;
+  subcategory: string;
+  description: string;
+  expense_date: string;
+  amount_kes: number;
+  visitor_name: string | null;
+  visitor_role: string | null;
+  trip_from: string | null;
+  trip_to: string | null;
+  receipt_reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export const PERSONAL_EXPENSE_CATEGORIES: Record<string, string[]> = {
+  "Meals & Food": ["Breakfast", "Lunch", "Dinner", "Snacks", "Groceries", "Water & Drinks"],
+  "Accommodation": ["Rent", "Utilities", "House Deposit"],
+  "Household Setup": ["Bedding & Furniture", "Kitchen Equipment", "Gas Cylinder", "Cleaning Supplies"],
+  "Personal Care": ["Hygiene Products", "Laundry", "Clothing", "Personal Items"],
+  "Health & Medication": ["Prescription Medicine", "OTC Medicine", "First Aid", "Medical Consultation"],
+  "Protective Gear": ["Masks / Respirators", "Gumboots", "Raincoat", "Gloves", "Overalls / Aprons", "Safety Glasses"],
+  "Farm Transport": ["Home → Farm", "Farm → Home", "Within Farm Area", "Fuel", "Motorbike / Boda-boda", "Public Transport"],
+  "Stakeholder Visits": ["Investor / Partner Visit", "Agronomist / Extension Visit", "Supplier Visit", "Guest / Friend Visit"],
+  "Other": ["Phone & Airtime", "Banking Fees", "Miscellaneous"],
+};
+
 const KEYS = {
   COSTS: "farm_costs",
   INVENTORY: "farm_inventory",
@@ -153,6 +183,7 @@ const KEYS = {
   ACTIVE_SEASON_ID: "farm_active_season_id",
   FARMS: "farm_farms",
   ACTIVE_FARM_ID: "farm_active_farm_id",
+  PERSONAL_EXPENSES: "farm_personal_expenses",
 };
 
 function genId(): string {
@@ -231,6 +262,11 @@ export async function deleteHarvestRecord(id: string): Promise<void> { await wri
 
 export function formatKES(amount: number): string { return "KES " + amount.toLocaleString("en-KE"); }
 export function formatDate(dateStr: string): string { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+export function isPrePlanting(costDate: string, plantingDate: string): boolean { return costDate < plantingDate; }
+
+export async function getPersonalExpenses(): Promise<PersonalExpense[]> { return readJson(KEYS.PERSONAL_EXPENSES, []); }
+export async function addPersonalExpense(expense: Omit<PersonalExpense, "id" | "created_at">): Promise<PersonalExpense> { const items = await getPersonalExpenses(); const record = { ...expense, id: genId(), created_at: new Date().toISOString() }; items.push(record); await writeJson(KEYS.PERSONAL_EXPENSES, items); return record; }
+export async function deletePersonalExpense(id: string): Promise<void> { await writeJson(KEYS.PERSONAL_EXPENSES, (await getPersonalExpenses()).filter((item) => item.id !== id)); }
 
 export function getDaysUntil(dateStr: string): number {
   if (!dateStr) return 999;

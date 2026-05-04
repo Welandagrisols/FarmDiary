@@ -22,7 +22,8 @@ function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms } = useFarm();
+  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms, personalExpenses } = useFarm();
+  const personalExpenseCount = personalExpenses.length;
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const lowStockCount = inventory.filter((item) => {
@@ -81,6 +82,20 @@ export default function MoreScreen() {
           <MenuRow icon={<Ionicons name="flask-outline" size={22} color={COLORS.teal} />} label="Inventory" subtitle="Track stock levels and usage" color={COLORS.teal} onPress={() => router.push("/inventory")} badge={lowStockCount > 0 ? `${lowStockCount} low` : undefined} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="eye-outline" size={22} color={COLORS.amber} />} label="Observations" subtitle="Daily scouting notes" color={COLORS.amber} onPress={() => router.push("/observations")} badge={criticalObservations > 0 ? `${criticalObservations} alert` : undefined} />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>People & Personnel</Text>
+        <View style={styles.menuCard}>
+          <MenuRow
+            icon={<Ionicons name="person-circle-outline" size={22} color={COLORS.purple} />}
+            label="Personal Expenses"
+            subtitle="Perdiem, transport, meals, protective gear & visits"
+            color={COLORS.purple}
+            onPress={() => router.push("/personal-expenses")}
+            badge={personalExpenseCount > 0 ? `${personalExpenseCount} entries` : undefined}
+          />
         </View>
       </View>
 
