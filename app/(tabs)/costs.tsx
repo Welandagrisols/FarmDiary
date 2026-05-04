@@ -141,7 +141,7 @@ function CostRow({
 
 export default function CostsScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, removeCost, isLoading, refresh, totalSpent } = useFarm();
+  const { costs, removeCost, isLoading, refresh, totalSpent, totalRevenue } = useFarm();
   const [activeFilter, setActiveFilter] = useState("All");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -163,13 +163,12 @@ export default function CostsScreen() {
   );
 
   const filteredTotal = filtered.reduce((sum, c) => sum + c.amount_kes, 0);
-  const prePlantingTotal = filtered
+  const prePlantingTotal = costs
     .filter((c) => c.cost_category === "Pre-Planting")
     .reduce((sum, c) => sum + c.amount_kes, 0);
-  const otherTotal = filteredTotal - prePlantingTotal;
-  const revenueTotal = totalSpent > 0 ? totalSpent + otherTotal : 0;
-  const netTotal = revenueTotal - filteredTotal;
-  const marginPct = revenueTotal > 0 ? Math.round((netTotal / revenueTotal) * 100) : 0;
+  const otherTotal = totalSpent - prePlantingTotal;
+  const netTotal = totalRevenue - totalSpent;
+  const marginPct = totalRevenue > 0 ? Math.round((netTotal / totalRevenue) * 100) : 0;
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -217,7 +216,7 @@ export default function CostsScreen() {
           <View style={styles.reportGrid}>
             <View style={styles.reportMetric}>
               <Text style={styles.reportLabel}>Revenue</Text>
-              <Text style={styles.reportValue}>{formatKES(revenueTotal)}</Text>
+              <Text style={styles.reportValue}>{formatKES(totalRevenue)}</Text>
             </View>
             <View style={styles.reportMetric}>
               <Text style={styles.reportLabel}>Spent</Text>

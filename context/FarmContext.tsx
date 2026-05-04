@@ -132,8 +132,15 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const getCompletedActivityIds = useCallback(() => {
     const ids = new Set<string>();
     activityLogs.filter((l) => l.season_id === seasonId).forEach((log) => { if (log.schedule_activity_id) ids.add(log.schedule_activity_id); });
+    const hasPrePlantingCosts = costs.some((c) => c.season_id === seasonId && c.is_pre_planting);
+    if (hasPrePlantingCosts && activeSeason) {
+      const plantingDate = activeSeason.section_a.planting_date;
+      currentSchedule.forEach((activity) => {
+        if (activity.plannedDateA < plantingDate) ids.add(activity.id);
+      });
+    }
     return Array.from(ids);
-  }, [activityLogs, seasonId]);
+  }, [activityLogs, seasonId, costs, activeSeason, currentSchedule]);
 
   const getNextActivity = useCallback((_sectionId: string) => {
     const completedIds = getCompletedActivityIds();
