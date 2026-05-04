@@ -231,3 +231,32 @@ export async function deleteHarvestRecord(id: string): Promise<void> { await wri
 
 export function formatKES(amount: number): string { return "KES " + amount.toLocaleString("en-KE"); }
 export function formatDate(dateStr: string): string { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+
+export function getDaysUntil(dateStr: string): number {
+  if (!dateStr) return 999;
+  const target = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function getDaysSincePlanting(plantingDate: string): number {
+  if (!plantingDate) return 0;
+  const planted = new Date(plantingDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  planted.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((today.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+export function getGrowthStage(plantingDate: string): string {
+  const days = getDaysSincePlanting(plantingDate);
+  if (days < 7)   return "Emergence — Sprouting underway";
+  if (days < 21)  return "Seedling — Early leaf development";
+  if (days < 42)  return "Vegetative — Canopy closing";
+  if (days < 63)  return "Tuber Initiation — Stolons forming";
+  if (days < 84)  return "Tuber Bulking — Rapid size gain";
+  if (days < 100) return "Maturation — Skin setting";
+  return "Ready — Harvest window open";
+}
