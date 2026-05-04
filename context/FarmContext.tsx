@@ -33,7 +33,7 @@ import {
   updateFarmRecord,
   updateSeason,
 } from "@/lib/storage";
-import { generatePlannedSchedule, getCurrentStage } from "@/constants/farmData";
+import { generatePlannedSchedule, getCurrentStage, CROP_TEMPLATES } from "@/constants/farmData";
 
 type FarmContextValue = {
   costs: Awaited<ReturnType<typeof getCosts>>;
@@ -118,7 +118,12 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const currentSchedule = useMemo(() => generatePlannedSchedule(activeSeason?.template_id || ""), [activeSeason]);
+  const currentSchedule = useMemo(() => {
+    const template = CROP_TEMPLATES.find((t) => t.id === activeSeason?.template_id) ?? CROP_TEMPLATES[0];
+    const plantingDate = activeSeason?.section_a?.planting_date ?? new Date().toISOString().split("T")[0];
+    if (!template) return [];
+    return generatePlannedSchedule(template, plantingDate);
+  }, [activeSeason]);
   const seasonId = activeSeason?.id || "";
   const farmId = activeFarm?.id || "";
   const totalSpent = useMemo(() => costs.reduce((sum, cost) => sum + cost.amount_kes, 0), [costs]);
