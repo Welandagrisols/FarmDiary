@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, Modal, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -39,7 +39,22 @@ function EditSeasonModal({ season, onClose, onSave }: {
   const [varietyA, setVarietyA] = useState(season.section_a.variety);
   const [plantingDateA, setPlantingDateA] = useState(season.section_a.planting_date);
   const [acresA, setAcresA] = useState(String(season.section_a.acres));
-  const [blightRiskA, setBlightRiskA] = useState(season.section_a.blight_risk);
+  const prevDateARef = useRef(season.section_a.planting_date);
+
+  const handleChangePlantingDateA = (newDateA: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(newDateA) && /^\d{4}-\d{2}-\d{2}$/.test(prevDateARef.current)) {
+      const deltaDays = Math.round((new Date(newDateA).getTime() - new Date(prevDateARef.current).getTime()) / 86400000);
+      if (deltaDays !== 0) {
+        setPlantingDateB((prev) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(prev)) return prev;
+          return new Date(new Date(prev).getTime() + deltaDays * 86400000).toISOString().split("T")[0];
+        });
+      }
+    }
+    prevDateARef.current = newDateA;
+    setPlantingDateA(newDateA);
+  };
+  const [blightRiskA, setBlightRiskA] = useState<"LOW" | "MEDIUM" | "HIGH">(season.section_a.blight_risk);
 
   const [varietyB, setVarietyB] = useState(season.section_b.variety);
   const [plantingDateB, setPlantingDateB] = useState(season.section_b.planting_date);
@@ -120,7 +135,8 @@ function EditSeasonModal({ season, onClose, onSave }: {
             <View style={editStyles.divider} />
 
             <Text style={editStyles.fieldLabel}>Planting Date</Text>
-            <TextInput style={editStyles.input} value={plantingDateA} onChangeText={setPlantingDateA} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
+            <TextInput style={editStyles.input} value={plantingDateA} onChangeText={handleChangePlantingDateA} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
+            <Text style={editStyles.fieldHint}>Changing this date will offset Section B by the same number of days</Text>
 
             <View style={editStyles.divider} />
 
@@ -394,4 +410,5 @@ const editStyles = StyleSheet.create({
   chipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySurface },
   chipText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textSecondary },
   chipTextActive: { color: COLORS.primary },
+  fieldHint: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: -4 },
 });

@@ -60,6 +60,7 @@ export default function DashboardScreen() {
     currentSchedule,
     harvestRecords,
     activeFarm,
+    inventory,
   } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,6 +78,12 @@ export default function DashboardScreen() {
   const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
   const totalYield = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_kg, 0);
   const netProfit = totalRevenue - totalSpent;
+
+  const lowStockItems = inventory.filter((item) => {
+    if (item.low_stock_threshold == null) return false;
+    const remaining = item.quantity_purchased - item.quantity_used;
+    return remaining <= item.low_stock_threshold;
+  });
 
   const hasOverdue = currentSchedule.some((activity) => {
     if (completedIds.includes(activity.id)) return false;
@@ -234,6 +241,30 @@ export default function DashboardScreen() {
               </Text>
               <Text style={styles.harvestText}>Net</Text>
             </View>
+          </View>
+        </Pressable>
+      )}
+
+      {lowStockItems.length > 0 && (
+        <Pressable style={styles.lowStockCard} onPress={() => router.push("/inventory")}>
+          <View style={styles.lowStockHeader}>
+            <Ionicons name="warning-outline" size={16} color={COLORS.amber} />
+            <Text style={styles.lowStockTitle}>Low Stock Alert</Text>
+            <View style={styles.lowStockBadge}><Text style={styles.lowStockBadgeText}>{lowStockItems.length}</Text></View>
+          </View>
+          <View style={styles.lowStockList}>
+            {lowStockItems.slice(0, 3).map((item) => {
+              const remaining = item.quantity_purchased - item.quantity_used;
+              return (
+                <View key={item.id} style={styles.lowStockRow}>
+                  <Text style={styles.lowStockItemName} numberOfLines={1}>{item.item_name}</Text>
+                  <Text style={styles.lowStockItemQty}>{remaining} {item.unit} left</Text>
+                </View>
+              );
+            })}
+            {lowStockItems.length > 3 && (
+              <Text style={styles.lowStockMore}>+{lowStockItems.length - 3} more items</Text>
+            )}
           </View>
         </Pressable>
       )}
@@ -466,6 +497,16 @@ const styles = StyleSheet.create({
   nextActivityDate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   daysUntilBadge: { backgroundColor: COLORS.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   daysUntilText: { fontFamily: "DMSans_700Bold", fontSize: 11 },
+  lowStockCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 10, borderWidth: 1, borderColor: COLORS.amberLight, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  lowStockHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  lowStockTitle: { flex: 1, fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  lowStockBadge: { backgroundColor: COLORS.amberLight, borderRadius: 999, width: 22, height: 22, alignItems: "center", justifyContent: "center" },
+  lowStockBadgeText: { fontFamily: "DMSans_700Bold", fontSize: 11, color: COLORS.amber },
+  lowStockList: { gap: 6 },
+  lowStockRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  lowStockItemName: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.text },
+  lowStockItemQty: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.amber },
+  lowStockMore: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted },
   sprayBar: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   sprayBarOk: { backgroundColor: COLORS.primarySurface },
   sprayBarWarn: { backgroundColor: COLORS.amberLight },

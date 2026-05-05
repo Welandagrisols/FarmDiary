@@ -163,6 +163,14 @@ export default function CostsScreen() {
   );
 
   const filteredTotal = filtered.reduce((sum, c) => sum + c.amount_kes, 0);
+
+  const categorySums: Record<string, number> = {};
+  for (const c of costs) {
+    categorySums[c.cost_category] = (categorySums[c.cost_category] || 0) + c.amount_kes;
+  }
+  const sortedCategories = Object.entries(categorySums).sort((a, b) => b[1] - a[1]);
+  const maxCategoryAmt = sortedCategories[0]?.[1] || 1;
+
   const prePlantingTotal = costs
     .filter((c) => c.cost_category === "Pre-Planting")
     .reduce((sum, c) => sum + c.amount_kes, 0);
@@ -233,6 +241,30 @@ export default function CostsScreen() {
           </View>
         </View>
       </View>
+
+      {/* Category Breakdown */}
+      {sortedCategories.length > 0 && (
+        <View style={styles.catBreakdown}>
+          {sortedCategories.map(([cat, amount]) => {
+            const colors = CATEGORY_COLORS[cat] || { bg: COLORS.borderLight, text: COLORS.textSecondary };
+            const pct = (amount / maxCategoryAmt) * 100;
+            const pctOfTotal = totalSpent > 0 ? ((amount / totalSpent) * 100).toFixed(0) : "0";
+            return (
+              <Pressable key={cat} onPress={() => setActiveFilter(cat)} style={styles.catItem}>
+                <View style={styles.catItemHeader}>
+                  <View style={[styles.catDot, { backgroundColor: colors.text }]} />
+                  <Text style={styles.catItemName} numberOfLines={1}>{cat}</Text>
+                  <Text style={styles.catItemPct}>{pctOfTotal}%</Text>
+                  <Text style={styles.catItemAmt}>{formatKES(amount)}</Text>
+                </View>
+                <View style={styles.catBarBg}>
+                  <View style={[styles.catBarFill, { width: `${pct}%`, backgroundColor: colors.text }]} />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {/* Category Filter Tabs */}
       <ScrollView
@@ -543,6 +575,15 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
     color: COLORS.text,
   },
+  catBreakdown: { marginHorizontal: 16, marginBottom: 6, backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  catItem: { gap: 5 },
+  catItemHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  catDot: { width: 8, height: 8, borderRadius: 4 },
+  catItemName: { flex: 1, fontFamily: "DMSans_500Medium", fontSize: 12, color: COLORS.text },
+  catItemPct: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.textSecondary, minWidth: 30, textAlign: "right" },
+  catItemAmt: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text, minWidth: 70, textAlign: "right" },
+  catBarBg: { height: 5, backgroundColor: COLORS.borderLight, borderRadius: 3, overflow: "hidden" },
+  catBarFill: { height: "100%", borderRadius: 3 },
   deleteRowBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
     alignSelf: "flex-start", marginTop: 8,

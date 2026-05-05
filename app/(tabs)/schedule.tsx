@@ -57,7 +57,19 @@ function getTypeColor(type: string) {
   }
 }
 
-function ActivityCard({ activity, status, onPress }: { activity: PlannedActivity; status: ActivityStatus; onPress: () => void }) {
+function ActivityCard({
+  activity,
+  status,
+  onPress,
+  onQuickDone,
+  completing,
+}: {
+  activity: PlannedActivity;
+  status: ActivityStatus;
+  onPress: () => void;
+  onQuickDone?: () => void;
+  completing?: boolean;
+}) {
   const typeColor = getTypeColor(activity.activityType);
   const daysUntil = getDaysUntil(activity.plannedDateA);
 
@@ -84,7 +96,19 @@ function ActivityCard({ activity, status, onPress }: { activity: PlannedActivity
           <Text style={[styles.dueText, { color: status === "overdue" ? COLORS.red : status === "due-soon" ? COLORS.amber : COLORS.textSecondary }]}>
             {daysUntil === 0 ? "Due today" : daysUntil < 0 ? `${Math.abs(daysUntil)} days late` : `${daysUntil} days left`}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+          {status !== "completed" && onQuickDone ? (
+            <Pressable
+              style={[styles.quickDoneBtn, completing && { opacity: 0.5 }]}
+              onPress={(e) => { e.stopPropagation?.(); onQuickDone(); }}
+              disabled={completing}
+              hitSlop={6}
+            >
+              <Ionicons name="checkmark" size={12} color={COLORS.primary} />
+              <Text style={styles.quickDoneBtnText}>{completing ? "Saving…" : "Done"}</Text>
+            </Pressable>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+          )}
         </View>
       </View>
     </Pressable>
@@ -206,9 +230,10 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
-  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule, activeSeason, costs } = useFarm();
+  const { getCompletedActivityIds, activityLogs, removeActivityLog, currentSchedule, activeSeason, costs, quickCompleteActivity } = useFarm();
   const [selectedActivity, setSelectedActivity] = useState<PlannedActivity | null>(null);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   const completedIds = getCompletedActivityIds();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -223,11 +248,22 @@ export default function ScheduleScreen() {
   const prePlantingCosts = costs.filter((cost) => cost.season_id === activeSeason?.id && cost.is_pre_planting);
   const prePlantingTotal = prePlantingCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
 
+  const handleQuickDone = useCallback(async (item: typeof data[0]) => {
+    setCompletingId(item.id);
+    try {
+      await quickCompleteActivity(item, "section-a");
+    } finally {
+      setCompletingId(null);
+    }
+  }, [quickCompleteActivity]);
+
   const renderItem = useCallback(
     ({ item }: { item: typeof data[0] }) => (
       <ActivityCard
         activity={item}
         status={item.status}
+        completing={completingId === item.id}
+        onQuickDone={item.status !== "completed" ? () => handleQuickDone(item) : undefined}
         onPress={() => {
           if (item.status === "completed") {
             const log = [...activityLogs]
@@ -242,7 +278,7 @@ export default function ScheduleScreen() {
         }}
       />
     ),
-    [activityLogs]
+    [activityLogs, completingId, handleQuickDone]
   );
 
   return (
@@ -396,6 +432,8 @@ const styles = StyleSheet.create({
   stageBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   stageBadgeText: { fontFamily: "DMSans_600SemiBold", fontSize: 10, letterSpacing: 0.3 },
   activityName: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.text, lineHeight: 20 },
+  quickDoneBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.primarySurface, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 },
+  quickDoneBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   activityStage: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
   datesRow: { gap: 2 },
   dateValue: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },

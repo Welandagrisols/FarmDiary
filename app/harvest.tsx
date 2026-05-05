@@ -49,6 +49,9 @@ export default function HarvestScreen() {
   const totalBags = harvestRecords.reduce((s, r) => s + r.bags, 0);
   const totalKg = harvestRecords.reduce((s, r) => s + r.total_kg, 0);
   const totalRevenue = harvestRecords.reduce((s, r) => s + r.total_revenue_kes, 0);
+  const totalAcres = activeSeason ? activeSeason.section_a.acres + activeSeason.section_b.acres : 0;
+  const bagsPerAcre = totalAcres > 0 && totalBags > 0 ? (totalBags / totalAcres).toFixed(1) : null;
+  const kesPerKg = totalKg > 0 ? Math.round(totalRevenue / totalKg) : null;
   const sectionA = harvestRecords.filter((r) => r.section_id === "section-a");
   const sectionB = harvestRecords.filter((r) => r.section_id === "section-b");
   const revenueA = sectionA.reduce((s, r) => s + r.total_revenue_kes, 0);
@@ -83,6 +86,25 @@ export default function HarvestScreen() {
             </View>
             <Ionicons name="leaf-outline" size={32} color={COLORS.white} style={{ opacity: 0.5 }} />
           </View>
+
+          {totalBags > 0 && (
+            <View style={styles.yieldMetrics}>
+              <View style={styles.yieldMetric}>
+                <Text style={styles.yieldValue}>{bagsPerAcre ?? "—"}</Text>
+                <Text style={styles.yieldLabel}>Bags/Acre</Text>
+              </View>
+              <View style={styles.yieldDivider} />
+              <View style={styles.yieldMetric}>
+                <Text style={styles.yieldValue}>{kesPerKg != null ? `${kesPerKg.toLocaleString()}` : "—"}</Text>
+                <Text style={styles.yieldLabel}>KES/kg</Text>
+              </View>
+              <View style={styles.yieldDivider} />
+              <View style={styles.yieldMetric}>
+                <Text style={styles.yieldValue}>{totalKg > 0 && totalBags > 0 ? (totalKg / totalBags).toFixed(1) : "—"}</Text>
+                <Text style={styles.yieldLabel}>kg/Bag</Text>
+              </View>
+            </View>
+          )}
 
           {(sectionA.length > 0 || sectionB.length > 0) && (
             <View style={styles.sectionSplit}>
@@ -182,6 +204,11 @@ const styles = StyleSheet.create({
   summaryLabel: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.white, opacity: 0.75 },
   summaryRevenue: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.white },
   summaryMeta: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.white, opacity: 0.8 },
+  yieldMetrics: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" },
+  yieldMetric: { flex: 1, padding: 10, alignItems: "center", gap: 2 },
+  yieldDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)" },
+  yieldValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.white },
+  yieldLabel: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.white, opacity: 0.7 },
   sectionSplit: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" },
   sectionSplitItem: { flex: 1, padding: 12, gap: 2 },
   splitDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)" },
