@@ -22,7 +22,7 @@ function SectionBadge({ sectionId }: { sectionId: string }) {
 
 export default function HarvestScreen() {
   const insets = useSafeAreaInsets();
-  const { harvestRecords, removeHarvestRecord, refresh } = useFarm();
+  const { harvestRecords, removeHarvestRecord, refresh, activeSeason } = useFarm();
   const [refreshing, setRefreshing] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -87,13 +87,13 @@ export default function HarvestScreen() {
           {(sectionA.length > 0 || sectionB.length > 0) && (
             <View style={styles.sectionSplit}>
               <View style={styles.sectionSplitItem}>
-                <Text style={styles.sectionSplitLabel}>Section A (Stephen)</Text>
+                <Text style={styles.sectionSplitLabel}>Section A{activeSeason?.section_a.variety ? ` (${activeSeason.section_a.variety})` : ""}</Text>
                 <Text style={styles.sectionSplitValue}>{bagsA} bags</Text>
                 <Text style={styles.sectionSplitRevenue}>{formatKES(revenueA)}</Text>
               </View>
               <View style={styles.splitDivider} />
               <View style={styles.sectionSplitItem}>
-                <Text style={styles.sectionSplitLabel}>Section B (Shangi)</Text>
+                <Text style={styles.sectionSplitLabel}>Section B{activeSeason?.section_b.variety ? ` (${activeSeason.section_b.variety})` : ""}</Text>
                 <Text style={styles.sectionSplitValue}>{bagsB} bags</Text>
                 <Text style={styles.sectionSplitRevenue}>{formatKES(revenueB)}</Text>
               </View>

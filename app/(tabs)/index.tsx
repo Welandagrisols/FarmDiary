@@ -60,6 +60,7 @@ export default function DashboardScreen() {
     activeSeason,
     currentSchedule,
     harvestRecords,
+    activeFarm,
   } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,9 +131,9 @@ export default function DashboardScreen() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.farmName}>Rift Valley</Text>
+          <Text style={styles.farmName}>{activeFarm?.name || "My Farm"}</Text>
           <Text style={styles.farmSub}>
-            Potato Farm — {activeSeason?.season_name || "No active season"}
+            {activeFarm?.crop_type || "Farm"} — {activeSeason?.season_name || "No active season"}
           </Text>
         </View>
         <Pressable

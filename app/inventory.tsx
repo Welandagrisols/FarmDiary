@@ -101,7 +101,7 @@ function InventoryCard({ item, onPress, onDelete }: { item: InventoryItem; onPre
   );
 }
 
-function AddStockModal({ onClose, onSubmit, seasonId }: { onClose: () => void; onSubmit: (item: Omit<InventoryItem, "id" | "created_at">) => void; seasonId: string }) {
+function AddStockModal({ onClose, onSubmit, seasonId, farmId }: { onClose: () => void; onSubmit: (item: Omit<InventoryItem, "id" | "created_at">) => void; seasonId: string; farmId: string }) {
   const [productName, setProductName] = useState("");
   const [category, setCategory] = useState("Fungicide");
   const [qty, setQty] = useState("");
@@ -254,7 +254,7 @@ export default function InventoryScreen() {
         }
       />
 
-      {showAdd && <AddStockModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} />}
+      {showAdd && <AddStockModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} farmId={farmId} />}
 
       {selectedItem && (
         <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={() => setSelectedItem(null)}>
