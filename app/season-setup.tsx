@@ -84,7 +84,6 @@ export default function SeasonSetupScreen() {
 
   const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -14));
   const [seasonNotes, setSeasonNotes] = useState("");
-  const [budgetKes, setBudgetKes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-planting cost planner state
@@ -157,7 +156,6 @@ export default function SeasonSetupScreen() {
         season_name: seasonName.trim(),
         season_type: seasonType,
         status: "active",
-        budget_kes: budgetKes.trim() ? (parseFloat(budgetKes) || null) : null,
         template_id: template.id,
         section_a: {
           variety: actualVarietyA,
@@ -300,19 +298,6 @@ export default function SeasonSetupScreen() {
                 keyboardType="numbers-and-punctuation"
               />
               <Text style={styles.fieldHint}>Date when land preparation and seed buying started</Text>
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Season Budget (KES, optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={budgetKes}
-                onChangeText={setBudgetKes}
-                placeholder="e.g. 80000"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numeric"
-              />
-              <Text style={styles.fieldHint}>Used to track how much of your budget has been spent</Text>
             </View>
 
             <View style={styles.field}>

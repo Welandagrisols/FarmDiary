@@ -48,6 +48,7 @@ type FarmContextValue = {
   seasons: SeasonRecord[];
   activeSeason: SeasonRecord | null;
   currentSchedule: ReturnType<typeof generatePlannedSchedule>;
+  plannedBudget: number;
   seasonId: string;
   farms: Awaited<ReturnType<typeof getFarms>>;
   activeFarm: Awaited<ReturnType<typeof getActiveFarmRecord>>;
@@ -135,6 +136,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     if (!template) return [];
     return generatePlannedSchedule(template, plantingDate);
   }, [activeSeason]);
+  const plannedBudget = useMemo(() => currentSchedule.reduce((sum, a) => sum + a.estimatedTotalCost, 0), [currentSchedule]);
   const seasonId = activeSeason?.id || "";
   const farmId = activeFarm?.id || "";
   const totalSpent = useMemo(() => costs.reduce((sum, cost) => sum + cost.amount_kes, 0), [costs]);
@@ -180,7 +182,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const removePersonalExpense = useCallback(async (id: string) => { await deletePersonalExpense(id); setPersonalExpenses((prev) => prev.filter((e) => e.id !== id)); }, []);
   const totalPersonalExpenses = useMemo(() => personalExpenses.reduce((sum, e) => sum + e.amount_kes, 0), [personalExpenses]);
 
-  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateSeason, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
+  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateSeason, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
 
   return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>;
 }

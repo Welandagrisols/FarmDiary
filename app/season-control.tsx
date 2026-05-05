@@ -35,7 +35,6 @@ function EditSeasonModal({ season, onClose, onSave }: {
   const [saving, setSaving] = useState(false);
 
   const [seasonName, setSeasonName] = useState(season.season_name);
-  const [budget, setBudget] = useState(season.budget_kes != null ? String(season.budget_kes) : "");
 
   const [varietyA, setVarietyA] = useState(season.section_a.variety);
   const [plantingDateA, setPlantingDateA] = useState(season.section_a.planting_date);
@@ -58,7 +57,6 @@ function EditSeasonModal({ season, onClose, onSave }: {
     try {
       await onSave({
         season_name: seasonName.trim(),
-        budget_kes: budget.trim() ? (parseFloat(budget) || null) : null,
         section_a: {
           ...season.section_a,
           variety: varietyA.trim() || season.section_a.variety,
@@ -107,11 +105,6 @@ function EditSeasonModal({ season, onClose, onSave }: {
           <View style={editStyles.card}>
             <Text style={editStyles.fieldLabel}>Season Name</Text>
             <TextInput style={editStyles.input} value={seasonName} onChangeText={setSeasonName} placeholder="e.g. Long Rains 2027" placeholderTextColor={COLORS.textMuted} />
-
-            <View style={editStyles.divider} />
-
-            <Text style={editStyles.fieldLabel}>Season Budget (KES)</Text>
-            <TextInput style={editStyles.input} value={budget} onChangeText={setBudget} placeholder="e.g. 80000" placeholderTextColor={COLORS.textMuted} keyboardType="numeric" />
 
             <View style={editStyles.divider} />
 
@@ -188,7 +181,7 @@ function EditSeasonModal({ season, onClose, onSave }: {
 
 export default function SeasonControlScreen() {
   const insets = useSafeAreaInsets();
-  const { seasons, activeSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, costs, harvestRecords } = useFarm();
+  const { seasons, activeSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, costs, harvestRecords, plannedBudget } = useFarm();
   const [closing, setClosing] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -250,24 +243,24 @@ export default function SeasonControlScreen() {
               </View>
             </View>
 
-            {activeSeason.budget_kes != null && (
+            {plannedBudget > 0 && (
               <View style={styles.budgetBar}>
                 <View style={styles.budgetBarHeader}>
-                  <Text style={styles.budgetBarLabel}>Budget</Text>
+                  <Text style={styles.budgetBarLabel}>Planned Budget</Text>
                   <Text style={styles.budgetBarValue}>
-                    {formatKES(activeSeasonCosts)} / {formatKES(activeSeason.budget_kes)}
+                    {formatKES(activeSeasonCosts)} / {formatKES(plannedBudget)}
                   </Text>
                 </View>
                 <View style={styles.budgetTrack}>
                   <View style={[styles.budgetFill, {
-                    width: `${Math.min((activeSeasonCosts / activeSeason.budget_kes) * 100, 100)}%`,
-                    backgroundColor: activeSeasonCosts > activeSeason.budget_kes ? COLORS.red : COLORS.primary,
+                    width: `${Math.min((activeSeasonCosts / plannedBudget) * 100, 100)}%`,
+                    backgroundColor: activeSeasonCosts > plannedBudget ? COLORS.red : COLORS.primary,
                   }]} />
                 </View>
                 <Text style={styles.budgetRemaining}>
-                  {activeSeasonCosts > activeSeason.budget_kes
-                    ? `${formatKES(activeSeasonCosts - activeSeason.budget_kes)} over budget`
-                    : `${formatKES(activeSeason.budget_kes - activeSeasonCosts)} remaining`}
+                  {activeSeasonCosts > plannedBudget
+                    ? `${formatKES(activeSeasonCosts - plannedBudget)} over planned budget`
+                    : `${formatKES(plannedBudget - activeSeasonCosts)} of planned budget remaining`}
                 </Text>
               </View>
             )}

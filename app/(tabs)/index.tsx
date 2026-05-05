@@ -71,8 +71,8 @@ export default function DashboardScreen() {
   }, [refresh]);
 
   const completedIds = getCompletedActivityIds();
-  const seasonBudget = activeSeason?.budget_kes ?? null;
-  const budgetPercent = seasonBudget && seasonBudget > 0 ? Math.min((totalSpent / seasonBudget) * 100, 100) : null;
+  const plannedBudget = currentSchedule.reduce((sum, a) => sum + a.estimatedTotalCost, 0);
+  const budgetPercent = plannedBudget > 0 ? Math.min((totalSpent / plannedBudget) * 100, 100) : null;
   const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
   const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
   const totalYield = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_kg, 0);
