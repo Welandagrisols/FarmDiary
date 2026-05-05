@@ -13,7 +13,6 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { TOTAL_ESTIMATED_COST } from "@/constants/farmData";
 import {
   getGrowthStage,
   getDaysSincePlanting,
@@ -72,8 +71,8 @@ export default function DashboardScreen() {
   }, [refresh]);
 
   const completedIds = getCompletedActivityIds();
-  const estimatedTotal = TOTAL_ESTIMATED_COST;
-  const budgetPercent = Math.min((totalSpent / estimatedTotal) * 100, 100);
+  const seasonBudget = activeSeason?.budget_kes ?? null;
+  const budgetPercent = seasonBudget && seasonBudget > 0 ? Math.min((totalSpent / seasonBudget) * 100, 100) : null;
   const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
   const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
   const totalYield = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_kg, 0);
@@ -183,7 +182,9 @@ export default function DashboardScreen() {
               <Text style={styles.summaryText}>Pending tasks</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{budgetPercent.toFixed(0)}%</Text>
+              <Text style={styles.summaryValue}>
+                {budgetPercent !== null ? `${budgetPercent.toFixed(0)}%` : "—"}
+              </Text>
               <Text style={styles.summaryText}>Budget used</Text>
             </View>
           </View>

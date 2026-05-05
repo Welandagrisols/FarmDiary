@@ -135,6 +135,7 @@ export interface SeasonRecord {
   section_a: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
   section_b: { variety: string; planting_date: string; acres: number; blight_risk: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
   pre_planting_start_date: string | null;
+  budget_kes: number | null;
   total_revenue_kes: number | null;
   total_cost_kes: number | null;
   notes: string | null;
@@ -204,7 +205,7 @@ export async function seedIfNeeded(): Promise<void> {
   if (seeded) return;
   const today = new Date().toISOString().split("T")[0];
   const farm: FarmRecord = { ...FARM_SEED, crop_type: "Potato", notes: null, created_at: new Date().toISOString() };
-  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: FARM_SEED.id, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
+  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: FARM_SEED.id, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, budget_kes: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
   const inventory: InventoryItem[] = INVENTORY_MASTER.map((item) => ({ id: genId(), farm_id: farm.id, season_id: season.id, product_name: item.product, category: item.category, quantity_purchased: item.qty, unit: item.unit, unit_price_kes: item.unitPrice, quantity_used: 0, purchase_date: today, supplier: null, low_stock_threshold: null, is_historical: false, notes: null, created_at: new Date().toISOString() }));
   await writeJson(KEYS.FARMS, [farm]);
   await writeJson(KEYS.SEASONS, [season]);
@@ -223,7 +224,7 @@ export async function seedSeasonIfNeeded(): Promise<void> {
   if (seasons.length > 0) return;
   const farms = await getFarms();
   const farmId = farms[0]?.id || FARM_SEED.id;
-  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: farmId, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
+  const season: SeasonRecord = { id: SEASON_SEED.id, farm_id: farmId, season_number: 1, season_name: SEASON_SEED.name, season_type: SEASON_SEED.type, status: "active", template_id: SEASON_SEED.templateId, section_a: { variety: SEASON_SEED.section_a.variety, planting_date: SEASON_SEED.section_a.planting_date, acres: SEASON_SEED.section_a.acres, blight_risk: SEASON_SEED.section_a.blight_risk, notes: null }, section_b: { variety: SEASON_SEED.section_b.variety, planting_date: SEASON_SEED.section_b.planting_date, acres: SEASON_SEED.section_b.acres, blight_risk: SEASON_SEED.section_b.blight_risk, notes: null }, pre_planting_start_date: null, budget_kes: null, total_revenue_kes: null, total_cost_kes: null, notes: null, created_at: new Date().toISOString(), closed_at: null };
   await writeJson(KEYS.SEASONS, [season]);
   await AsyncStorage.setItem(KEYS.ACTIVE_SEASON_ID, season.id);
 }

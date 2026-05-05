@@ -59,10 +59,6 @@ export default function MoreScreen() {
             <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
           </View>
         </Pressable>
-        <Pressable style={styles.backToPicker} onPress={() => router.replace("/farm-picker")}>
-          <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.backToPickerText}>Go back to farm picker</Text>
-        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -164,8 +160,6 @@ const styles = StyleSheet.create({
   farmRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   farmCountBadge: { backgroundColor: COLORS.primarySurface, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   farmCountText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
-  backToPicker: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardBg },
-  backToPickerText: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
   menuCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: "hidden" },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
   menuIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
