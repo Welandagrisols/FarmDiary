@@ -105,10 +105,15 @@ export default function SeasonSetupScreen() {
   const actualVarietyB = varietyB === "Custom" ? customVarietyB : varietyB;
 
   const template = CROP_TEMPLATES[0];
-  const previewSchedule = useMemo(
+  const previewScheduleA = useMemo(
     () => generatePlannedSchedule(template, plantingDateA),
     [plantingDateA, template]
   );
+  const previewScheduleB = useMemo(
+    () => useSectionB ? generatePlannedSchedule(template, plantingDateB) : [],
+    [plantingDateB, template, useSectionB]
+  );
+  const previewSchedule = previewScheduleA;
 
   const estimatedHarvestA = addDays(plantingDateA, selectedVarA.maturityDays);
   const estimatedHarvestB = useSectionB ? addDays(plantingDateB, selectedVarB.maturityDays) : null;
@@ -618,27 +623,30 @@ export default function SeasonSetupScreen() {
               {previewSchedule.length} activities generated from planting date
             </Text>
 
-            {previewSchedule.map((activity, idx) => (
-              <View key={activity.id} style={styles.scheduleRow}>
-                <View style={styles.scheduleRowLeft}>
-                  <View style={[styles.scheduleNum, { backgroundColor: COLORS.primarySurface }]}>
-                    <Text style={styles.scheduleNumText}>{idx + 1}</Text>
+            {previewScheduleA.map((activity, idx) => {
+              const secBDate = previewScheduleB[idx]?.plannedDateA;
+              return (
+                <View key={activity.id} style={styles.scheduleRow}>
+                  <View style={styles.scheduleRowLeft}>
+                    <View style={[styles.scheduleNum, { backgroundColor: COLORS.primarySurface }]}>
+                      <Text style={styles.scheduleNumText}>{idx + 1}</Text>
+                    </View>
+                    <View style={styles.scheduleInfo}>
+                      <Text style={styles.scheduleName}>{activity.name}</Text>
+                      <Text style={styles.scheduleDate}>
+                        Sec A: {formatDate(activity.plannedDateA)}
+                        {useSectionB && secBDate ? `  ·  Sec B: ${formatDate(secBDate)}` : ""}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.scheduleInfo}>
-                    <Text style={styles.scheduleName}>{activity.name}</Text>
-                    <Text style={styles.scheduleDate}>
-                      Sec A: {formatDate(activity.plannedDateA)}
-                      {useSectionB ? `  ·  Sec B: ${formatDate(activity.plannedDateB)}` : ""}
+                  <View style={[styles.scheduleTypeBadge, { backgroundColor: getTypeColor(activity.activityType).bg }]}>
+                    <Text style={[styles.scheduleTypeText, { color: getTypeColor(activity.activityType).color }]}>
+                      {activity.activityType.split(" ")[0]}
                     </Text>
                   </View>
                 </View>
-                <View style={[styles.scheduleTypeBadge, { backgroundColor: getTypeColor(activity.activityType).bg }]}>
-                  <Text style={[styles.scheduleTypeText, { color: getTypeColor(activity.activityType).color }]}>
-                    {activity.activityType.split(" ")[0]}
-                  </Text>
-                </View>
-              </View>
-            ))}
+              );
+            })}
 
             <View style={styles.confirmNote}>
               <Ionicons name="information-circle-outline" size={16} color={COLORS.primary} />

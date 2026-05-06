@@ -1,15 +1,14 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert, TextInput } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
-import * as XLSX from "xlsx";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES, addCost, addInventoryItem, addHarvestRecord, addActivityLog, addObservation } from "@/lib/storage";
+import { formatKES, addCost, addInventoryItem, addHarvestRecord, addActivityLog, addFieldObservation } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
 function escapeCsv(val: string | number | boolean | null | undefined): string {
@@ -17,10 +16,6 @@ function escapeCsv(val: string | number | boolean | null | undefined): string {
   const str = String(val);
   if (str.includes(",") || str.includes('"') || str.includes("\n")) return '"' + str.replace(/"/g, '""') + '"';
   return str;
-}
-
-function rowsToCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]): string {
-  return [headers.map(escapeCsv).join(","), ...rows.map((r) => r.map(escapeCsv).join(","))].join("\n");
 }
 
 async function shareFile(filename: string, content: string, mimeType: string) {
@@ -46,12 +41,22 @@ async function shareFile(filename: string, content: string, mimeType: string) {
   await Sharing.shareAsync(path, { mimeType, dialogTitle: `Share ${filename}` });
 }
 
+async function readPickedFile(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    return response.text();
+  }
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+}
+
 export default function ExportScreen() {
   const insets = useSafeAreaInsets();
   const { costs, activityLogs, inventory, observations, harvestRecords, seasonId, refresh, activeSeason, activeFarm, farmId } = useFarm();
   const [exporting, setExporting] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
   const today = new Date().toISOString().split("T")[0];
 
   const exportFullJson = async () => {
@@ -82,9 +87,101 @@ export default function ExportScreen() {
     }
   };
 
-  const exportItems = [
-    { key: "json", icon: "server-outline", title: "Full Backup (JSON)", subtitle: "Complete farm and season backup", count: `${costs.length + activityLogs.length + inventory.length + observations.length + harvestRecords.length} records`, color: COLORS.red, onPress: exportFullJson },
-  ];
+  const importFromJson = async () => {
+    if (importing) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      setImporting(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const fileUri = result.assets[0].uri;
+      const rawText = await readPickedFile(fileUri);
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        Alert.alert("Invalid File", "The file could not be read as JSON. Please use a backup file exported from Farm Diary.");
+        return;
+      }
+
+      if (!data.costs && !data.activity_logs && !data.inventory && !data.harvest_records && !data.observations) {
+        Alert.alert("Invalid Backup", "This file does not look like a Farm Diary backup. Expected fields: costs, activity_logs, inventory, harvest_records, observations.");
+        return;
+      }
+
+      const importCosts: any[] = Array.isArray(data.costs) ? data.costs : [];
+      const importLogs: any[] = Array.isArray(data.activity_logs) ? data.activity_logs : [];
+      const importInventory: any[] = Array.isArray(data.inventory) ? data.inventory : [];
+      const importHarvest: any[] = Array.isArray(data.harvest_records) ? data.harvest_records : [];
+      const importObs: any[] = Array.isArray(data.observations) ? data.observations : [];
+
+      const totalRecords = importCosts.length + importLogs.length + importInventory.length + importHarvest.length + importObs.length;
+
+      Alert.alert(
+        "Import Backup",
+        `This backup contains:\n• ${importCosts.length} cost entries\n• ${importLogs.length} activity logs\n• ${importInventory.length} inventory items\n• ${importHarvest.length} harvest records\n• ${importObs.length} observations\n\nAll records will be imported into the current farm and season. Duplicates may appear if you import the same file twice.`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => setImporting(false) },
+          {
+            text: `Import ${totalRecords} records`,
+            onPress: async () => {
+              try {
+                let imported = 0;
+
+                for (const c of importCosts) {
+                  try {
+                    await addCost({ ...c, farm_id: farmId, season_id: seasonId, id: undefined });
+                    imported++;
+                  } catch {}
+                }
+                for (const l of importLogs) {
+                  try {
+                    await addActivityLog({ ...l, farm_id: farmId, season_id: seasonId, id: undefined }, []);
+                    imported++;
+                  } catch {}
+                }
+                for (const item of importInventory) {
+                  try {
+                    await addInventoryItem({ ...item, farm_id: farmId, season_id: seasonId, id: undefined });
+                    imported++;
+                  } catch {}
+                }
+                for (const h of importHarvest) {
+                  try {
+                    await addHarvestRecord({ ...h, farm_id: farmId, season_id: seasonId, id: undefined });
+                    imported++;
+                  } catch {}
+                }
+                for (const o of importObs) {
+                  try {
+                    await addFieldObservation({ ...o, farm_id: farmId, season_id: seasonId, id: undefined });
+                    imported++;
+                  } catch {}
+                }
+
+                await refresh();
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert("Import Complete", `${imported} of ${totalRecords} records imported successfully.`);
+              } catch (err) {
+                Alert.alert("Import Failed", "An error occurred while importing. Some records may have been saved.");
+              } finally {
+                setImporting(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      Alert.alert("Error", "Could not open the file picker.");
+      setImporting(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -94,26 +191,68 @@ export default function ExportScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionLabel}>Export Data</Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 40 }]} showsVerticalScrollIndicator={false}>
+
+        {/* Farm context banner */}
         <View style={styles.infoCard}>
           <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
           <Text style={styles.infoText}>{activeFarm?.name || "This farm"} · {activeSeason?.season_name || "Current season"}</Text>
         </View>
-        {exportItems.map((item) => {
-          const isLoading = exporting === item.key;
-          return (
-            <Pressable key={item.key} style={({ pressed }) => [styles.exportCard, pressed && { opacity: 0.85 }, !!exporting && exporting !== item.key && styles.cardDimmed]} onPress={item.onPress} disabled={!!exporting}>
-              <View style={[styles.exportIcon, { backgroundColor: item.color + "18" }]}><Ionicons name={(isLoading ? "hourglass-outline" : item.icon) as any} size={24} color={item.color} /></View>
-              <View style={styles.exportInfo}>
-                <Text style={styles.exportTitle}>{item.title}</Text>
-                <Text style={styles.exportSubtitle}>{item.subtitle}</Text>
-                <Text style={styles.exportCount}>{item.count}</Text>
-              </View>
-              <View style={styles.exportArrow}>{isLoading ? <Text style={[styles.exportingText, { color: item.color }]}>Preparing…</Text> : <Ionicons name="share-outline" size={20} color={item.color} />}</View>
-            </Pressable>
-          );
-        })}
+
+        {/* Export section */}
+        <Text style={styles.sectionLabel}>Export Data</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && { opacity: 0.85 }, !!exporting && styles.cardDimmed]}
+          onPress={exportFullJson}
+          disabled={!!exporting || importing}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: COLORS.primary + "18" }]}>
+            <Ionicons name={exporting === "json" ? "hourglass-outline" : "server-outline"} size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.actionInfo}>
+            <Text style={styles.actionTitle}>Full Backup (JSON)</Text>
+            <Text style={styles.actionSubtitle}>All costs, logs, inventory, observations, harvest</Text>
+            <Text style={styles.actionCount}>{costs.length + activityLogs.length + inventory.length + observations.length + harvestRecords.length} records</Text>
+          </View>
+          <View style={styles.actionRight}>
+            {exporting === "json"
+              ? <Text style={[styles.actionStatus, { color: COLORS.primary }]}>Preparing…</Text>
+              : <Ionicons name="share-outline" size={20} color={COLORS.primary} />
+            }
+          </View>
+        </Pressable>
+
+        {/* Import section */}
+        <Text style={[styles.sectionLabel, { marginTop: 8 }]}>Import Data</Text>
+
+        <View style={styles.importNote}>
+          <Ionicons name="alert-circle-outline" size={16} color={COLORS.amber} />
+          <Text style={styles.importNoteText}>
+            Import adds records to the current farm and season. It does not delete existing data. Importing the same file twice will create duplicates.
+          </Text>
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && { opacity: 0.85 }, importing && styles.cardDimmed]}
+          onPress={importFromJson}
+          disabled={!!exporting || importing}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: COLORS.blue + "18" }]}>
+            <Ionicons name={importing ? "hourglass-outline" : "cloud-download-outline"} size={24} color={COLORS.blue} />
+          </View>
+          <View style={styles.actionInfo}>
+            <Text style={styles.actionTitle}>Restore from Backup</Text>
+            <Text style={styles.actionSubtitle}>Pick a JSON backup file to import records</Text>
+            <Text style={styles.actionCount}>Costs · logs · inventory · harvest · observations</Text>
+          </View>
+          <View style={styles.actionRight}>
+            {importing
+              ? <Text style={[styles.actionStatus, { color: COLORS.blue }]}>Working…</Text>
+              : <Ionicons name="folder-open-outline" size={20} color={COLORS.blue} />
+            }
+          </View>
+        </Pressable>
+
       </ScrollView>
     </View>
   );
@@ -121,20 +260,22 @@ export default function ExportScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.cardBg },
   headerTitle: { fontFamily: "DMSans_700Bold", fontSize: 18, color: COLORS.text },
   scroll: { flex: 1 },
-  scrollContent: { padding: 16, gap: 12, paddingBottom: 80 },
+  scrollContent: { padding: 16, gap: 12 },
   sectionLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
   infoCard: { flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: COLORS.primarySurface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: COLORS.primary + "30" },
   infoText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.primary, lineHeight: 19 },
-  exportCard: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  actionCard: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   cardDimmed: { opacity: 0.45 },
-  exportIcon: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  exportInfo: { flex: 1, gap: 2 },
-  exportTitle: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
-  exportSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  exportCount: { fontFamily: "DMSans_500Medium", fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  exportArrow: { alignItems: "center", justifyContent: "center", minWidth: 70 },
-  exportingText: { fontFamily: "DMSans_600SemiBold", fontSize: 12 },
+  actionIcon: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  actionInfo: { flex: 1, gap: 2 },
+  actionTitle: { fontFamily: "DMSans_700Bold", fontSize: 15, color: COLORS.text },
+  actionSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  actionCount: { fontFamily: "DMSans_500Medium", fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  actionRight: { alignItems: "center", justifyContent: "center", minWidth: 60 },
+  actionStatus: { fontFamily: "DMSans_600SemiBold", fontSize: 12 },
+  importNote: { flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: COLORS.amberLight, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: COLORS.amber + "40" },
+  importNoteText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.amberDark, lineHeight: 18 },
 });
