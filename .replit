@@ -101,3 +101,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "./node_modules/.bin/eas build --platform android --profile preview --non-interactive --no-wait"
+
+[userenv]
+
+[userenv.shared]

@@ -1,12 +1,29 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   ActivityLog,
+  HarvestRecord,
+  InventoryItem,
+  ObservationRecord,
+  PersonalExpense,
+  SeasonRecord,
+  FarmRecord,
+  CostEntry,
+  formatKES,
+  formatDate,
+  isPrePlanting,
+  getDaysUntil,
+  getDaysSincePlanting,
+  getGrowthStage,
+  PERSONAL_EXPENSE_CATEGORIES,
+} from "@/lib/storage";
+import {
   addActivityLog,
   addCost,
   addFieldObservation,
   addFarmRecord,
   addHarvestRecord,
   addInventoryItem,
+  addPersonalExpense,
   addSeason,
   closeSeason,
   deleteActivityLog,
@@ -14,6 +31,7 @@ import {
   deleteHarvestRecord,
   deleteInventoryItem,
   deleteObservation,
+  deletePersonalExpense,
   getActiveFarmRecord,
   getActiveSeason,
   getActivityLogs,
@@ -22,25 +40,18 @@ import {
   getHarvestRecords,
   getInventory,
   getObservations,
-  getSeasons,
-  HarvestRecord,
-  InventoryItem,
-  ObservationRecord,
-  PersonalExpense,
   getPersonalExpenses,
-  addPersonalExpense,
-  deletePersonalExpense,
+  getSeasons,
   reopenSeason,
-  SeasonRecord,
   setActiveFarmId,
   setActiveSeasonId,
   updateFarmRecord,
   updateSeason,
-} from "@/lib/storage";
+} from "@/lib/supabase-storage";
 import { generatePlannedSchedule, getCurrentStage, CROP_TEMPLATES } from "@/constants/farmData";
 
 type FarmContextValue = {
-  costs: Awaited<ReturnType<typeof getCosts>>;
+  costs: CostEntry[];
   inventory: InventoryItem[];
   activityLogs: ActivityLog[];
   observations: ObservationRecord[];
@@ -50,8 +61,8 @@ type FarmContextValue = {
   currentSchedule: ReturnType<typeof generatePlannedSchedule>;
   plannedBudget: number;
   seasonId: string;
-  farms: Awaited<ReturnType<typeof getFarms>>;
-  activeFarm: Awaited<ReturnType<typeof getActiveFarmRecord>>;
+  farms: FarmRecord[];
+  activeFarm: FarmRecord | null;
   farmId: string;
   isLoading: boolean;
   refresh: () => Promise<void>;
@@ -79,7 +90,7 @@ type FarmContextValue = {
   updateActiveSeason: (updates: Partial<SeasonRecord>) => Promise<void>;
   createFarm: typeof addFarmRecord;
   switchFarm: (targetFarmId: string) => Promise<void>;
-  updateActiveFarm: (updates: Partial<any>) => Promise<void>;
+  updateActiveFarm: (updates: Partial<FarmRecord>) => Promise<void>;
   personalExpenses: PersonalExpense[];
   addPersonalExpenseEntry: typeof addPersonalExpense;
   removePersonalExpense: (id: string) => Promise<void>;
@@ -89,15 +100,15 @@ type FarmContextValue = {
 const FarmContext = createContext<FarmContextValue | null>(null);
 
 export function FarmProvider({ children }: { children: React.ReactNode }) {
-  const [costs, setCosts] = useState<Awaited<ReturnType<typeof getCosts>>>([]);
+  const [costs, setCosts] = useState<CostEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [observations, setObservations] = useState<ObservationRecord[]>([]);
   const [harvestRecords, setHarvestRecords] = useState<HarvestRecord[]>([]);
   const [seasons, setSeasons] = useState<SeasonRecord[]>([]);
   const [activeSeason, setActiveSeason] = useState<SeasonRecord | null>(null);
-  const [farms, setFarms] = useState<Awaited<ReturnType<typeof getFarms>>>([]);
-  const [activeFarm, setActiveFarm] = useState<Awaited<ReturnType<typeof getActiveFarmRecord>>>(null);
+  const [farms, setFarms] = useState<FarmRecord[]>([]);
+  const [activeFarm, setActiveFarm] = useState<FarmRecord | null>(null);
   const [personalExpenses, setPersonalExpenses] = useState<PersonalExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -174,9 +185,9 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const closeActiveSeason = useCallback(async () => { if (!activeSeason) return; const updated = await closeSeason(activeSeason.id); setSeasons((prev) => prev.map((s) => s.id === updated.id ? updated : s)); setActiveSeason(updated); }, [activeSeason]);
   const reopenActiveSeason = useCallback(async () => { if (!activeSeason) return; const updated = await reopenSeason(activeSeason.id); setSeasons((prev) => prev.map((s) => s.id === updated.id ? updated : s)); setActiveSeason(updated); }, [activeSeason]);
   const updateActiveSeason = useCallback(async (updates: Partial<SeasonRecord>) => { if (!activeSeason) return; const updated = await updateSeason(activeSeason.id, updates); setSeasons((prev) => prev.map((s) => s.id === updated.id ? updated : s)); setActiveSeason(updated); }, [activeSeason]);
-  const createFarm = useCallback(async (farm: Omit<any, "id" | "created_at">) => { const newFarm = await addFarmRecord(farm); setFarms((prev) => [...prev, newFarm]); return newFarm; }, []);
+  const createFarm = useCallback(async (farm: Omit<FarmRecord, "id" | "created_at">) => { const newFarm = await addFarmRecord(farm); setFarms((prev) => [...prev, newFarm]); return newFarm; }, []);
   const switchFarm = useCallback(async (targetFarmId: string) => { await setActiveFarmId(targetFarmId); await refresh(); }, [refresh]);
-  const updateActiveFarm = useCallback(async (updates: Partial<any>) => { if (!activeFarm) return; const updated = await updateFarmRecord(activeFarm.id, updates); setFarms((prev) => prev.map((f) => f.id === updated.id ? updated : f)); setActiveFarm(updated); }, [activeFarm]);
+  const updateActiveFarm = useCallback(async (updates: Partial<FarmRecord>) => { if (!activeFarm) return; const updated = await updateFarmRecord(activeFarm.id, updates); setFarms((prev) => prev.map((f) => f.id === updated.id ? updated : f)); setActiveFarm(updated); }, [activeFarm]);
 
   const addPersonalExpenseEntry = useCallback(async (expense: Omit<PersonalExpense, "id" | "created_at">) => { const newExpense = await addPersonalExpense(expense); setPersonalExpenses((prev) => [...prev, newExpense]); return newExpense; }, []);
   const removePersonalExpense = useCallback(async (id: string) => { await deletePersonalExpense(id); setPersonalExpenses((prev) => prev.filter((e) => e.id !== id)); }, []);

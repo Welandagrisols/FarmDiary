@@ -21,6 +21,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="migration" options={{ headerShown: false }} />
       <Stack.Screen name="farm-picker" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="inventory" options={{ headerShown: false, presentation: "modal" }} />
