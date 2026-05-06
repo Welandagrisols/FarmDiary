@@ -95,9 +95,9 @@ args = "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER
 name = "Build APK"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx eas build --platform android --profile preview --non-interactive --no-wait"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./node_modules/.bin/eas build --platform android --profile preview --non-interactive --no-wait"
