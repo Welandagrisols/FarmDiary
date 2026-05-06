@@ -176,7 +176,10 @@ export async function deleteHarvestRecord(id: string): Promise<void> {
 
 export async function getPersonalExpenses(): Promise<PersonalExpense[]> {
   const { data, error } = await supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getPersonalExpenses: " + error.message);
+  if (error) {
+    console.warn("getPersonalExpenses:", error.message);
+    return [];
+  }
   return data as PersonalExpense[];
 }
 
