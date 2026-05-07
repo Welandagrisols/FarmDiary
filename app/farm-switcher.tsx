@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
+import { useAuth } from "@/context/AuthContext";
 import COLORS from "@/constants/colors";
 import { formatDate } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
@@ -13,6 +14,7 @@ import * as Haptics from "expo-haptics";
 export default function FarmSwitcherScreen() {
   const insets = useSafeAreaInsets();
   const { farms, activeFarm, seasons, costs, harvestRecords, switchFarm } = useFarm();
+  const { isAdmin } = useAuth();
   const [switching, setSwitching] = useState<string | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -46,13 +48,15 @@ export default function FarmSwitcherScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.title}>My Farms</Text>
-        <Pressable
-          style={styles.addBtn}
-          onPress={() => router.push("/farm-setup")}
-        >
-          <Ionicons name="add" size={18} color={COLORS.white} />
-          <Text style={styles.addBtnText}>New</Text>
-        </Pressable>
+        {isAdmin && (
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => router.push("/farm-setup")}
+          >
+            <Ionicons name="add" size={18} color={COLORS.white} />
+            <Text style={styles.addBtnText}>New</Text>
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
@@ -150,16 +154,18 @@ export default function FarmSwitcherScreen() {
           );
         })}
 
-        <Pressable style={styles.newFarmCard} onPress={() => router.push("/farm-setup")}>
-          <View style={styles.newFarmIcon}>
-            <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
-          </View>
-          <View style={styles.newFarmText}>
-            <Text style={styles.newFarmTitle}>Add Another Farm</Text>
-            <Text style={styles.newFarmSub}>Track multiple farms independently with separate seasons and records</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-        </Pressable>
+        {isAdmin && (
+          <Pressable style={styles.newFarmCard} onPress={() => router.push("/farm-setup")}>
+            <View style={styles.newFarmIcon}>
+              <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
+            </View>
+            <View style={styles.newFarmText}>
+              <Text style={styles.newFarmTitle}>Add Another Farm</Text>
+              <Text style={styles.newFarmSub}>Track multiple farms independently with separate seasons and records</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </Pressable>
+        )}
 
         <View style={styles.infoCard}>
           <Ionicons name="information-circle-outline" size={16} color={COLORS.primary} />

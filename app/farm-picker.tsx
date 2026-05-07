@@ -4,12 +4,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
+import { useAuth } from "@/context/AuthContext";
 import COLORS from "@/constants/colors";
 import { formatDate } from "@/lib/storage";
 
 export default function FarmPickerScreen() {
   const insets = useSafeAreaInsets();
   const { farms, activeFarm, switchFarm } = useFarm();
+  const { isAdmin } = useAuth();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -50,10 +52,12 @@ export default function FarmPickerScreen() {
           );
         })}
 
-        <Pressable style={styles.newBtn} onPress={() => router.push("/farm-setup")}>
-          <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.newBtnText}>Add another farm</Text>
-        </Pressable>
+        {isAdmin && (
+          <Pressable style={styles.newBtn} onPress={() => router.push("/farm-setup")}>
+            <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.newBtnText}>Add another farm</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </View>
   );
