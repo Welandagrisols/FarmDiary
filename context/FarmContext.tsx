@@ -49,6 +49,7 @@ import {
   updateSeason,
 } from "@/lib/supabase-storage";
 import { generatePlannedSchedule, getCurrentStage, CROP_TEMPLATES } from "@/constants/farmData";
+import { useAuth } from "@/context/AuthContext";
 
 type FarmContextValue = {
   costs: CostEntry[];
@@ -100,6 +101,8 @@ type FarmContextValue = {
 const FarmContext = createContext<FarmContextValue | null>(null);
 
 export function FarmProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
   const [costs, setCosts] = useState<CostEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -111,6 +114,20 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const [activeFarm, setActiveFarm] = useState<FarmRecord | null>(null);
   const [personalExpenses, setPersonalExpenses] = useState<PersonalExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const clearAll = useCallback(() => {
+    setCosts([]);
+    setInventory([]);
+    setActivityLogs([]);
+    setObservations([]);
+    setHarvestRecords([]);
+    setSeasons([]);
+    setActiveSeason(null);
+    setFarms([]);
+    setActiveFarm(null);
+    setPersonalExpenses([]);
+    setIsLoading(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     const [allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
@@ -139,7 +156,14 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (user) {
+      setIsLoading(true);
+      refresh();
+    } else {
+      clearAll();
+    }
+  }, [user, refresh, clearAll]);
 
   const currentSchedule = useMemo(() => {
     const template = CROP_TEMPLATES.find((t) => t.id === activeSeason?.template_id) ?? CROP_TEMPLATES[0];

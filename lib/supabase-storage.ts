@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withCache, withWrite } from "./offline-storage";
 import {
   FarmRecord,
   CostEntry,
@@ -19,9 +20,11 @@ function genId(): string {
 }
 
 export async function getFarms(): Promise<FarmRecord[]> {
-  const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getFarms: " + error.message);
-  return data as FarmRecord[];
+  return withCache("farms", async () => {
+    const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as FarmRecord[];
+  });
 }
 
 export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
@@ -32,15 +35,19 @@ export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
 
 export async function addFarmRecord(farm: Omit<FarmRecord, "id" | "created_at">): Promise<FarmRecord> {
   const record: FarmRecord = { ...farm, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("farms").insert(record);
-  if (error) throw new Error("addFarmRecord: " + error.message);
-  return record;
+  return withWrite("farms", "insert", record, async () => {
+    const { error } = await supabase.from("farms").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function updateFarmRecord(id: string, updates: Partial<FarmRecord>): Promise<FarmRecord> {
-  const { data, error } = await supabase.from("farms").update(updates).eq("id", id).select().single();
-  if (error) throw new Error("updateFarmRecord: " + error.message);
-  return data as FarmRecord;
+  return withWrite("farms", "update", { id, ...updates }, async () => {
+    const { data, error } = await supabase.from("farms").update(updates).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    return data as FarmRecord;
+  });
 }
 
 export async function setActiveFarmId(id: string): Promise<void> {
@@ -48,9 +55,11 @@ export async function setActiveFarmId(id: string): Promise<void> {
 }
 
 export async function getSeasons(): Promise<SeasonRecord[]> {
-  const { data, error } = await supabase.from("seasons").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getSeasons: " + error.message);
-  return data as SeasonRecord[];
+  return withCache("seasons", async () => {
+    const { data, error } = await supabase.from("seasons").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as SeasonRecord[];
+  });
 }
 
 export async function getActiveSeason(): Promise<SeasonRecord | null> {
@@ -61,15 +70,19 @@ export async function getActiveSeason(): Promise<SeasonRecord | null> {
 
 export async function addSeason(season: Omit<SeasonRecord, "id" | "created_at">): Promise<SeasonRecord> {
   const record: SeasonRecord = { ...season, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("seasons").insert(record);
-  if (error) throw new Error("addSeason: " + error.message);
-  return record;
+  return withWrite("seasons", "insert", record, async () => {
+    const { error } = await supabase.from("seasons").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function updateSeason(id: string, updates: Partial<SeasonRecord>): Promise<SeasonRecord> {
-  const { data, error } = await supabase.from("seasons").update(updates).eq("id", id).select().single();
-  if (error) throw new Error("updateSeason: " + error.message);
-  return data as SeasonRecord;
+  return withWrite("seasons", "update", { id, ...updates }, async () => {
+    const { data, error } = await supabase.from("seasons").update(updates).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    return data as SeasonRecord;
+  });
 }
 
 export async function setActiveSeasonId(id: string): Promise<void> {
@@ -85,114 +98,147 @@ export async function reopenSeason(id: string): Promise<SeasonRecord> {
 }
 
 export async function getCosts(): Promise<CostEntry[]> {
-  const { data, error } = await supabase.from("costs").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getCosts: " + error.message);
-  return data as CostEntry[];
+  return withCache("costs", async () => {
+    const { data, error } = await supabase.from("costs").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as CostEntry[];
+  });
 }
 
 export async function addCost(cost: Omit<CostEntry, "id" | "created_at">): Promise<CostEntry> {
   const record: CostEntry = { ...cost, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("costs").insert(record);
-  if (error) throw new Error("addCost: " + error.message);
-  return record;
+  return withWrite("costs", "insert", record, async () => {
+    const { error } = await supabase.from("costs").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deleteCost(id: string): Promise<void> {
-  const { error } = await supabase.from("costs").delete().eq("id", id);
-  if (error) throw new Error("deleteCost: " + error.message);
+  await withWrite("costs", "delete", { id }, async () => {
+    const { error } = await supabase.from("costs").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function getInventory(): Promise<InventoryItem[]> {
-  const { data, error } = await supabase.from("inventory").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getInventory: " + error.message);
-  return data as InventoryItem[];
+  return withCache("inventory", async () => {
+    const { data, error } = await supabase.from("inventory").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as InventoryItem[];
+  });
 }
 
 export async function addInventoryItem(item: Omit<InventoryItem, "id" | "created_at">): Promise<InventoryItem> {
   const record: InventoryItem = { ...item, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("inventory").insert(record);
-  if (error) throw new Error("addInventoryItem: " + error.message);
-  return record;
+  return withWrite("inventory", "insert", record, async () => {
+    const { error } = await supabase.from("inventory").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deleteInventoryItem(id: string): Promise<void> {
-  const { error } = await supabase.from("inventory").delete().eq("id", id);
-  if (error) throw new Error("deleteInventoryItem: " + error.message);
+  await withWrite("inventory", "delete", { id }, async () => {
+    const { error } = await supabase.from("inventory").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function getActivityLogs(): Promise<ActivityLog[]> {
-  const { data, error } = await supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getActivityLogs: " + error.message);
-  return data as ActivityLog[];
+  return withCache("activity_logs", async () => {
+    const { data, error } = await supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as ActivityLog[];
+  });
 }
 
 export async function addActivityLog(entry: Omit<ActivityLog, "id" | "created_at">): Promise<ActivityLog> {
   const record: ActivityLog = { ...entry, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("activity_logs").insert(record);
-  if (error) throw new Error("addActivityLog: " + error.message);
-  return record;
+  return withWrite("activity_logs", "insert", record, async () => {
+    const { error } = await supabase.from("activity_logs").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deleteActivityLog(id: string): Promise<void> {
-  const { error } = await supabase.from("activity_logs").delete().eq("id", id);
-  if (error) throw new Error("deleteActivityLog: " + error.message);
+  await withWrite("activity_logs", "delete", { id }, async () => {
+    const { error } = await supabase.from("activity_logs").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function getObservations(): Promise<ObservationRecord[]> {
-  const { data, error } = await supabase.from("observations").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getObservations: " + error.message);
-  return data as ObservationRecord[];
+  return withCache("observations", async () => {
+    const { data, error } = await supabase.from("observations").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as ObservationRecord[];
+  });
 }
 
 export async function addFieldObservation(entry: Omit<ObservationRecord, "id" | "created_at">): Promise<ObservationRecord> {
   const record: ObservationRecord = { ...entry, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("observations").insert(record);
-  if (error) throw new Error("addFieldObservation: " + error.message);
-  return record;
+  return withWrite("observations", "insert", record, async () => {
+    const { error } = await supabase.from("observations").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deleteObservation(id: string): Promise<void> {
-  const { error } = await supabase.from("observations").delete().eq("id", id);
-  if (error) throw new Error("deleteObservation: " + error.message);
+  await withWrite("observations", "delete", { id }, async () => {
+    const { error } = await supabase.from("observations").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function getHarvestRecords(): Promise<HarvestRecord[]> {
-  const { data, error } = await supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error("getHarvestRecords: " + error.message);
-  return data as HarvestRecord[];
+  return withCache("harvest_records", async () => {
+    const { data, error } = await supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as HarvestRecord[];
+  });
 }
 
 export async function addHarvestRecord(entry: Omit<HarvestRecord, "id" | "created_at">): Promise<HarvestRecord> {
   const record: HarvestRecord = { ...entry, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("harvest_records").insert(record);
-  if (error) throw new Error("addHarvestRecord: " + error.message);
-  return record;
+  return withWrite("harvest_records", "insert", record, async () => {
+    const { error } = await supabase.from("harvest_records").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deleteHarvestRecord(id: string): Promise<void> {
-  const { error } = await supabase.from("harvest_records").delete().eq("id", id);
-  if (error) throw new Error("deleteHarvestRecord: " + error.message);
+  await withWrite("harvest_records", "delete", { id }, async () => {
+    const { error } = await supabase.from("harvest_records").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function getPersonalExpenses(): Promise<PersonalExpense[]> {
-  const { data, error } = await supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
-  if (error) {
-    console.warn("getPersonalExpenses:", error.message);
-    return [];
-  }
-  return data as PersonalExpense[];
+  return withCache("personal_expenses", async () => {
+    const { data, error } = await supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data as PersonalExpense[];
+  });
 }
 
 export async function addPersonalExpense(expense: Omit<PersonalExpense, "id" | "created_at">): Promise<PersonalExpense> {
   const record: PersonalExpense = { ...expense, id: genId(), created_at: new Date().toISOString() };
-  const { error } = await supabase.from("personal_expenses").insert(record);
-  if (error) throw new Error("addPersonalExpense: " + error.message);
-  return record;
+  return withWrite("personal_expenses", "insert", record, async () => {
+    const { error } = await supabase.from("personal_expenses").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
 }
 
 export async function deletePersonalExpense(id: string): Promise<void> {
-  const { error } = await supabase.from("personal_expenses").delete().eq("id", id);
-  if (error) throw new Error("deletePersonalExpense: " + error.message);
+  await withWrite("personal_expenses", "delete", { id }, async () => {
+    const { error } = await supabase.from("personal_expenses").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function hasMigrated(): Promise<boolean> {

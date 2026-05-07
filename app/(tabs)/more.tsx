@@ -1,10 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from "react-native";
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
+import { useAuth } from "@/context/AuthContext";
+import { SyncBadge } from "@/components/SyncBadge";
 
 function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React.ReactNode; label: string; subtitle: string; color: string; onPress: () => void; badge?: string }) {
   return (
@@ -23,6 +25,7 @@ function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms, personalExpenses } = useFarm();
+  const { user, signOut } = useAuth();
   const personalExpenseCount = personalExpenses.length;
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -35,11 +38,30 @@ export default function MoreScreen() {
   const activeSeasonName = activeSeason?.season_name || "No season";
   const seasonStatusLabel = activeSeason?.status === "active" ? "Active" : activeSeason?.status === "closed" ? "Closed" : "Planning";
 
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign Out", style: "destructive", onPress: signOut },
+    ]);
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: topPadding + 8, paddingBottom: bottomPadding + 100 }}>
       <View style={styles.header}>
-        <Text style={styles.screenTitle}>More</Text>
-        <Text style={styles.screenSubtitle}>Tools & Records</Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.screenTitle}>More</Text>
+            <Text style={styles.screenSubtitle}>Tools & Records</Text>
+          </View>
+          <Pressable style={styles.signOutBtn} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
+          </Pressable>
+        </View>
+        <View style={styles.accountRow}>
+          <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
+          <Text style={styles.accountEmail} numberOfLines={1}>{user?.email || "Signed in"}</Text>
+          <SyncBadge />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -141,15 +163,26 @@ export default function MoreScreen() {
           </Pressable>
         </View>
       </View>
+
+      <View style={styles.section}>
+        <Pressable style={styles.signOutFullBtn} onPress={handleSignOut}>
+          <Ionicons name="log-out-outline" size={18} color={COLORS.red} />
+          <Text style={styles.signOutFullBtnText}>Sign Out</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 16, gap: 2 },
+  header: { paddingHorizontal: 16, paddingBottom: 16, gap: 6 },
+  headerRow: { flexDirection: "row", alignItems: "flex-start" },
   screenTitle: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.text, letterSpacing: -0.5 },
   screenSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
+  signOutBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.borderLight, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  accountRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  accountEmail: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
   section: { paddingHorizontal: 16, marginBottom: 20, gap: 10 },
   sectionTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
   farmSwitchCard: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, backgroundColor: COLORS.cardBg, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.primary + "40", shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
@@ -179,4 +212,6 @@ const styles = StyleSheet.create({
   infoValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%" },
   editFarmRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
   editFarmText: { flex: 1, fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
+  signOutFullBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: COLORS.redLight, borderRadius: 14, paddingVertical: 15, borderWidth: 1, borderColor: COLORS.red + "30" },
+  signOutFullBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.red },
 });
