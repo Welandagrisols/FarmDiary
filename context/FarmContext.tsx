@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityLog,
   HarvestRecord,
@@ -37,6 +38,7 @@ import {
   getActivityLogs,
   getCosts,
   getFarms,
+  getAllFarmsAdmin,
   getHarvestRecords,
   getInventory,
   getObservations,
@@ -101,7 +103,7 @@ type FarmContextValue = {
 const FarmContext = createContext<FarmContextValue | null>(null);
 
 export function FarmProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const [costs, setCosts] = useState<CostEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -130,9 +132,10 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const [allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
-      getFarms(),
-      getActiveFarmRecord(),
+    const isAdmin = profile?.role === "admin";
+    const storedFarmId = await AsyncStorage.getItem("farm_active_farm_id");
+    const [allFarms, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
+      isAdmin ? getAllFarmsAdmin() : getFarms(),
       getSeasons(),
       getActiveSeason(),
       getCosts(),
@@ -142,7 +145,8 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
       getHarvestRecords(),
       getPersonalExpenses(),
     ]);
-    const farmId = farm?.id || allFarms[0]?.id || "";
+    const farm = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
+    const farmId = farm?.id || "";
     setFarms(allFarms);
     setActiveFarm(farm);
     setSeasons(allSeasons.filter((item) => item.farm_id === farmId));
@@ -154,7 +158,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     setHarvestRecords(harvest.filter((item) => item.farm_id === farmId));
     setPersonalExpenses(pe.filter((item) => item.farm_id === farmId));
     setIsLoading(false);
-  }, []);
+  }, [profile]);
 
   useEffect(() => {
     if (user) {

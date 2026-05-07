@@ -54,15 +54,24 @@ export async function getAllUserProfiles(): Promise<UserProfile[]> {
 // ─── Farms ───────────────────────────────────────────────────
 
 export async function getFarms(): Promise<FarmRecord[]> {
-  return withCache("farms", async () => {
-    const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
+  const userId = await getAuthUserId();
+  if (!userId) return [];
+  return withCache(`farms_${userId}`, async () => {
+    const { data, error } = await supabase
+      .from("farms")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return data as FarmRecord[];
   });
 }
 
 export async function getAllFarmsAdmin(): Promise<FarmRecord[]> {
-  const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
+  const { data, error } = await supabase
+    .from("farms")
+    .select("*")
+    .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return data as FarmRecord[];
 }
