@@ -1,0 +1,308 @@
+-- ═══════════════════════════════════════════════════════════════════
+-- Farm Diary — PATCH SCRIPT (FIXED)
+-- Paste in: Supabase → SQL Editor → Run
+-- Fix: removed incompatible FK reference on farms.user_id
+--      (auth.users.id is uuid, app stores ids as text — no FK needed)
+-- ═══════════════════════════════════════════════════════════════════
+
+
+-- ──────────────────────────────────────────────────────────────────
+-- PART 1: PATCH EXISTING TABLES (add any missing columns)
+-- ──────────────────────────────────────────────────────────────────
+
+-- user_profiles
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+  id         text PRIMARY KEY,
+  email      text NOT NULL,
+  role       text NOT NULL DEFAULT 'farmer' CHECK (role IN ('farmer','admin')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_profiles
+  ADD COLUMN IF NOT EXISTS role       text NOT NULL DEFAULT 'farmer',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+-- farms — user_id stored as text (no FK, avoids uuid/text type mismatch)
+CREATE TABLE IF NOT EXISTS public.farms (
+  id           text PRIMARY KEY,
+  name         text NOT NULL,
+  location     text NOT NULL DEFAULT '',
+  total_acres  numeric NOT NULL DEFAULT 0,
+  lease_status text NOT NULL DEFAULT 'Owned',
+  crop_type    text NOT NULL DEFAULT 'Potato',
+  notes        text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.farms
+  ADD COLUMN IF NOT EXISTS user_id      text,
+  ADD COLUMN IF NOT EXISTS location     text,
+  ADD COLUMN IF NOT EXISTS total_acres  numeric,
+  ADD COLUMN IF NOT EXISTS lease_status text,
+  ADD COLUMN IF NOT EXISTS crop_type    text,
+  ADD COLUMN IF NOT EXISTS notes        text,
+  ADD COLUMN IF NOT EXISTS created_at   timestamptz;
+
+-- seasons
+CREATE TABLE IF NOT EXISTS public.seasons (
+  id            text PRIMARY KEY,
+  farm_id       text NOT NULL,
+  season_number integer NOT NULL DEFAULT 1,
+  season_name   text NOT NULL,
+  season_type   text NOT NULL DEFAULT 'Long Rains',
+  status        text NOT NULL DEFAULT 'active',
+  template_id   text NOT NULL DEFAULT '',
+  section_a     jsonb NOT NULL DEFAULT '{}',
+  section_b     jsonb NOT NULL DEFAULT '{}',
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.seasons
+  ADD COLUMN IF NOT EXISTS farm_id                 text,
+  ADD COLUMN IF NOT EXISTS season_number           integer,
+  ADD COLUMN IF NOT EXISTS season_type             text,
+  ADD COLUMN IF NOT EXISTS status                  text,
+  ADD COLUMN IF NOT EXISTS template_id             text,
+  ADD COLUMN IF NOT EXISTS section_a               jsonb,
+  ADD COLUMN IF NOT EXISTS section_b               jsonb,
+  ADD COLUMN IF NOT EXISTS pre_planting_start_date date,
+  ADD COLUMN IF NOT EXISTS budget_kes              numeric,
+  ADD COLUMN IF NOT EXISTS total_revenue_kes       numeric,
+  ADD COLUMN IF NOT EXISTS total_cost_kes          numeric,
+  ADD COLUMN IF NOT EXISTS notes                   text,
+  ADD COLUMN IF NOT EXISTS created_at              timestamptz,
+  ADD COLUMN IF NOT EXISTS closed_at               timestamptz;
+
+-- costs
+CREATE TABLE IF NOT EXISTS public.costs (
+  id               text PRIMARY KEY,
+  farm_id          text NOT NULL,
+  season_id        text NOT NULL,
+  cost_category    text NOT NULL,
+  cost_date        text NOT NULL,
+  is_pre_planting  boolean NOT NULL DEFAULT false,
+  is_historical    boolean NOT NULL DEFAULT false,
+  amount_kes       numeric NOT NULL DEFAULT 0,
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.costs
+  ADD COLUMN IF NOT EXISTS section_id              text,
+  ADD COLUMN IF NOT EXISTS cost_subcategory        text,
+  ADD COLUMN IF NOT EXISTS description             text,
+  ADD COLUMN IF NOT EXISTS quantity                numeric,
+  ADD COLUMN IF NOT EXISTS unit                    text,
+  ADD COLUMN IF NOT EXISTS unit_price_kes          numeric,
+  ADD COLUMN IF NOT EXISTS product_name            text,
+  ADD COLUMN IF NOT EXISTS supplier                text,
+  ADD COLUMN IF NOT EXISTS receipt_reference       text,
+  ADD COLUMN IF NOT EXISTS num_workers             numeric,
+  ADD COLUMN IF NOT EXISTS days_worked             numeric,
+  ADD COLUMN IF NOT EXISTS rate_per_worker_per_day numeric,
+  ADD COLUMN IF NOT EXISTS facilitator_name        text,
+  ADD COLUMN IF NOT EXISTS trip_from               text,
+  ADD COLUMN IF NOT EXISTS trip_to                 text,
+  ADD COLUMN IF NOT EXISTS is_deviation            boolean,
+  ADD COLUMN IF NOT EXISTS planned_product         text,
+  ADD COLUMN IF NOT EXISTS deviation_reason        text,
+  ADD COLUMN IF NOT EXISTS notes                   text,
+  ADD COLUMN IF NOT EXISTS weather_conditions      text;
+
+-- inventory
+CREATE TABLE IF NOT EXISTS public.inventory (
+  id                 text PRIMARY KEY,
+  farm_id            text NOT NULL,
+  season_id          text NOT NULL,
+  product_name       text NOT NULL,
+  category           text NOT NULL,
+  quantity_purchased numeric NOT NULL DEFAULT 0,
+  unit               text NOT NULL DEFAULT '',
+  unit_price_kes     numeric NOT NULL DEFAULT 0,
+  quantity_used      numeric NOT NULL DEFAULT 0,
+  purchase_date      text NOT NULL,
+  is_historical      boolean NOT NULL DEFAULT false,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.inventory
+  ADD COLUMN IF NOT EXISTS supplier            text,
+  ADD COLUMN IF NOT EXISTS low_stock_threshold numeric,
+  ADD COLUMN IF NOT EXISTS notes               text;
+
+-- activity_logs
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+  id             text PRIMARY KEY,
+  farm_id        text NOT NULL,
+  season_id      text NOT NULL,
+  activity_name  text NOT NULL,
+  actual_date    text NOT NULL,
+  products_used  jsonb NOT NULL DEFAULT '[]',
+  is_deviation   boolean NOT NULL DEFAULT false,
+  num_workers    numeric NOT NULL DEFAULT 0,
+  labor_cost_kes numeric NOT NULL DEFAULT 0,
+  total_cost_kes numeric NOT NULL DEFAULT 0,
+  is_historical  boolean NOT NULL DEFAULT false,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.activity_logs
+  ADD COLUMN IF NOT EXISTS section_id           text,
+  ADD COLUMN IF NOT EXISTS schedule_activity_id text,
+  ADD COLUMN IF NOT EXISTS planned_date         text,
+  ADD COLUMN IF NOT EXISTS deviation_reason     text,
+  ADD COLUMN IF NOT EXISTS weather_conditions   text,
+  ADD COLUMN IF NOT EXISTS notes                text;
+
+-- observations
+CREATE TABLE IF NOT EXISTS public.observations (
+  id               text PRIMARY KEY,
+  farm_id          text NOT NULL,
+  season_id        text NOT NULL,
+  observation_date text NOT NULL,
+  observation_type text NOT NULL,
+  description      text NOT NULL DEFAULT '',
+  severity         text NOT NULL DEFAULT 'Low',
+  is_historical    boolean NOT NULL DEFAULT false,
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.observations
+  ADD COLUMN IF NOT EXISTS section_id   text,
+  ADD COLUMN IF NOT EXISTS action_taken text;
+
+-- harvest_records
+CREATE TABLE IF NOT EXISTS public.harvest_records (
+  id                text PRIMARY KEY,
+  farm_id           text NOT NULL,
+  season_id         text NOT NULL,
+  section_id        text NOT NULL DEFAULT '',
+  harvest_date      text NOT NULL,
+  bags              numeric NOT NULL DEFAULT 0,
+  kg_per_bag        numeric NOT NULL DEFAULT 0,
+  total_kg          numeric NOT NULL DEFAULT 0,
+  price_per_bag_kes numeric NOT NULL DEFAULT 0,
+  total_revenue_kes numeric NOT NULL DEFAULT 0,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.harvest_records
+  ADD COLUMN IF NOT EXISTS buyer text,
+  ADD COLUMN IF NOT EXISTS notes text;
+
+-- personal_expenses
+CREATE TABLE IF NOT EXISTS public.personal_expenses (
+  id           text PRIMARY KEY,
+  farm_id      text NOT NULL,
+  season_id    text NOT NULL,
+  category     text NOT NULL,
+  subcategory  text NOT NULL DEFAULT '',
+  description  text NOT NULL DEFAULT '',
+  expense_date text NOT NULL,
+  amount_kes   numeric NOT NULL DEFAULT 0,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.personal_expenses
+  ADD COLUMN IF NOT EXISTS visitor_name      text,
+  ADD COLUMN IF NOT EXISTS visitor_role      text,
+  ADD COLUMN IF NOT EXISTS trip_from         text,
+  ADD COLUMN IF NOT EXISTS trip_to           text,
+  ADD COLUMN IF NOT EXISTS receipt_reference text,
+  ADD COLUMN IF NOT EXISTS notes             text;
+
+
+-- ──────────────────────────────────────────────────────────────────
+-- PART 2: HELPER FUNCTIONS
+-- ──────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid()::text AND role = 'admin'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.my_farm_ids()
+RETURNS SETOF text LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT id FROM public.farms WHERE user_id = auth.uid()::text;
+$$;
+
+
+-- ──────────────────────────────────────────────────────────────────
+-- PART 3: ENABLE RLS
+-- ──────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.user_profiles     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.farms             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.seasons           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.costs             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inventory         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.observations      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.harvest_records   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.personal_expenses ENABLE ROW LEVEL SECURITY;
+
+
+-- ──────────────────────────────────────────────────────────────────
+-- PART 4: DROP OLD POLICIES & RECREATE
+-- ──────────────────────────────────────────────────────────────────
+
+DO $$ DECLARE r record;
+BEGIN
+  FOR r IN SELECT schemaname, tablename, policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename IN (
+      'user_profiles','farms','seasons','costs','inventory',
+      'activity_logs','observations','harvest_records','personal_expenses')
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I',
+      r.policyname, r.schemaname, r.tablename);
+  END LOOP;
+END $$;
+
+-- user_profiles
+CREATE POLICY "profiles_select" ON public.user_profiles FOR SELECT USING (id = auth.uid()::text OR is_admin());
+CREATE POLICY "profiles_insert" ON public.user_profiles FOR INSERT WITH CHECK (id = auth.uid()::text OR is_admin());
+CREATE POLICY "profiles_update" ON public.user_profiles FOR UPDATE
+  USING (id = auth.uid()::text OR is_admin())
+  WITH CHECK (is_admin() OR role = (SELECT role FROM public.user_profiles WHERE id = auth.uid()::text));
+CREATE POLICY "profiles_delete" ON public.user_profiles FOR DELETE USING (is_admin());
+
+-- farms
+CREATE POLICY "farms_select" ON public.farms FOR SELECT USING (user_id = auth.uid()::text OR is_admin());
+CREATE POLICY "farms_insert" ON public.farms FOR INSERT WITH CHECK (user_id = auth.uid()::text OR is_admin());
+CREATE POLICY "farms_update" ON public.farms FOR UPDATE USING (user_id = auth.uid()::text OR is_admin());
+CREATE POLICY "farms_delete" ON public.farms FOR DELETE USING (user_id = auth.uid()::text OR is_admin());
+
+-- seasons
+CREATE POLICY "seasons_select" ON public.seasons FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "seasons_insert" ON public.seasons FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "seasons_update" ON public.seasons FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "seasons_delete" ON public.seasons FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- costs
+CREATE POLICY "costs_select" ON public.costs FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "costs_insert" ON public.costs FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "costs_update" ON public.costs FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "costs_delete" ON public.costs FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- inventory
+CREATE POLICY "inventory_select" ON public.inventory FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "inventory_insert" ON public.inventory FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "inventory_update" ON public.inventory FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "inventory_delete" ON public.inventory FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- activity_logs
+CREATE POLICY "activity_logs_select" ON public.activity_logs FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "activity_logs_insert" ON public.activity_logs FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "activity_logs_update" ON public.activity_logs FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "activity_logs_delete" ON public.activity_logs FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- observations
+CREATE POLICY "observations_select" ON public.observations FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "observations_insert" ON public.observations FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "observations_update" ON public.observations FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "observations_delete" ON public.observations FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- harvest_records
+CREATE POLICY "harvest_select" ON public.harvest_records FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "harvest_insert" ON public.harvest_records FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "harvest_update" ON public.harvest_records FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "harvest_delete" ON public.harvest_records FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+
+-- personal_expenses
+CREATE POLICY "personal_expenses_select" ON public.personal_expenses FOR SELECT USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "personal_expenses_insert" ON public.personal_expenses FOR INSERT WITH CHECK (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "personal_expenses_update" ON public.personal_expenses FOR UPDATE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
+CREATE POLICY "personal_expenses_delete" ON public.personal_expenses FOR DELETE USING (farm_id IN (SELECT my_farm_ids()) OR is_admin());
