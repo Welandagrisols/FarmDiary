@@ -11,7 +11,6 @@ type AuthContextValue = {
   isAdmin: boolean;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 
@@ -59,11 +58,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error ? error.message : null;
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    return error ? error.message : null;
-  }, []);
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
@@ -72,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = profile?.role === "admin";
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, isAdmin, isLoading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, profile, isAdmin, isLoading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
