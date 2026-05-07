@@ -19,14 +19,16 @@ import {
 
 SplashScreen.preventAutoHideAsync();
 
+const PUBLIC_SEGMENTS = ["auth", "migration"];
+
 function AuthRedirectGuard() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
 
   useEffect(() => {
     if (isLoading) return;
-    const inAuthGroup = segments[0] === "auth";
-    if (!user && !inAuthGroup) {
+    const isPublic = PUBLIC_SEGMENTS.includes(segments[0] as string);
+    if (!user && !isPublic) {
       router.replace("/auth");
     }
   }, [user, isLoading, segments]);
@@ -41,6 +43,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="admin" options={{ headerShown: false }} />
         <Stack.Screen name="migration" options={{ headerShown: false }} />
         <Stack.Screen name="farm-picker" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

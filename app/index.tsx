@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { hasMigrated } from "@/lib/supabase-storage";
 
 export default function Index() {
-  const { user, isLoading } = useAuth();
+  const { user, isAdmin, isLoading } = useAuth();
   const [migrationChecked, setMigrationChecked] = useState(false);
   const [migrated, setMigrated] = useState(false);
 
@@ -21,5 +21,6 @@ export default function Index() {
   if (!user) return <Redirect href="/auth" />;
   if (!migrationChecked) return null;
   if (!migrated) return <Redirect href="/migration" />;
+  if (isAdmin) return <Redirect href="/admin" />;
   return <Redirect href="/farm-picker" />;
 }

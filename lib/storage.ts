@@ -3,12 +3,20 @@ import { INVENTORY_MASTER, FARM_SEED, SEASON_SEED, generatePlannedSchedule } fro
 
 export interface FarmRecord {
   id: string;
+  user_id?: string | null;
   name: string;
   location: string;
   total_acres: number;
   lease_status: string;
   crop_type: string;
   notes: string | null;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: "farmer" | "admin";
   created_at: string;
 }
 

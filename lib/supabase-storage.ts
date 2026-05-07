@@ -10,6 +10,7 @@ import {
   HarvestRecord,
   SeasonRecord,
   PersonalExpense,
+  UserProfile,
 } from "./storage";
 
 const ACTIVE_FARM_KEY = "farm_active_farm_id";
@@ -19,12 +20,57 @@ function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
+async function getAuthUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+// ─── User Profiles ──────────────────────────────────────────
+
+export async function upsertUserProfile(userId: string, email: string): Promise<void> {
+  await supabase.from("user_profiles").upsert(
+    { id: userId, email },
+    { onConflict: "id", ignoreDuplicates: false }
+  );
+}
+
+export async function getMyProfile(): Promise<UserProfile | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from("user_profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+  return data as UserProfile | null;
+}
+
+export async function getAllUserProfiles(): Promise<UserProfile[]> {
+  const { data, error } = await supabase.from("user_profiles").select("*").order("created_at");
+  if (error) throw new Error(error.message);
+  return data as UserProfile[];
+}
+
+// ─── Farms ───────────────────────────────────────────────────
+
 export async function getFarms(): Promise<FarmRecord[]> {
   return withCache("farms", async () => {
     const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return data as FarmRecord[];
   });
+}
+
+export async function getAllFarmsAdmin(): Promise<FarmRecord[]> {
+  const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data as FarmRecord[];
+}
+
+export async function claimUnownedFarms(): Promise<void> {
+  const userId = await getAuthUserId();
+  if (!userId) return;
+  await supabase.from("farms").update({ user_id: userId }).is("user_id", null);
 }
 
 export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
@@ -34,7 +80,13 @@ export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
 }
 
 export async function addFarmRecord(farm: Omit<FarmRecord, "id" | "created_at">): Promise<FarmRecord> {
-  const record: FarmRecord = { ...farm, id: genId(), created_at: new Date().toISOString() };
+  const userId = await getAuthUserId();
+  const record: FarmRecord = {
+    ...farm,
+    user_id: userId,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
   return withWrite("farms", "insert", record, async () => {
     const { error } = await supabase.from("farms").insert(record);
     if (error) throw new Error(error.message);
@@ -53,6 +105,8 @@ export async function updateFarmRecord(id: string, updates: Partial<FarmRecord>)
 export async function setActiveFarmId(id: string): Promise<void> {
   await AsyncStorage.setItem(ACTIVE_FARM_KEY, id);
 }
+
+// ─── Seasons ─────────────────────────────────────────────────
 
 export async function getSeasons(): Promise<SeasonRecord[]> {
   return withCache("seasons", async () => {
@@ -97,6 +151,8 @@ export async function reopenSeason(id: string): Promise<SeasonRecord> {
   return updateSeason(id, { status: "active", closed_at: null });
 }
 
+// ─── Costs ───────────────────────────────────────────────────
+
 export async function getCosts(): Promise<CostEntry[]> {
   return withCache("costs", async () => {
     const { data, error } = await supabase.from("costs").select("*").order("created_at", { ascending: true });
@@ -120,6 +176,8 @@ export async function deleteCost(id: string): Promise<void> {
     if (error) throw new Error(error.message);
   });
 }
+
+// ─── Inventory ───────────────────────────────────────────────
 
 export async function getInventory(): Promise<InventoryItem[]> {
   return withCache("inventory", async () => {
@@ -145,6 +203,8 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   });
 }
 
+// ─── Activity Logs ───────────────────────────────────────────
+
 export async function getActivityLogs(): Promise<ActivityLog[]> {
   return withCache("activity_logs", async () => {
     const { data, error } = await supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
@@ -168,6 +228,8 @@ export async function deleteActivityLog(id: string): Promise<void> {
     if (error) throw new Error(error.message);
   });
 }
+
+// ─── Observations ────────────────────────────────────────────
 
 export async function getObservations(): Promise<ObservationRecord[]> {
   return withCache("observations", async () => {
@@ -193,6 +255,8 @@ export async function deleteObservation(id: string): Promise<void> {
   });
 }
 
+// ─── Harvest ─────────────────────────────────────────────────
+
 export async function getHarvestRecords(): Promise<HarvestRecord[]> {
   return withCache("harvest_records", async () => {
     const { data, error } = await supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
@@ -217,6 +281,8 @@ export async function deleteHarvestRecord(id: string): Promise<void> {
   });
 }
 
+// ─── Personal Expenses ───────────────────────────────────────
+
 export async function getPersonalExpenses(): Promise<PersonalExpense[]> {
   return withCache("personal_expenses", async () => {
     const { data, error } = await supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
@@ -240,6 +306,8 @@ export async function deletePersonalExpense(id: string): Promise<void> {
     if (error) throw new Error(error.message);
   });
 }
+
+// ─── Migration helpers ───────────────────────────────────────
 
 export async function hasMigrated(): Promise<boolean> {
   const val = await AsyncStorage.getItem("supabase_migration_done");

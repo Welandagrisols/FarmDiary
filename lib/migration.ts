@@ -18,6 +18,7 @@ import {
   upsertObservations,
   upsertHarvestRecords,
   upsertPersonalExpenses,
+  claimUnownedFarms,
   hasMigrated,
   markMigrated,
 } from "./supabase-storage";
@@ -84,6 +85,9 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
     await upsertObservations(observations);
     await upsertHarvestRecords(harvestRecords);
     await upsertPersonalExpenses(personalExpenses);
+
+    // Claim any farms that were upserted without a user_id
+    await claimUnownedFarms();
 
     await markMigrated();
 
