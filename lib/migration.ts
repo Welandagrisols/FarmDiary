@@ -21,6 +21,7 @@ import {
   hasMigrated,
   markMigrated,
 } from "./supabase-storage";
+import { supabase } from "./supabase";
 
 const KEYS = {
   COSTS: "farm_costs",
@@ -65,6 +66,9 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
   }
 
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
+
     const [farms, seasons, costs, inventory, activityLogs, observations, harvestRecords, personalExpenses] = await Promise.all([
       readLocal<FarmRecord>(KEYS.FARMS),
       readLocal<SeasonRecord>(KEYS.SEASONS),
@@ -76,7 +80,12 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
       readLocal<PersonalExpense>(KEYS.PERSONAL_EXPENSES),
     ]);
 
-    await upsertFarms(farms);
+    const farmsWithOwner: FarmRecord[] = farms.map((f) => ({
+      ...f,
+      user_id: f.user_id || userId,
+    }));
+
+    await upsertFarms(farmsWithOwner);
     await upsertSeasons(seasons);
     await upsertCosts(costs);
     await upsertInventory(inventory);
@@ -91,7 +100,7 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
       alreadyDone: false,
       success: true,
       counts: {
-        farms: farms.length,
+        farms: farmsWithOwner.length,
         seasons: seasons.length,
         costs: costs.length,
         inventory: inventory.length,
