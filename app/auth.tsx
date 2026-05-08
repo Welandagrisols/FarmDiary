@@ -45,7 +45,7 @@ export default function AuthScreen() {
           <View style={styles.logoCircle}>
             <Ionicons name="leaf" size={36} color={COLORS.white} />
           </View>
-          <Text style={styles.appName}>Farm Diary</Text>
+          <Text style={styles.appName}>Agrisols Farm Diary</Text>
           <Text style={styles.appTagline}>Your farm, your data — always safe.</Text>
         </View>
 

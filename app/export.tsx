@@ -106,12 +106,12 @@ export default function ExportScreen() {
       try {
         data = JSON.parse(rawText);
       } catch {
-        Alert.alert("Invalid File", "The file could not be read as JSON. Please use a backup file exported from Farm Diary.");
+        Alert.alert("Invalid File", "The file could not be read as JSON. Please use a backup file exported from Agrisols Farm Diary.");
         return;
       }
 
       if (!data.costs && !data.activity_logs && !data.inventory && !data.harvest_records && !data.observations) {
-        Alert.alert("Invalid Backup", "This file does not look like a Farm Diary backup. Expected fields: costs, activity_logs, inventory, harvest_records, observations.");
+        Alert.alert("Invalid Backup", "This file does not look like an Agrisols Farm Diary backup. Expected fields: costs, activity_logs, inventory, harvest_records, observations.");
         return;
       }
 

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Farm Diary",
-    "slug": "farm-diary",
+    "name": "Agrisols Farm Diary",
+    "slug": "agrisols-farm-diary",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
