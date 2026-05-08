@@ -2,12 +2,12 @@
   "expo": {
     "name": "Farm Diary",
     "slug": "farm-diary",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "farmdiary",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.farmdiary",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#1B5E20",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -40,8 +41,7 @@
       "expo-web-browser"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
     "extra": {
       "router": {
