@@ -1,6 +1,4 @@
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import React from "react";
@@ -8,34 +6,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="schedule">
-        <Icon sf={{ default: "calendar", selected: "calendar.badge.clock" }} />
-        <Label>Schedule</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="log">
-        <Icon sf={{ default: "pencil.and.list.clipboard", selected: "checkmark.circle.fill" }} />
-        <Label>Log</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="costs">
-        <Icon sf={{ default: "banknote", selected: "banknote.fill" }} />
-        <Label>Costs</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="more">
-        <Icon sf={{ default: "ellipsis.circle", selected: "ellipsis.circle.fill" }} />
-        <Label>More</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
+function TabIcon({ name, color }: { name: string; color: string }) {
+  return <Ionicons name={name as any} size={22} color={color} />;
 }
 
-function ClassicTabLayout() {
+export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
@@ -77,9 +52,7 @@ function ClassicTabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
-            focused
-              ? <TabIcon name="home" color={color} />
-              : <TabIcon name="home-outline" color={color} />
+            <TabIcon name={focused ? "home" : "home-outline"} color={color} />
           ),
         }}
       />
@@ -121,15 +94,4 @@ function ClassicTabLayout() {
       />
     </Tabs>
   );
-}
-
-function TabIcon({ name, color }: { name: string; color: string }) {
-  return <Ionicons name={name as any} size={22} color={color} />;
-}
-
-export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
-  return <ClassicTabLayout />;
 }
