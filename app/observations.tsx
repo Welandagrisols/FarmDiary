@@ -16,7 +16,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { FieldObservation, formatDate } from "@/lib/storage";
+import { ObservationRecord, formatDate } from "@/lib/storage";
 import { SEASON_SEED } from "@/constants/farmData";
 import * as Haptics from "expo-haptics";
 
@@ -32,7 +32,7 @@ function getSeverityColor(severity: string) {
   }
 }
 
-function ObservationCard({ obs, onDelete }: { obs: FieldObservation; onDelete: () => void }) {
+function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const sevColor = getSeverityColor(obs.severity);
   const isAlert = obs.severity === "High" || obs.severity === "Critical";
@@ -85,7 +85,7 @@ function ObservationCard({ obs, onDelete }: { obs: FieldObservation; onDelete: (
 
 function AddObservationModal({ onClose, onSubmit, seasonId }: {
   onClose: () => void;
-  onSubmit: (obs: Omit<FieldObservation, "id" | "created_at">) => void;
+  onSubmit: (obs: Omit<ObservationRecord, "id" | "created_at">) => void;
   seasonId: string;
 }) {
   const [sectionId, setSectionId] = useState<string | null>(null);
@@ -227,7 +227,7 @@ export default function ObservationsScreen() {
 
   const criticalCount = observations.filter((o) => o.severity === "Critical" || o.severity === "High").length;
 
-  const handleAdd = async (obs: Omit<FieldObservation, "id" | "created_at">) => {
+  const handleAdd = async (obs: Omit<ObservationRecord, "id" | "created_at">) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await addFieldObservation(obs);
     setShowAdd(false);
