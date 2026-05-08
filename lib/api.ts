@@ -30,6 +30,30 @@ async function adminRequest(path: string, method: string, body?: object): Promis
   return data;
 }
 
+export async function migrateViaServer(token: string, payload: {
+  farms: any[];
+  seasons: any[];
+  costs: any[];
+  inventory: any[];
+  activityLogs: any[];
+  observations: any[];
+  harvestRecords: any[];
+  personalExpenses: any[];
+}): Promise<void> {
+  const base = getApiBase();
+  if (!base) throw new Error("API domain not configured");
+  const res = await fetch(`${base}/api/migrate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Migration request failed");
+}
+
 export const adminApi = {
   createUser: (email: string, password: string) =>
     adminRequest("/api/admin/create-user", "POST", { email, password }),

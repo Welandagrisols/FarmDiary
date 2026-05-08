@@ -9,19 +9,9 @@ import {
   SeasonRecord,
   PersonalExpense,
 } from "./storage";
-import {
-  upsertFarms,
-  upsertSeasons,
-  upsertCosts,
-  upsertInventory,
-  upsertActivityLogs,
-  upsertObservations,
-  upsertHarvestRecords,
-  upsertPersonalExpenses,
-  hasMigrated,
-  markMigrated,
-} from "./supabase-storage";
+import { hasMigrated, markMigrated } from "./supabase-storage";
 import { supabase } from "./supabase";
+import { migrateViaServer } from "./api";
 
 const KEYS = {
   COSTS: "farm_costs",
@@ -66,8 +56,15 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return {
+        alreadyDone: false,
+        success: false,
+        counts: { farms: 0, seasons: 0, costs: 0, inventory: 0, activityLogs: 0, observations: 0, harvestRecords: 0, personalExpenses: 0 },
+        error: "Not logged in. Please log in and try again.",
+      };
+    }
 
     const [farms, seasons, costs, inventory, activityLogs, observations, harvestRecords, personalExpenses] = await Promise.all([
       readLocal<FarmRecord>(KEYS.FARMS),
@@ -80,19 +77,16 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
       readLocal<PersonalExpense>(KEYS.PERSONAL_EXPENSES),
     ]);
 
-    const farmsWithOwner: FarmRecord[] = farms.map((f) => ({
-      ...f,
-      user_id: f.user_id || userId,
-    }));
-
-    await upsertFarms(farmsWithOwner);
-    await upsertSeasons(seasons);
-    await upsertCosts(costs);
-    await upsertInventory(inventory);
-    await upsertActivityLogs(activityLogs);
-    await upsertObservations(observations);
-    await upsertHarvestRecords(harvestRecords);
-    await upsertPersonalExpenses(personalExpenses);
+    await migrateViaServer(session.access_token, {
+      farms,
+      seasons,
+      costs,
+      inventory,
+      activityLogs,
+      observations,
+      harvestRecords,
+      personalExpenses,
+    });
 
     await markMigrated();
 
@@ -100,7 +94,7 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
       alreadyDone: false,
       success: true,
       counts: {
-        farms: farmsWithOwner.length,
+        farms: farms.length,
         seasons: seasons.length,
         costs: costs.length,
         inventory: inventory.length,

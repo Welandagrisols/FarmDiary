@@ -111,6 +111,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ farm: data });
   });
 
+  // ── One-time local → cloud migration (bypasses RLS via service role) ──
+  app.post("/api/migrate", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ message: "Unauthorized" }); return; }
+
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError || !user) { res.status(401).json({ message: "Invalid token" }); return; }
+
+      const userId = user.id;
+      const { farms = [], seasons = [], costs = [], inventory = [],
+              activityLogs = [], observations = [], harvestRecords = [],
+              personalExpenses = [] } = req.body;
+
+      const farmsWithOwner = farms.map((f: any) => ({ ...f, user_id: f.user_id || userId }));
+
+      const tables = [
+        { name: "farms",            rows: farmsWithOwner },
+        { name: "seasons",          rows: seasons },
+        { name: "costs",            rows: costs },
+        { name: "inventory",        rows: inventory },
+        { name: "activity_logs",    rows: activityLogs },
+        { name: "observations",     rows: observations },
+        { name: "harvest_records",  rows: harvestRecords },
+        { name: "personal_expenses",rows: personalExpenses },
+      ];
+
+      for (const { name, rows } of tables) {
+        if (!rows.length) continue;
+        const { error } = await supabaseAdmin.from(name).upsert(rows, { onConflict: "id" });
+        if (error) { res.status(400).json({ message: `${name}: ${error.message}` }); return; }
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Migration failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
