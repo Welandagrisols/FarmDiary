@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { runMigrationIfNeeded, MigrationResult } from "@/lib/migration";
+import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 
 type Phase = "running" | "success" | "error";
@@ -13,6 +14,8 @@ export default function MigrationScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const [phase, setPhase] = useState<Phase>("running");
   const [result, setResult] = useState<MigrationResult | null>(null);
+  const [proceeding, setProceeding] = useState(false);
+  const { refresh } = useFarm();
 
   useEffect(() => {
     runMigrationIfNeeded().then((res) => {
@@ -21,7 +24,11 @@ export default function MigrationScreen() {
     });
   }, []);
 
-  const proceed = () => router.replace("/farm-picker");
+  const proceed = async () => {
+    setProceeding(true);
+    await refresh();
+    router.replace("/farm-picker");
+  };
 
   if (phase === "running") {
     return (
@@ -100,9 +107,14 @@ export default function MigrationScreen() {
           ))}
         </View>
 
-        <Pressable style={styles.proceedBtn} onPress={proceed}>
-          <Text style={styles.proceedBtnText}>Go to My Farms</Text>
-          <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+        <Pressable style={[styles.proceedBtn, proceeding && { opacity: 0.7 }]} onPress={proceed} disabled={proceeding}>
+          {proceeding
+            ? <ActivityIndicator size="small" color={COLORS.white} />
+            : <>
+                <Text style={styles.proceedBtnText}>Go to My Farms</Text>
+                <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+              </>
+          }
         </Pressable>
       </ScrollView>
     </View>
