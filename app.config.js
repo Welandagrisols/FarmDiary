@@ -14,6 +14,8 @@ module.exports = {
     ...appJson.expo.extra,
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
-    apiDomain: process.env.REPLIT_DEV_DOMAIN || "",
+    // EXPO_PUBLIC_API_DOMAIN is set in EAS environment for APK builds
+    // REPLIT_DEV_DOMAIN is used in local Replit development
+    apiDomain: process.env.EXPO_PUBLIC_API_DOMAIN || process.env.REPLIT_DEV_DOMAIN || "",
   },
 };
