@@ -48,14 +48,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const newUserId = session?.user?.id ?? null;
       const prevUserId = currentUserId.current;
-
-      if (!newUserId || newUserId !== prevUserId) {
-        await clearAllCaches();
-      }
+      const userChanged = !newUserId || newUserId !== prevUserId;
 
       currentUserId.current = newUserId;
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (userChanged) {
+        clearAllCaches().catch(() => {});
+      }
+
       if (session?.user) {
         await loadProfile(session.user);
       } else {

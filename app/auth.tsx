@@ -28,6 +28,8 @@ export default function AuthScreen() {
     if (err) {
       setError(err);
       setLoading(false);
+    } else {
+      setLoading(false);
     }
   };
 
