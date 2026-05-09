@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { upsertUserProfile, getMyProfile } from "@/lib/supabase-storage";
+import { clearAllCaches } from "@/lib/offline-storage";
 import type { Session, User } from "@supabase/supabase-js";
 import type { UserProfile } from "@/lib/storage";
 
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const currentUserId = useRef<string | null>(null);
 
   const loadProfile = useCallback(async (u: User) => {
     try {
@@ -36,11 +38,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) await loadProfile(session.user);
+      if (session?.user) {
+        currentUserId.current = session.user.id;
+        await loadProfile(session.user);
+      }
       setIsLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const newUserId = session?.user?.id ?? null;
+      const prevUserId = currentUserId.current;
+
+      if (!newUserId || newUserId !== prevUserId) {
+        await clearAllCaches();
+      }
+
+      currentUserId.current = newUserId;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -59,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    await clearAllCaches();
     await supabase.auth.signOut();
     setProfile(null);
   }, []);

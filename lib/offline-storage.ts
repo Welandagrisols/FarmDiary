@@ -72,6 +72,16 @@ export async function withCache<T>(
   }
 }
 
+export async function clearAllCaches(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const cacheKeys = allKeys.filter((k) => k.startsWith(CACHE_PREFIX));
+    if (cacheKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheKeys);
+    }
+  } catch {}
+}
+
 export async function withWrite<T>(
   table: string,
   operation: "insert" | "update" | "delete",

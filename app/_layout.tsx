@@ -29,6 +29,8 @@ function AuthRedirectGuard() {
     const isPublic = PUBLIC_SEGMENTS.includes(segments[0] as string);
     if (!user && !isPublic) {
       router.replace("/auth");
+    } else if (user && isPublic) {
+      router.replace("/");
     }
   }, [user, isLoading, segments]);
 
