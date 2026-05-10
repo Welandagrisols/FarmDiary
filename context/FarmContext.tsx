@@ -140,7 +140,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     try {
       const isAdmin = profile?.role === "admin";
       const storedFarmId = await AsyncStorage.getItem("farm_active_farm_id");
-      const [allFarms, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
+      const results = await Promise.allSettled([
         isAdmin ? getAllFarmsAdmin() : getFarms(),
         getSeasons(),
         getActiveSeason(),
@@ -151,7 +151,30 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
         getHarvestRecords(),
         getPersonalExpenses(),
       ]);
-      const farm = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
+
+      const settled = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
+        r.status === "fulfilled" ? r.value : fallback;
+
+      const allFarms   = settled(results[0] as PromiseSettledResult<FarmRecord[]>,         []);
+      const allSeasons = settled(results[1] as PromiseSettledResult<SeasonRecord[]>,        []);
+      const active     = settled(results[2] as PromiseSettledResult<SeasonRecord | null>,   null);
+      const c          = settled(results[3] as PromiseSettledResult<CostEntry[]>,           []);
+      const inv        = settled(results[4] as PromiseSettledResult<InventoryItem[]>,       []);
+      const logs       = settled(results[5] as PromiseSettledResult<ActivityLog[]>,         []);
+      const obs        = settled(results[6] as PromiseSettledResult<ObservationRecord[]>,   []);
+      const harvest    = settled(results[7] as PromiseSettledResult<HarvestRecord[]>,       []);
+      const pe         = settled(results[8] as PromiseSettledResult<PersonalExpense[]>,     []);
+
+      const failedCollections = results
+        .map((r, i) => r.status === "rejected"
+          ? ["farms","seasons","active season","costs","inventory","activity logs","observations","harvest","expenses"][i]
+          : null)
+        .filter(Boolean);
+      if (failedCollections.length > 0) {
+        setLoadError(`Some data failed to load: ${failedCollections.join(", ")}. Pull down to retry.`);
+      }
+
+      const farm   = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
       const farmId = farm?.id || "";
       setFarms(allFarms);
       setActiveFarm(farm);

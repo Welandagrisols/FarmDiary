@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getQueue, removeFromQueue, incrementRetry } from "@/lib/offline-storage";
+import { useAuth } from "@/context/AuthContext";
 
 type SyncStatus = "idle" | "syncing" | "error";
 
@@ -14,6 +15,7 @@ type SyncContextValue = {
 const SyncContext = createContext<SyncContextValue | null>(null);
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -25,6 +27,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const forceSync = useCallback(async () => {
+    if (!user) return;
     if (isSyncing.current) return;
     const queue = await getQueue();
     if (!queue.length) return;
