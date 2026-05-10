@@ -35,15 +35,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        currentUserId.current = session.user.id;
-        await loadProfile(session.user);
-      }
-      setIsLoading(false);
-    });
+    const SESSION_TIMEOUT_MS = 10_000;
+
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Session check timed out")), SESSION_TIMEOUT_MS)
+    );
+
+    Promise.race([sessionPromise, timeoutPromise])
+      .then(async ({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          currentUserId.current = session.user.id;
+          await loadProfile(session.user);
+        }
+      })
+      .catch(() => {
+        // Timed out or errored — treat as logged-out so the user reaches the login screen
+        setSession(null);
+        setUser(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const newUserId = session?.user?.id ?? null;
