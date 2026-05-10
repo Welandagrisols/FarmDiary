@@ -75,9 +75,22 @@ export async function withCache<T>(
 export async function clearAllCaches(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
-    const cacheKeys = allKeys.filter((k) => k.startsWith(CACHE_PREFIX));
+    const cacheKeys = allKeys.filter((k) => k.startsWith(CACHE_PREFIX) || k === QUEUE_KEY);
     if (cacheKeys.length > 0) {
       await AsyncStorage.multiRemove(cacheKeys);
+    }
+  } catch {}
+}
+
+export async function clearAllStorageForSignOut(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    // Clear caches, queue, AND all Supabase session keys (sb-* prefix)
+    const keysToRemove = allKeys.filter(
+      (k) => k.startsWith(CACHE_PREFIX) || k === QUEUE_KEY || k.startsWith("sb-")
+    );
+    if (keysToRemove.length > 0) {
+      await AsyncStorage.multiRemove(keysToRemove);
     }
   } catch {}
 }

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { upsertUserProfile, getMyProfile } from "@/lib/supabase-storage";
-import { clearAllCaches } from "@/lib/offline-storage";
+import { clearAllStorageForSignOut } from "@/lib/offline-storage";
 import type { Session, User } from "@supabase/supabase-js";
 import type { UserProfile } from "@/lib/storage";
 
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
 
       if (userChanged) {
-        clearAllCaches().catch(() => {});
+        clearAllStorageForSignOut().catch(() => {});
       }
 
       if (session?.user) {
@@ -69,13 +69,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadProfile]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<string | null> => {
+    // Clear any stale Supabase session before signing in to prevent hangs
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {}
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error ? error.message : null;
   }, []);
 
   const signOut = useCallback(async () => {
-    await clearAllCaches();
-    await supabase.auth.signOut();
+    // Sign out from Supabase first (best-effort — may fail if token already invalid)
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    // Wipe all local caches, offline queue, AND Supabase session keys
+    await clearAllStorageForSignOut();
     setProfile(null);
   }, []);
 
