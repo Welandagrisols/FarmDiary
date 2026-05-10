@@ -52,6 +52,8 @@ export default function DashboardScreen() {
     costs,
     activityLogs,
     refresh,
+    retryLoad,
+    loadError,
     totalSpent,
     getCompletedActivityIds,
     getNextActivity,
@@ -135,6 +137,16 @@ export default function DashboardScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       showsVerticalScrollIndicator={false}
     >
+      {loadError ? (
+        <View style={styles.errorBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color={COLORS.red} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <Pressable onPress={retryLoad} style={styles.retryBtn}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.header}>
         <View>
           <Text style={styles.farmName}>{activeFarm?.name || "My Farm"}</Text>
@@ -389,6 +401,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { paddingHorizontal: 16, gap: 14 },
+  errorBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.redLight, borderRadius: 12, padding: 12 },
+  errorBannerText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.red, lineHeight: 18 },
+  retryBtn: { backgroundColor: COLORS.red, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  retryBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.white },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
   farmName: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.text },
   farmSub: { marginTop: 4, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },

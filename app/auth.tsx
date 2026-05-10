@@ -6,6 +6,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { SyncBadge } from "@/components/SyncBadge";
 import COLORS from "@/constants/colors";
 
 export default function AuthScreen() {
@@ -116,6 +117,10 @@ export default function AuthScreen() {
             Accounts are created by your farm manager. Contact them if you need access.
           </Text>
         </View>
+
+        <View style={styles.syncWrap}>
+          <SyncBadge />
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -143,4 +148,5 @@ const styles = StyleSheet.create({
   submitBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 16, color: COLORS.white },
   infoBox: { flexDirection: "row", gap: 8, alignItems: "flex-start", backgroundColor: COLORS.borderLight, borderRadius: 12, padding: 14 },
   infoText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted, lineHeight: 18 },
+  syncWrap: { alignItems: "center" },
 });

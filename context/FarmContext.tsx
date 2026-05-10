@@ -68,6 +68,8 @@ type FarmContextValue = {
   activeFarm: FarmRecord | null;
   farmId: string;
   isLoading: boolean;
+  loadError: string | null;
+  retryLoad: () => Promise<void>;
   refresh: () => Promise<void>;
   addCostEntry: typeof addCost;
   removeCost: typeof deleteCost;
@@ -116,6 +118,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const [activeFarm, setActiveFarm] = useState<FarmRecord | null>(null);
   const [personalExpenses, setPersonalExpenses] = useState<PersonalExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const clearAll = useCallback(() => {
     setCosts([]);
@@ -128,37 +131,49 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     setFarms([]);
     setActiveFarm(null);
     setPersonalExpenses([]);
+    setLoadError(null);
     setIsLoading(false);
   }, []);
 
   const refresh = useCallback(async () => {
-    const isAdmin = profile?.role === "admin";
-    const storedFarmId = await AsyncStorage.getItem("farm_active_farm_id");
-    const [allFarms, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
-      isAdmin ? getAllFarmsAdmin() : getFarms(),
-      getSeasons(),
-      getActiveSeason(),
-      getCosts(),
-      getInventory(),
-      getActivityLogs(),
-      getObservations(),
-      getHarvestRecords(),
-      getPersonalExpenses(),
-    ]);
-    const farm = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
-    const farmId = farm?.id || "";
-    setFarms(allFarms);
-    setActiveFarm(farm);
-    setSeasons(allSeasons.filter((item) => item.farm_id === farmId));
-    setActiveSeason(active && active.farm_id === farmId ? active : allSeasons.find((item) => item.farm_id === farmId && item.status !== "closed") || null);
-    setCosts(c.filter((item) => item.farm_id === farmId));
-    setInventory(inv.filter((item) => item.farm_id === farmId));
-    setActivityLogs(logs.filter((item) => item.farm_id === farmId));
-    setObservations(obs.filter((item) => item.farm_id === farmId));
-    setHarvestRecords(harvest.filter((item) => item.farm_id === farmId));
-    setPersonalExpenses(pe.filter((item) => item.farm_id === farmId));
-    setIsLoading(false);
+    setLoadError(null);
+    try {
+      const isAdmin = profile?.role === "admin";
+      const storedFarmId = await AsyncStorage.getItem("farm_active_farm_id");
+      const [allFarms, allSeasons, active, c, inv, logs, obs, harvest, pe] = await Promise.all([
+        isAdmin ? getAllFarmsAdmin() : getFarms(),
+        getSeasons(),
+        getActiveSeason(),
+        getCosts(),
+        getInventory(),
+        getActivityLogs(),
+        getObservations(),
+        getHarvestRecords(),
+        getPersonalExpenses(),
+      ]);
+      const farm = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
+      const farmId = farm?.id || "";
+      setFarms(allFarms);
+      setActiveFarm(farm);
+      setSeasons(allSeasons.filter((item) => item.farm_id === farmId));
+      setActiveSeason(active && active.farm_id === farmId ? active : allSeasons.find((item) => item.farm_id === farmId && item.status !== "closed") || null);
+      setCosts(c.filter((item) => item.farm_id === farmId));
+      setInventory(inv.filter((item) => item.farm_id === farmId));
+      setActivityLogs(logs.filter((item) => item.farm_id === farmId));
+      setObservations(obs.filter((item) => item.farm_id === farmId));
+      setHarvestRecords(harvest.filter((item) => item.farm_id === farmId));
+      setPersonalExpenses(pe.filter((item) => item.farm_id === farmId));
+    } catch (err: any) {
+      setLoadError(err?.message || "Failed to load farm data. Check your connection and try again.");
+    } finally {
+      setIsLoading(false);
+    }
   }, [profile]);
+
+  const retryLoad = useCallback(async () => {
+    setIsLoading(true);
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (user) {
@@ -221,7 +236,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const removePersonalExpense = useCallback(async (id: string) => { await deletePersonalExpense(id); setPersonalExpenses((prev) => prev.filter((e) => e.id !== id)); }, []);
   const totalPersonalExpenses = useMemo(() => personalExpenses.reduce((sum, e) => sum + e.amount_kes, 0), [personalExpenses]);
 
-  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateSeason, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
+  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateSeason, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
 
   return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>;
 }
