@@ -66,7 +66,17 @@ export async function withCache<T>(
     const data = await fetchFn();
     await writeCache(table, data);
     return data;
-  } catch {
+  } catch (err: any) {
+    const isNetworkError =
+      err?.message?.includes("fetch") ||
+      err?.message?.includes("network") ||
+      err?.message?.includes("Failed to fetch") ||
+      err?.message?.includes("Network request failed");
+
+    if (!isNetworkError) {
+      throw err;
+    }
+
     const cached = await readCache<T>(table);
     return cached ?? [];
   }
