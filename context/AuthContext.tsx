@@ -63,7 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const newUserId = session?.user?.id ?? null;
       const prevUserId = currentUserId.current;
-      const userChanged = !newUserId || newUserId !== prevUserId;
+      // Only clear storage when a DIFFERENT authenticated user signs in
+      // (not on first load, not on sign-out — signOut() handles that explicitly)
+      const userChanged = prevUserId !== null && newUserId !== null && newUserId !== prevUserId;
 
       currentUserId.current = newUserId;
       setSession(session);
