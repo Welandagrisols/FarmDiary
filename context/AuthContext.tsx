@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { upsertAndGetProfile } from "@/lib/supabase-storage";
 import { clearAllStorageForSignOut } from "@/lib/offline-storage";
@@ -86,6 +87,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, [loadProfile]);
+
+  // Refresh session token whenever the app comes back to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        supabase.auth.refreshSession().catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string): Promise<string | null> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });

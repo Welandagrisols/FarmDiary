@@ -33,8 +33,6 @@ import {
   deleteInventoryItem,
   deleteObservation,
   deletePersonalExpense,
-  getActiveFarmRecord,
-  getActiveSeason,
   getActivityLogs,
   getCosts,
   getFarms,
@@ -50,8 +48,9 @@ import {
   updateFarmRecord,
   updateSeason,
 } from "@/lib/supabase-storage";
-import { generatePlannedSchedule, getCurrentStage, CROP_TEMPLATES } from "@/constants/farmData";
+import { generatePlannedSchedule, CROP_TEMPLATES } from "@/constants/farmData";
 import { useAuth } from "@/context/AuthContext";
+import { useSync } from "@/context/SyncContext";
 
 type FarmContextValue = {
   costs: CostEntry[];
@@ -106,6 +105,7 @@ const FarmContext = createContext<FarmContextValue | null>(null);
 
 export function FarmProvider({ children }: { children: React.ReactNode }) {
   const { user, profile } = useAuth();
+  const { lastSynced } = useSync();
 
   const [costs, setCosts] = useState<CostEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -139,53 +139,71 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     setLoadError(null);
     try {
       const isAdmin = profile?.role === "admin";
-      const storedFarmId = await AsyncStorage.getItem("farm_active_farm_id");
+      const [storedFarmId, storedSeasonId] = await Promise.all([
+        AsyncStorage.getItem("farm_active_farm_id"),
+        AsyncStorage.getItem("farm_active_season_id"),
+      ]);
+
+      // Step 1: fetch farms to confirm which farm is actually active
+      const allFarms = await (isAdmin ? getAllFarmsAdmin() : getFarms());
+      const farm = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
+      const farmId = farm?.id || "";
+
+      setFarms(allFarms);
+      setActiveFarm(farm);
+
+      if (!farmId) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: fetch all farm-scoped data in parallel, filtered server-side
+      // getActiveSeason() is removed — computed locally from seasons below
       const results = await Promise.allSettled([
-        isAdmin ? getAllFarmsAdmin() : getFarms(),
-        getSeasons(),
-        getActiveSeason(),
-        getCosts(),
-        getInventory(),
-        getActivityLogs(),
-        getObservations(),
-        getHarvestRecords(),
-        getPersonalExpenses(),
+        getSeasons(farmId),
+        getCosts(farmId),
+        getInventory(farmId),
+        getActivityLogs(farmId),
+        getObservations(farmId),
+        getHarvestRecords(farmId),
+        getPersonalExpenses(farmId),
       ]);
 
       const settled = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
         r.status === "fulfilled" ? r.value : fallback;
 
-      const allFarms   = settled(results[0] as PromiseSettledResult<FarmRecord[]>,         []);
-      const allSeasons = settled(results[1] as PromiseSettledResult<SeasonRecord[]>,        []);
-      const active     = settled(results[2] as PromiseSettledResult<SeasonRecord | null>,   null);
-      const c          = settled(results[3] as PromiseSettledResult<CostEntry[]>,           []);
-      const inv        = settled(results[4] as PromiseSettledResult<InventoryItem[]>,       []);
-      const logs       = settled(results[5] as PromiseSettledResult<ActivityLog[]>,         []);
-      const obs        = settled(results[6] as PromiseSettledResult<ObservationRecord[]>,   []);
-      const harvest    = settled(results[7] as PromiseSettledResult<HarvestRecord[]>,       []);
-      const pe         = settled(results[8] as PromiseSettledResult<PersonalExpense[]>,     []);
+      const allSeasons = settled(results[0] as PromiseSettledResult<SeasonRecord[]>,      []);
+      const c          = settled(results[1] as PromiseSettledResult<CostEntry[]>,          []);
+      const inv        = settled(results[2] as PromiseSettledResult<InventoryItem[]>,      []);
+      const logs       = settled(results[3] as PromiseSettledResult<ActivityLog[]>,        []);
+      const obs        = settled(results[4] as PromiseSettledResult<ObservationRecord[]>,  []);
+      const harvest    = settled(results[5] as PromiseSettledResult<HarvestRecord[]>,      []);
+      const pe         = settled(results[6] as PromiseSettledResult<PersonalExpense[]>,    []);
 
       const failedCollections = results
         .map((r, i) => r.status === "rejected"
-          ? ["farms","seasons","active season","costs","inventory","activity logs","observations","harvest","expenses"][i]
+          ? ["seasons","costs","inventory","activity logs","observations","harvest","expenses"][i]
           : null)
         .filter(Boolean);
       if (failedCollections.length > 0) {
         setLoadError(`Some data failed to load: ${failedCollections.join(", ")}. Pull down to retry.`);
       }
 
-      const farm   = allFarms.find((f) => f.id === storedFarmId) || allFarms[0] || null;
-      const farmId = farm?.id || "";
-      setFarms(allFarms);
-      setActiveFarm(farm);
-      setSeasons(allSeasons.filter((item) => item.farm_id === farmId));
-      setActiveSeason(active && active.farm_id === farmId ? active : allSeasons.find((item) => item.farm_id === farmId && item.status !== "closed") || null);
-      setCosts(c.filter((item) => item.farm_id === farmId));
-      setInventory(inv.filter((item) => item.farm_id === farmId));
-      setActivityLogs(logs.filter((item) => item.farm_id === farmId));
-      setObservations(obs.filter((item) => item.farm_id === farmId));
-      setHarvestRecords(harvest.filter((item) => item.farm_id === farmId));
-      setPersonalExpenses(pe.filter((item) => item.farm_id === farmId));
+      // Compute active season locally — no extra network call needed
+      const activeSeason =
+        allSeasons.find((s) => s.id === storedSeasonId) ||
+        allSeasons.find((s) => s.status !== "closed") ||
+        allSeasons[0] ||
+        null;
+
+      setSeasons(allSeasons);
+      setActiveSeason(activeSeason);
+      setCosts(c);
+      setInventory(inv);
+      setActivityLogs(logs);
+      setObservations(obs);
+      setHarvestRecords(harvest);
+      setPersonalExpenses(pe);
     } catch (err: any) {
       setLoadError(err?.message || "Failed to load farm data. Check your connection and try again.");
     } finally {
@@ -206,6 +224,13 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
       clearAll();
     }
   }, [user, refresh, clearAll]);
+
+  // Auto-refresh after offline sync completes so UI shows synced data
+  useEffect(() => {
+    if (lastSynced && user) {
+      refresh();
+    }
+  }, [lastSynced]);
 
   const currentSchedule = useMemo(() => {
     const template = CROP_TEMPLATES.find((t) => t.id === activeSeason?.template_id) ?? CROP_TEMPLATES[0];

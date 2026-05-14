@@ -127,9 +127,12 @@ export async function setActiveFarmId(id: string): Promise<void> {
 
 // ─── Seasons ─────────────────────────────────────────────────
 
-export async function getSeasons(): Promise<SeasonRecord[]> {
-  return withCache("seasons", async () => {
-    const { data, error } = await supabase.from("seasons").select("*").order("created_at", { ascending: true });
+export async function getSeasons(farmId?: string): Promise<SeasonRecord[]> {
+  const cacheKey = farmId ? `seasons_${farmId}` : "seasons";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("seasons").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as SeasonRecord[];
   });
@@ -172,9 +175,12 @@ export async function reopenSeason(id: string): Promise<SeasonRecord> {
 
 // ─── Costs ───────────────────────────────────────────────────
 
-export async function getCosts(): Promise<CostEntry[]> {
-  return withCache("costs", async () => {
-    const { data, error } = await supabase.from("costs").select("*").order("created_at", { ascending: true });
+export async function getCosts(farmId?: string): Promise<CostEntry[]> {
+  const cacheKey = farmId ? `costs_${farmId}` : "costs";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("costs").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as CostEntry[];
   });
@@ -198,9 +204,12 @@ export async function deleteCost(id: string): Promise<void> {
 
 // ─── Inventory ───────────────────────────────────────────────
 
-export async function getInventory(): Promise<InventoryItem[]> {
-  return withCache("inventory", async () => {
-    const { data, error } = await supabase.from("inventory").select("*").order("created_at", { ascending: true });
+export async function getInventory(farmId?: string): Promise<InventoryItem[]> {
+  const cacheKey = farmId ? `inventory_${farmId}` : "inventory";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("inventory").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as InventoryItem[];
   });
@@ -224,9 +233,12 @@ export async function deleteInventoryItem(id: string): Promise<void> {
 
 // ─── Activity Logs ───────────────────────────────────────────
 
-export async function getActivityLogs(): Promise<ActivityLog[]> {
-  return withCache("activity_logs", async () => {
-    const { data, error } = await supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
+export async function getActivityLogs(farmId?: string): Promise<ActivityLog[]> {
+  const cacheKey = farmId ? `activity_logs_${farmId}` : "activity_logs";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as ActivityLog[];
   });
@@ -250,9 +262,12 @@ export async function deleteActivityLog(id: string): Promise<void> {
 
 // ─── Observations ────────────────────────────────────────────
 
-export async function getObservations(): Promise<ObservationRecord[]> {
-  return withCache("observations", async () => {
-    const { data, error } = await supabase.from("observations").select("*").order("created_at", { ascending: true });
+export async function getObservations(farmId?: string): Promise<ObservationRecord[]> {
+  const cacheKey = farmId ? `observations_${farmId}` : "observations";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("observations").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as ObservationRecord[];
   });
@@ -276,9 +291,12 @@ export async function deleteObservation(id: string): Promise<void> {
 
 // ─── Harvest ─────────────────────────────────────────────────
 
-export async function getHarvestRecords(): Promise<HarvestRecord[]> {
-  return withCache("harvest_records", async () => {
-    const { data, error } = await supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
+export async function getHarvestRecords(farmId?: string): Promise<HarvestRecord[]> {
+  const cacheKey = farmId ? `harvest_records_${farmId}` : "harvest_records";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as HarvestRecord[];
   });
@@ -302,9 +320,12 @@ export async function deleteHarvestRecord(id: string): Promise<void> {
 
 // ─── Personal Expenses ───────────────────────────────────────
 
-export async function getPersonalExpenses(): Promise<PersonalExpense[]> {
-  return withCache("personal_expenses", async () => {
-    const { data, error } = await supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
+export async function getPersonalExpenses(farmId?: string): Promise<PersonalExpense[]> {
+  const cacheKey = farmId ? `personal_expenses_${farmId}` : "personal_expenses";
+  return withCache(cacheKey, async () => {
+    let query = supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
+    if (farmId) query = query.eq("farm_id", farmId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as PersonalExpense[];
   });
