@@ -34,13 +34,23 @@ export async function upsertUserProfile(userId: string, email: string): Promise<
   );
 }
 
+// Upsert and return the profile in one round-trip
+export async function upsertAndGetProfile(userId: string, email: string): Promise<UserProfile | null> {
+  const { data } = await supabase
+    .from("user_profiles")
+    .upsert({ id: userId, email }, { onConflict: "id", ignoreDuplicates: false })
+    .select("*")
+    .single();
+  return data as UserProfile | null;
+}
+
 export async function getMyProfile(): Promise<UserProfile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return null;
   const { data } = await supabase
     .from("user_profiles")
     .select("*")
-    .eq("id", user.id)
+    .eq("id", session.user.id)
     .single();
   return data as UserProfile | null;
 }

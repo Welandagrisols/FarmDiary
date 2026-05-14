@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { upsertUserProfile, getMyProfile } from "@/lib/supabase-storage";
+import { upsertAndGetProfile } from "@/lib/supabase-storage";
 import { clearAllStorageForSignOut } from "@/lib/offline-storage";
 import type { Session, User } from "@supabase/supabase-js";
 import type { UserProfile } from "@/lib/storage";
@@ -26,8 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = useCallback(async (u: User) => {
     try {
-      await upsertUserProfile(u.id, u.email ?? "");
-      const p = await getMyProfile();
+      const p = await upsertAndGetProfile(u.id, u.email ?? "");
       setProfile(p);
     } catch {
       setProfile(null);
@@ -35,7 +34,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const SESSION_TIMEOUT_MS = 10_000;
+    // 30s timeout — covers slow devices reading AsyncStorage on cold start
+    const SESSION_TIMEOUT_MS = 30_000;
 
     const sessionPromise = supabase.auth.getSession();
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -43,16 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     Promise.race([sessionPromise, timeoutPromise])
-      .then(async ({ data: { session } }) => {
+      .then(({ data: { session } }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
           currentUserId.current = session.user.id;
-          await loadProfile(session.user);
+          // Non-blocking — don't await, let the app navigate immediately
+          loadProfile(session.user).catch(() => {});
         }
       })
       .catch(() => {
-        // Timed out or errored — treat as logged-out so the user reaches the login screen
         setSession(null);
         setUser(null);
       })
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const newUserId = session?.user?.id ?? null;
       const prevUserId = currentUserId.current;
       // Only clear storage when a DIFFERENT authenticated user signs in
@@ -70,13 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       currentUserId.current = newUserId;
       setSession(session);
       setUser(session?.user ?? null);
+      setIsLoading(false);
 
       if (userChanged) {
         clearAllStorageForSignOut().catch(() => {});
       }
 
       if (session?.user) {
-        await loadProfile(session.user);
+        // Non-blocking — navigation happens immediately when user is set above
+        loadProfile(session.user).catch(() => {});
       } else {
         setProfile(null);
       }
@@ -86,10 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadProfile]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<string | null> => {
-    // Clear any stale Supabase session before signing in to prevent hangs
-    try {
-      await supabase.auth.signOut({ scope: "local" });
-    } catch {}
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error ? error.message : null;
   }, []);
