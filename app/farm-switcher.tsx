@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform,
 } from "react-native";
@@ -6,16 +6,36 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
-import { useAuth } from "@/context/AuthContext";
 import COLORS from "@/constants/colors";
 import { formatDate } from "@/lib/storage";
+import { supabase } from "@/lib/supabase";
 import * as Haptics from "expo-haptics";
 
 export default function FarmSwitcherScreen() {
   const insets = useSafeAreaInsets();
-  const { farms, activeFarm, seasons, costs, harvestRecords, switchFarm } = useFarm();
-  const { isAdmin } = useAuth();
+  const { farms, activeFarm, switchFarm } = useFarm();
   const [switching, setSwitching] = useState<string | null>(null);
+  const [seasonCounts, setSeasonCounts] = useState<Record<string, number>>({});
+  const [activeFarmSeasons, setActiveFarmSeasons] = useState<Record<string, { season_name: string; season_type: string } | null>>({});
+
+  useEffect(() => {
+    if (farms.length === 0) return;
+    supabase
+      .from("seasons")
+      .select("id, farm_id, season_name, season_type, status")
+      .then(({ data }) => {
+        if (!data) return;
+        const counts: Record<string, number> = {};
+        const active: Record<string, { season_name: string; season_type: string } | null> = {};
+        farms.forEach((f) => {
+          const farmSeasons = data.filter((s) => s.farm_id === f.id);
+          counts[f.id] = farmSeasons.length;
+          active[f.id] = farmSeasons.find((s) => s.status === "active") ?? null;
+        });
+        setSeasonCounts(counts);
+        setActiveFarmSeasons(active);
+      });
+  }, [farms]);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -48,15 +68,13 @@ export default function FarmSwitcherScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.title}>My Farms</Text>
-        {isAdmin && (
-          <Pressable
-            style={styles.addBtn}
-            onPress={() => router.push("/farm-setup")}
-          >
-            <Ionicons name="add" size={18} color={COLORS.white} />
-            <Text style={styles.addBtnText}>New</Text>
-          </Pressable>
-        )}
+        <Pressable
+          style={styles.addBtn}
+          onPress={() => router.push("/farm-setup")}
+        >
+          <Ionicons name="add" size={18} color={COLORS.white} />
+          <Text style={styles.addBtnText}>New</Text>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -65,11 +83,8 @@ export default function FarmSwitcherScreen() {
       >
         {farms.map((farm) => {
           const isActive = farm.id === activeFarm?.id;
-          const farmSeasons = seasons.filter((s) => s.farm_id === farm.id);
-          const farmCosts = costs.filter((c) => c.farm_id === farm.id);
-          const farmRevenue = harvestRecords.filter((r) => r.farm_id === farm.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
-          const farmSpent = farmCosts.reduce((sum, c) => sum + c.amount_kes, 0);
-          const activeFarmSeason = farmSeasons.find((s) => s.status === "active");
+          const farmSeasonCount = seasonCounts[farm.id] ?? 0;
+          const activeFarmSeason = activeFarmSeasons[farm.id] ?? null;
 
           return (
             <View key={farm.id} style={[styles.farmCard, isActive && styles.farmCardActive]}>
@@ -101,7 +116,7 @@ export default function FarmSwitcherScreen() {
                 </View>
                 <View style={styles.farmStatDivider} />
                 <View style={styles.farmStat}>
-                  <Text style={styles.farmStatValue}>{farmSeasons.length}</Text>
+                  <Text style={styles.farmStatValue}>{farmSeasonCount}</Text>
                   <Text style={styles.farmStatLabel}>Seasons</Text>
                 </View>
                 <View style={styles.farmStatDivider} />
@@ -154,18 +169,16 @@ export default function FarmSwitcherScreen() {
           );
         })}
 
-        {isAdmin && (
-          <Pressable style={styles.newFarmCard} onPress={() => router.push("/farm-setup")}>
-            <View style={styles.newFarmIcon}>
-              <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
-            </View>
-            <View style={styles.newFarmText}>
-              <Text style={styles.newFarmTitle}>Add Another Farm</Text>
-              <Text style={styles.newFarmSub}>Track multiple farms independently with separate seasons and records</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-          </Pressable>
-        )}
+        <Pressable style={styles.newFarmCard} onPress={() => router.push("/farm-setup")}>
+          <View style={styles.newFarmIcon}>
+            <Ionicons name="add-circle-outline" size={28} color={COLORS.primary} />
+          </View>
+          <View style={styles.newFarmText}>
+            <Text style={styles.newFarmTitle}>Add Another Farm</Text>
+            <Text style={styles.newFarmSub}>Track multiple farms independently with separate seasons and records</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </Pressable>
 
         <View style={styles.infoCard}>
           <Ionicons name="information-circle-outline" size={16} color={COLORS.primary} />

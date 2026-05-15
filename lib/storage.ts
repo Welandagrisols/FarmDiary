@@ -520,6 +520,20 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateActivityLog(
+  id: string,
+  updates: Partial<ActivityLog>
+): Promise<ActivityLog> {
+  const { data, error } = await supabase
+    .from("activity_logs")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityLog;
+}
+
 export async function deleteActivityLog(id: string): Promise<void> {
   const { error } = await supabase.from("activity_logs").delete().eq("id", id);
   if (error) throw error;
