@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { FarmProvider } from "@/context/FarmContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { migrateFromAsyncStorage } from "@/lib/migration";
 import { seedIfNeeded } from "@/lib/storage";
 import {
@@ -23,6 +24,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="farm-picker" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="inventory" options={{ headerShown: false, presentation: "modal" }} />
@@ -74,9 +76,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <FarmProvider>
-              <RootLayoutNav />
-            </FarmProvider>
+            <AuthProvider>
+              <FarmProvider>
+                <RootLayoutNav />
+              </FarmProvider>
+            </AuthProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

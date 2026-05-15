@@ -32,13 +32,22 @@ A mobile-first farm management app supporting multiple farms. Built with Expo Re
 - `currentSchedule` computed from `generatePlannedSchedule()` using active season's planting date
 - Backward-compat: Season-001 seeded via `seedSeasonIfNeeded()` on first load
 
+## Auth System
+- **Supabase Auth**: Email + password sign-in/sign-up via `context/AuthContext.tsx`
+- **Session persistence**: `lib/supabase.ts` uses AsyncStorage as the auth storage adapter — session is saved locally on the device
+- **Offline access**: Session is read from AsyncStorage on startup (instant, no network needed) — user stays logged in
+- **Routing**: `app/index.tsx` redirects to `/(tabs)` if session exists, `/auth` if not
+- **Logout**: More tab → Account section → Sign Out (clears session + offline cache)
+- **Fast re-entry**: As long as the user doesn't sign out, they go directly to their dashboard on every app open
+
 ## Data Storage
 - **Cloud database**: Supabase (PostgreSQL) — project `ckluambcgnmjxcmpcfvg`
 - **Tables**: `farms`, `seasons`, `costs`, `inventory`, `activity_logs`, `observations`, `harvest_records`, `app_meta`
 - `app_meta` stores: `active_farm_id`, `active_season_id`, `asyncstorage_migrated_v1`
 - **Migration**: `lib/migration.ts` runs once on startup — reads existing AsyncStorage data and upserts to Supabase, then sets `asyncstorage_migrated_v1=true` in `app_meta` so it never runs again
 - **Seeding**: `seedIfNeeded()` in `lib/storage.ts` inserts default farm + season + inventory if `farms` table is empty
-- **RLS**: Enabled with open `allow_all` policies on all tables (no auth required)
+- **Offline cache**: `context/FarmContext.tsx` saves last-loaded data to AsyncStorage (`farm_offline_cache_v1`) after every successful `refresh()`. If Supabase is unreachable, data is loaded from the cache and `isOffline=true` is set in context
+- **RLS**: Enabled with open `allow_all` policies on all tables (no auth required beyond Supabase anon key)
 - **Env vars**: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (shared); `SUPABASE_SERVICE_ROLE_KEY` (secret)
 
 ## Tech Stack
