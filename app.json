@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "farmdiary",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -44,13 +44,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": "https://replit.com/"
-      },
       "eas": {
-        "projectId": "215f5a3c-46db-491f-8591-7e189ac0c81b"
+        "projectId": "eda7ceee-0d43-4a6e-945e-37f315d2278c"
       }
     },
-    "owner": "jospaa"
+    "owner": "kaititburgei"
   }
 }
