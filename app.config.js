@@ -14,7 +14,7 @@ module.exports = {
   icon: "./assets/images/icon.png",
   scheme: "farmdiary",
   userInterfaceStyle: "light",
-  newArchEnabled: false,
+  newArchEnabled: true,
   splash: {
     image: "./assets/images/splash-icon.png",
     resizeMode: "contain",
