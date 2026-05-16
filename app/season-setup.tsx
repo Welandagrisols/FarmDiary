@@ -177,6 +177,7 @@ export default function SeasonSetupScreen() {
           notes: null,
         },
         pre_planting_start_date: prePlantingDate || null,
+        budget_kes: null,
         total_revenue_kes: null,
         total_cost_kes: null,
         notes: seasonNotes || null,

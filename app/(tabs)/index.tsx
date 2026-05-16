@@ -269,7 +269,7 @@ export default function DashboardScreen() {
               const remaining = item.quantity_purchased - item.quantity_used;
               return (
                 <View key={item.id} style={styles.lowStockRow}>
-                  <Text style={styles.lowStockItemName} numberOfLines={1}>{item.item_name}</Text>
+                  <Text style={styles.lowStockItemName} numberOfLines={1}>{item.product_name}</Text>
                   <Text style={styles.lowStockItemQty}>{remaining} {item.unit} left</Text>
                 </View>
               );

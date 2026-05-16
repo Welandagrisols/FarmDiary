@@ -253,6 +253,14 @@ export async function addActivityLog(entry: Omit<ActivityLog, "id" | "created_at
   });
 }
 
+export async function updateActivityLog(id: string, updates: Partial<ActivityLog>): Promise<ActivityLog> {
+  return withWrite("activity_logs", "update", { id, ...updates }, async () => {
+    const { data, error } = await supabase.from("activity_logs").update(updates).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    return data as ActivityLog;
+  });
+}
+
 export async function deleteActivityLog(id: string): Promise<void> {
   await withWrite("activity_logs", "delete", { id }, async () => {
     const { error } = await supabase.from("activity_logs").delete().eq("id", id);

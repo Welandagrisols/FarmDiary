@@ -292,7 +292,7 @@ export default function SeasonControlScreen() {
             </Pressable>
 
             {activeSeason.status === "closed"
-              ? <Pressable style={[styles.switchBtn, reopening && { opacity: 0.6 }]} onPress={handleReopen} disabled={reopening}><Ionicons name="unlock-outline" size={16} color={COLORS.primary} /><Text style={styles.switchBtnText}>{reopening ? "Reopening…" : "Reopen Season"}</Text></Pressable>
+              ? <Pressable style={[styles.switchBtn, reopening && { opacity: 0.6 }]} onPress={handleReopen} disabled={reopening}><Ionicons name="lock-open-outline" size={16} color={COLORS.primary} /><Text style={styles.switchBtnText}>{reopening ? "Reopening…" : "Reopen Season"}</Text></Pressable>
               : <Pressable style={[styles.closeSeasonBtn, closing && { opacity: 0.6 }]} onPress={handleClose} disabled={closing}><Ionicons name="lock-closed-outline" size={16} color={COLORS.red} /><Text style={styles.closeSeasonBtnText}>{closing ? "Closing..." : "Close This Season"}</Text></Pressable>}
           </View>
         )}

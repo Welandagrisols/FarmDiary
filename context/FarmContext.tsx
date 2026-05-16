@@ -45,6 +45,7 @@ import {
   reopenSeason,
   setActiveFarmId,
   setActiveSeasonId,
+  updateActivityLog,
   updateFarmRecord,
   updateSeason,
 } from "@/lib/supabase-storage";
@@ -75,7 +76,7 @@ type FarmContextValue = {
   addInventory: typeof addInventoryItem;
   removeInventory: typeof deleteInventoryItem;
   logActivity: typeof addActivityLog;
-  editActivityLog: typeof updateSeason;
+  editActivityLog: (id: string, updates: Partial<ActivityLog>) => Promise<ActivityLog>;
   removeActivityLog: typeof deleteActivityLog;
   addFieldObservation: typeof addFieldObservation;
   removeObservation: typeof deleteObservation;
@@ -136,6 +137,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    setIsLoading(true);
     setLoadError(null);
     try {
       const isAdmin = profile?.role === "admin";
@@ -230,7 +232,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     if (lastSynced && user) {
       refresh();
     }
-  }, [lastSynced]);
+  }, [lastSynced, user, refresh]);
 
   const currentSchedule = useMemo(() => {
     const template = CROP_TEMPLATES.find((t) => t.id === activeSeason?.template_id) ?? CROP_TEMPLATES[0];
@@ -284,7 +286,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const removePersonalExpense = useCallback(async (id: string) => { await deletePersonalExpense(id); setPersonalExpenses((prev) => prev.filter((e) => e.id !== id)); }, []);
   const totalPersonalExpenses = useMemo(() => personalExpenses.reduce((sum, e) => sum + e.amount_kes, 0), [personalExpenses]);
 
-  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateSeason, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
+  const value = useMemo(() => ({ costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, addCostEntry: addCost, removeCost: deleteCost, addInventory: addInventoryItem, removeInventory: deleteInventoryItem, logActivity: addActivityLog, editActivityLog: updateActivityLog, removeActivityLog: deleteActivityLog, addFieldObservation, removeObservation: deleteObservation, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses }), [costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason, currentSchedule, plannedBudget, seasonId, farms, activeFarm, farmId, isLoading, loadError, retryLoad, refresh, totalSpent, totalRevenue, getCompletedActivityIds, getNextActivity, quickCompleteActivity, addHarvestEntry, removeHarvestRecord, createSeason, switchSeason, closeActiveSeason, reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm, personalExpenses, addPersonalExpenseEntry, removePersonalExpense, totalPersonalExpenses]);
 
   return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>;
 }

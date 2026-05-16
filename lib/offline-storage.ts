@@ -167,6 +167,9 @@ export async function withWrite<T>(
 
     if (isNetworkError) {
       await enqueue({ table, operation, data });
+      // For inserts, return the locally-created record so UI updates immediately
+      // The record will sync to the server once back online
+      if (operation === "insert") return data as T;
     }
     throw err;
   }

@@ -178,8 +178,8 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
           {activity.estimatedTotalCost > 0 && (
             <View style={styles.costSummary}>
-              <Text style={styles.costSummaryLabel}>Estimated Total</Text>
-              <Text style={styles.costSummaryValue}>{formatKES(activity.estimatedTotalCost)}</Text>
+              <Text style={styles.modalCostLabel}>Estimated Total</Text>
+              <Text style={styles.modalCostValue}>{formatKES(activity.estimatedTotalCost)}</Text>
             </View>
           )}
         </ScrollView>
@@ -463,8 +463,8 @@ const styles = StyleSheet.create({
   productRate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
   productPrice: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
   costSummary: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: COLORS.primarySurface, borderRadius: 10, padding: 14, marginBottom: 20 },
-  costSummaryLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
-  costSummaryValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
+  modalCostLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
+  modalCostValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
   modalFooter: { padding: 16, paddingBottom: 34, borderTopWidth: 1, borderTopColor: COLORS.borderLight, gap: 10 },
   quickBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primarySurface, borderWidth: 1.5, borderColor: COLORS.primaryLight, borderRadius: 14, paddingVertical: 14 },
   quickBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary },
