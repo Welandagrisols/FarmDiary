@@ -1,5 +1,5 @@
 entrypoint = "README.md"
-modules = ["nodejs-22"]
+modules = ["nodejs-22", "python-base-3.13"]
 
 [nix]
 channel = "stable-24_05"
@@ -43,15 +43,15 @@ args = "Start App"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+args = "Build APK"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
 args = "Start Backend"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Start Frontend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Build APK"
 
 [[workflows.workflow]]
 name = "Start App"
@@ -72,11 +72,11 @@ author = "agent"
 mode = "sequential"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run server:dev"
+args = "kill $(lsof -ti:5000 2>/dev/null) 2>/dev/null || true; npm run server:dev"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -85,7 +85,7 @@ author = "agent"
 mode = "sequential"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
