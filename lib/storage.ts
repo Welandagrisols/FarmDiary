@@ -132,6 +132,43 @@ export interface HarvestRecord {
   created_at: string;
 }
 
+export interface PersonalExpense {
+  id: string;
+  farm_id: string;
+  season_id: string;
+  category: string;
+  subcategory: string;
+  description: string;
+  expense_date: string;
+  amount_kes: number;
+  visitor_name: string | null;
+  visitor_role: string | null;
+  trip_from: string | null;
+  trip_to: string | null;
+  receipt_reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
+export const PERSONAL_EXPENSE_CATEGORIES: Record<string, string[]> = {
+  "Meals & Food": ["Meals", "Refreshments", "Drinking Water", "Other"],
+  Accommodation: ["Lodging", "Guest House", "Other Accommodation"],
+  "Household Setup": ["Household Supplies", "Household Equipment", "Utilities", "Other"],
+  "Personal Care": ["Personal Care", "Laundry", "Other"],
+  "Health & Medication": ["Medication", "Medical Visit", "First Aid", "Other"],
+  "Protective Gear": ["Work Boots", "Gloves", "Rain Gear", "Other Protective Gear"],
+  "Farm Transport": ["Fuel", "Public Transport", "Vehicle Hire", "Other Transport"],
+  "Stakeholder Visits": ["Visitor Meals", "Transport", "Meeting Costs", "Other"],
+  Other: ["Other"],
+};
+
 export interface SeasonRecord {
   id: string;
   farm_id: string;
@@ -560,6 +597,10 @@ export function getDaysSincePlanting(plantingDate: string): number {
   return Math.floor(
     (today.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24)
   );
+}
+
+export function isPrePlanting(date: string, plantingDate?: string | null): boolean {
+  return Boolean(date && plantingDate && date < plantingDate);
 }
 
 export function getDaysUntil(dateStr: string): number {
