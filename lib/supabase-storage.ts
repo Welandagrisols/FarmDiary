@@ -86,12 +86,6 @@ export async function getAllFarmsAdmin(): Promise<FarmRecord[]> {
   return data as FarmRecord[];
 }
 
-export async function claimUnownedFarms(): Promise<void> {
-  const userId = await getAuthUserId();
-  if (!userId) return;
-  await supabase.from("farms").update({ user_id: userId }).is("user_id", null);
-}
-
 export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
   const farms = await getFarms();
   const id = await AsyncStorage.getItem(ACTIVE_FARM_KEY);
