@@ -14,32 +14,12 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { CROP_TEMPLATES, generatePlannedSchedule } from "@/constants/farmData";
+import { CROP_TEMPLATES, generatePlannedSchedule, getTemplate } from "@/constants/farmData";
+import { getCropMeta } from "@/constants/cropTemplates";
 import { formatDate, formatKES, addCost } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
-const VARIETIES = [
-  { label: "Stephen's", blightRisk: "HIGH" as const, maturityDays: 72, note: "72 days, HIGH blight risk" },
-  { label: "Shangi", blightRisk: "MEDIUM" as const, maturityDays: 82, note: "72–90 days, MEDIUM blight risk" },
-  { label: "Kenya Mpya", blightRisk: "LOW" as const, maturityDays: 95, note: "90–100 days, LOW blight risk" },
-  { label: "Markies", blightRisk: "LOW" as const, maturityDays: 110, note: "100–120 days, LOW blight risk" },
-  { label: "Dutch Robjin", blightRisk: "MEDIUM" as const, maturityDays: 95, note: "90–100 days, MEDIUM blight risk" },
-  { label: "Unica", blightRisk: "MEDIUM" as const, maturityDays: 95, note: "90–100 days, MEDIUM blight risk" },
-  { label: "Custom", blightRisk: "MEDIUM" as const, maturityDays: 90, note: "Enter your own variety" },
-];
-
 const SEASON_TYPES = ["Long Rains", "Short Rains", "Irrigation Season"];
-
-const PRE_PLANTING_TEMPLATES = [
-  { category: "Pre-Planting", subcategory: "Land Lease / Rent", description: "Land lease / rent", defaultAmount: "8000" },
-  { category: "Pre-Planting", subcategory: "Ploughing — 1st Pass", description: "Ploughing — 1st pass", defaultAmount: "3500" },
-  { category: "Pre-Planting", subcategory: "Ploughing — 2nd Pass", description: "Ploughing — 2nd pass", defaultAmount: "3500" },
-  { category: "Pre-Planting", subcategory: "Harrowing / Levelling", description: "Harrowing / levelling", defaultAmount: "2000" },
-  { category: "Pre-Planting", subcategory: "Seed Tubers Purchase", description: "Seed tubers purchase", defaultAmount: "12000" },
-  { category: "Pre-Planting", subcategory: "Basal Fertilizer (DAP / NPSb)", description: "Basal fertilizer (DAP / NPSb)", defaultAmount: "6400" },
-  { category: "Labor", subcategory: "Planting Labor", description: "Planting labor", defaultAmount: "3000" },
-  { category: "Pre-Planting", subcategory: "Lime Application", description: "Lime application", defaultAmount: "1500" },
-];
 
 interface PlannerRow {
   id: string;
@@ -48,6 +28,17 @@ interface PlannerRow {
   description: string;
   amount: string;
   enabled: boolean;
+}
+
+function makePlannerRows(rows: ReturnType<typeof getCropMeta>["prePlanting"]): PlannerRow[] {
+  return rows.map((row) => ({
+    id: genId(),
+    category: row.category,
+    subcategory: row.subcategory,
+    description: row.description,
+    amount: row.defaultAmount,
+    enabled: true,
+  }));
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -71,40 +62,35 @@ export default function SeasonSetupScreen() {
   const [seasonName, setSeasonName] = useState(`Season ${nextSeasonNumber}`);
   const [seasonType, setSeasonType] = useState(SEASON_TYPES[0]);
 
+  const [cropId, setCropId] = useState(CROP_TEMPLATES[0].id);
+  const template = getTemplate(cropId);
+  const meta = getCropMeta(template.id);
+  const VARIETIES = meta.varieties;
+
   const [varietyA, setVarietyA] = useState(VARIETIES[0].label);
   const [customVarietyA, setCustomVarietyA] = useState("");
   const [plantingDateA, setPlantingDateA] = useState(new Date().toISOString().split("T")[0]);
   const [acresA, setAcresA] = useState("2");
 
-  const [varietyB, setVarietyB] = useState(VARIETIES[1].label);
+  const [varietyB, setVarietyB] = useState((VARIETIES[1] || VARIETIES[0]).label);
   const [customVarietyB, setCustomVarietyB] = useState("");
   const [plantingDateB, setPlantingDateB] = useState(new Date().toISOString().split("T")[0]);
   const [acresB, setAcresB] = useState("2");
   const [useSectionB, setUseSectionB] = useState(true);
 
-  const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -14));
+  const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -template.prePlantingLeadDays));
   const [seasonNotes, setSeasonNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-planting cost planner state
-  const [plannerRows, setPlannerRows] = useState<PlannerRow[]>(() =>
-    PRE_PLANTING_TEMPLATES.map((t) => ({
-      id: genId(),
-      category: t.category,
-      subcategory: t.subcategory,
-      description: t.description,
-      amount: t.defaultAmount,
-      enabled: true,
-    }))
-  );
+  const [plannerRows, setPlannerRows] = useState<PlannerRow[]>(() => makePlannerRows(meta.prePlanting));
 
   const selectedVarA = VARIETIES.find((v) => v.label === varietyA) || VARIETIES[0];
-  const selectedVarB = VARIETIES.find((v) => v.label === varietyB) || VARIETIES[1];
+  const selectedVarB = VARIETIES.find((v) => v.label === varietyB) || VARIETIES[1] || VARIETIES[0];
 
   const actualVarietyA = varietyA === "Custom" ? customVarietyA : varietyA;
   const actualVarietyB = varietyB === "Custom" ? customVarietyB : varietyB;
 
-  const template = CROP_TEMPLATES[0];
   const previewScheduleA = useMemo(
     () => generatePlannedSchedule(template, plantingDateA),
     [plantingDateA, template]
@@ -145,6 +131,20 @@ export default function SeasonSetupScreen() {
 
   const handleRemoveRow = (id: string) => {
     setPlannerRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleSelectCrop = (id: string) => {
+    if (id === cropId) return;
+    Haptics.selectionAsync();
+    const nextTemplate = getTemplate(id);
+    const nextMeta = getCropMeta(nextTemplate.id);
+    setCropId(nextTemplate.id);
+    setVarietyA(nextMeta.varieties[0].label);
+    setVarietyB((nextMeta.varieties[1] || nextMeta.varieties[0]).label);
+    setCustomVarietyA("");
+    setCustomVarietyB("");
+    setPrePlantingDate(addDays(plantingDateA, -nextTemplate.prePlantingLeadDays));
+    setPlannerRows(makePlannerRows(nextMeta.prePlanting));
   };
 
   const handleSubmit = async () => {
@@ -263,7 +263,26 @@ export default function SeasonSetupScreen() {
             <View style={styles.stepHeader}>
               <Ionicons name="leaf-outline" size={28} color={COLORS.primary} />
               <Text style={styles.stepTitle}>Season Details</Text>
-              <Text style={styles.stepSubtitle}>Name your season and select the type</Text>
+              <Text style={styles.stepSubtitle}>Choose a crop, name your season and select the type</Text>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Crop</Text>
+              <View style={styles.chipRow}>
+                {CROP_TEMPLATES.map((crop) => (
+                  <Pressable
+                    key={crop.id}
+                    style={[styles.chip, cropId === crop.id && styles.chipActive]}
+                    onPress={() => handleSelectCrop(crop.id)}
+                  >
+                    <Text style={[styles.chipText, cropId === crop.id && styles.chipTextActive]}>{crop.cropType}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.fieldHint}>Each season tracks one crop. Varieties, schedule and harvest units follow this choice; start another season for a different crop.</Text>
+              {cropId !== CROP_TEMPLATES[0].id && (
+                <Text style={styles.fieldHint}>This crop schedule is draft guidance. Confirm locally with an agronomist before use.</Text>
+              )}
             </View>
 
             <View style={styles.field}>
@@ -325,8 +344,8 @@ export default function SeasonSetupScreen() {
           <View style={styles.stepContent}>
             <View style={styles.stepHeader}>
               <Ionicons name="grid-outline" size={28} color={COLORS.primary} />
-              <Text style={styles.stepTitle}>Section A — Variety</Text>
-              <Text style={styles.stepSubtitle}>Choose the crop variety for Section A</Text>
+              <Text style={styles.stepTitle}>Section A — {template.cropType}</Text>
+              <Text style={styles.stepSubtitle}>Choose a {template.cropType.toLowerCase()} variety. Badges show {meta.riskLabel.toLowerCase()}.</Text>
             </View>
 
             <View style={styles.varietyGrid}>
@@ -368,7 +387,7 @@ export default function SeasonSetupScreen() {
             )}
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Section A Planting Date</Text>
+              <Text style={styles.fieldLabel}>Section A {meta.plantingVerb} Date</Text>
               <TextInput
                 style={styles.input}
                 value={plantingDateA}
@@ -408,8 +427,8 @@ export default function SeasonSetupScreen() {
           <View style={styles.stepContent}>
             <View style={styles.stepHeader}>
               <Ionicons name="grid-outline" size={28} color={COLORS.teal} />
-              <Text style={styles.stepTitle}>Section B — Variety</Text>
-              <Text style={styles.stepSubtitle}>Does Section B have a different variety or planting date?</Text>
+              <Text style={styles.stepTitle}>Section B — {template.cropType}</Text>
+              <Text style={styles.stepSubtitle}>Choose a Section B variety or {meta.plantingVerb.toLowerCase()} date. Badges show {meta.riskLabel.toLowerCase()}.</Text>
             </View>
 
             <View style={styles.toggleRow}>
@@ -462,7 +481,7 @@ export default function SeasonSetupScreen() {
                 )}
 
                 <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Section B Planting Date</Text>
+                  <Text style={styles.fieldLabel}>Section B {meta.plantingVerb} Date</Text>
                   <TextInput
                     style={styles.input}
                     value={plantingDateB}
@@ -506,7 +525,7 @@ export default function SeasonSetupScreen() {
               <Ionicons name="wallet-outline" size={28} color={COLORS.amber} />
               <Text style={styles.stepTitle}>Pre-Planting Budget</Text>
               <Text style={styles.stepSubtitle}>
-                Tick the costs you've incurred and enter the amounts. These will be saved to your cost ledger automatically.
+                Tick the costs you&apos;ve incurred and enter the amounts. These will be saved to your cost ledger automatically.
               </Text>
             </View>
 
@@ -581,12 +600,12 @@ export default function SeasonSetupScreen() {
               <Ionicons name="calendar-outline" size={28} color={COLORS.primary} />
               <Text style={styles.stepTitle}>Generated Schedule</Text>
               <Text style={styles.stepSubtitle}>
-                Review your auto-generated activity schedule for {seasonName}
+                Review the {template.cropType} schedule for {seasonName}
               </Text>
             </View>
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>{seasonName}</Text>
+              <Text style={styles.summaryTitle}>{seasonName} · {template.cropType}</Text>
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
                   <Text style={styles.summaryLabel}>Type</Text>
@@ -619,8 +638,15 @@ export default function SeasonSetupScreen() {
               )}
             </View>
 
+            {template.notes ? (
+              <View style={styles.plannerNote}>
+                <Ionicons name="information-circle-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.plannerNoteText}>{template.notes}</Text>
+              </View>
+            ) : null}
+
             <Text style={styles.scheduleLabel}>
-              {previewSchedule.length} activities generated from planting date
+              {previewSchedule.length} activities generated from {meta.plantingVerb.toLowerCase()} dates
             </Text>
 
             {previewScheduleA.map((activity, idx) => {

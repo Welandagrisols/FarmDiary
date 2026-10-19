@@ -125,6 +125,8 @@ export interface HarvestRecord {
   total_kg: number;
   price_per_bag_kes: number;
   total_revenue_kes: number;
+  unit?: string | null;
+  grade?: string | null;
   buyer: string | null;
   notes: string | null;
   created_at: string;

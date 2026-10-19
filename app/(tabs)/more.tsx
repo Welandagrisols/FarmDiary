@@ -72,7 +72,7 @@ export default function MoreScreen() {
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="leaf-outline" size={22} color={COLORS.primary} />} label="Season Control" subtitle={`${activeSeasonName} · ${seasonStatusLabel} · ${seasons.length} season${seasons.length !== 1 ? "s" : ""}`} color={COLORS.primary} onPress={() => router.push("/season-control")} />
           <View style={styles.separator} />
-          <MenuRow icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />} label="Start New Season" subtitle="Choose variety, planting date — schedule is auto-generated" color={COLORS.teal} onPress={() => router.push("/season-setup")} />
+          <MenuRow icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />} label="Start New Season" subtitle="Choose crop, variety and planting dates" color={COLORS.teal} onPress={() => router.push("/season-setup")} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="time-outline" size={22} color={COLORS.primaryLight} />} label="Season History" subtitle="Review closed seasons and compare results" color={COLORS.primaryLight} onPress={() => router.push("/season-history")} />
         </View>
@@ -90,7 +90,7 @@ export default function MoreScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
-          <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log bags, weight, price and revenue" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined} />
+          <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log crop-specific units, weight and price" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.filter((record) => record.season_id === activeSeason?.id).length > 0 ? `${harvestRecords.filter((record) => record.season_id === activeSeason?.id).length} loads` : undefined} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="bar-chart-outline" size={22} color={COLORS.primary} />} label="Full P&L Report" subtitle="Revenue, cost, and profit for the active season" color={COLORS.primary} onPress={() => router.push("/season-report")} />
         </View>

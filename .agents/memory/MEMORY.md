@@ -1,0 +1,1 @@
+- [Expo validation limits](expo-validation-limits.md) — A web bundle does not verify Android; confirm each Expo target separately.

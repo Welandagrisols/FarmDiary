@@ -5,6 +5,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
+import { getTemplate } from "@/constants/farmData";
+import { getCropMeta } from "@/constants/cropTemplates";
 import { formatDate, formatKES, SeasonRecord } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
@@ -115,7 +117,7 @@ function EditSeasonModal({ season, onClose, onSave }: {
           <Text style={editStyles.sectionLabel}>Section A</Text>
           <View style={editStyles.card}>
             <Text style={editStyles.fieldLabel}>Variety</Text>
-            <TextInput style={editStyles.input} value={varietyA} onChangeText={setVarietyA} placeholder="e.g. Stephen's" placeholderTextColor={COLORS.textMuted} />
+            <TextInput style={editStyles.input} value={varietyA} onChangeText={setVarietyA} placeholder="e.g. Variety name" placeholderTextColor={COLORS.textMuted} />
 
             <View style={editStyles.divider} />
 
@@ -129,7 +131,7 @@ function EditSeasonModal({ season, onClose, onSave }: {
 
             <View style={editStyles.divider} />
 
-            <Text style={editStyles.fieldLabel}>Blight Risk</Text>
+            <Text style={editStyles.fieldLabel}>{getCropMeta(season.template_id).riskLabel}</Text>
             <View style={editStyles.chipRow}>
               {BLIGHT_RISKS.map((r) => (
                 <Pressable
@@ -146,7 +148,7 @@ function EditSeasonModal({ season, onClose, onSave }: {
           <Text style={editStyles.sectionLabel}>Section B</Text>
           <View style={editStyles.card}>
             <Text style={editStyles.fieldLabel}>Variety</Text>
-            <TextInput style={editStyles.input} value={varietyB} onChangeText={setVarietyB} placeholder="e.g. Shangi" placeholderTextColor={COLORS.textMuted} />
+            <TextInput style={editStyles.input} value={varietyB} onChangeText={setVarietyB} placeholder="e.g. Variety name" placeholderTextColor={COLORS.textMuted} />
 
             <View style={editStyles.divider} />
 
@@ -160,7 +162,7 @@ function EditSeasonModal({ season, onClose, onSave }: {
 
             <View style={editStyles.divider} />
 
-            <Text style={editStyles.fieldLabel}>Blight Risk</Text>
+            <Text style={editStyles.fieldLabel}>{getCropMeta(season.template_id).riskLabel}</Text>
             <View style={editStyles.chipRow}>
               {BLIGHT_RISKS.map((r) => (
                 <Pressable
@@ -229,7 +231,7 @@ export default function SeasonControlScreen() {
           <View style={styles.activePanel}>
             <View style={styles.activePanelHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.activePanelLabel}>Active Season</Text>
+                <Text style={styles.activePanelLabel}>Active Season · {getTemplate(activeSeason.template_id).cropType}</Text>
                 <Text style={styles.activePanelName}>{activeSeason.season_name}</Text>
               </View>
               <View style={styles.activePanelActions}>
@@ -301,7 +303,7 @@ export default function SeasonControlScreen() {
           {sortedSeasons.map((s) => (
             <View key={s.id} style={styles.seasonCard}>
               <Text style={styles.seasonCardName}>{s.season_name}</Text>
-              <Text style={styles.seasonCardType}>{s.season_type} · {statusLabel(s.status)}</Text>
+              <Text style={styles.seasonCardType}>{getTemplate(s.template_id).cropType} · {s.season_type} · {statusLabel(s.status)}</Text>
               {s.id !== activeSeason?.id && s.status !== "closed"
                 ? <Pressable style={styles.switchBtn} onPress={() => handleSwitch(s.id)}><Text style={styles.switchBtnText}>Switch to this season</Text></Pressable>
                 : null}

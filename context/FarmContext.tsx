@@ -35,7 +35,7 @@ import {
   updateFarmRecord,
   updateSeason,
 } from "@/lib/storage";
-import { generatePlannedSchedule, CROP_TEMPLATES } from "@/constants/farmData";
+import { generatePlannedSchedule, getTemplate } from "@/constants/farmData";
 
 const CACHE_KEY = "farm_offline_cache_v1";
 
@@ -152,9 +152,12 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
   const currentSchedule = useMemo(() => {
     if (!activeSeason) return [];
-    const template = CROP_TEMPLATES[0];
+    const template = getTemplate(activeSeason.template_id);
     const plantingDate = activeSeason.section_a?.planting_date || new Date().toISOString().split("T")[0];
-    return generatePlannedSchedule(template, plantingDate);
+    const plantingDateB = activeSeason.section_b?.acres > 0
+      ? activeSeason.section_b.planting_date
+      : undefined;
+    return generatePlannedSchedule(template, plantingDate, plantingDateB);
   }, [activeSeason]);
   const seasonId = activeSeason?.id || "";
   const farmId = activeFarm?.id || "";

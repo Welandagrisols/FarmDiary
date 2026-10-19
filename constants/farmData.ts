@@ -1,3 +1,5 @@
+import { EXTRA_CROP_TEMPLATES } from "./cropTemplates";
+
 export const FARM_SEED = {
   id: "farm-001",
   name: "Rift Valley Potato Farm",
@@ -211,12 +213,22 @@ function buildCropTemplate(): CropTemplate {
   };
 }
 
-export const CROP_TEMPLATES: CropTemplate[] = [buildCropTemplate()];
+export const CROP_TEMPLATES: CropTemplate[] = [buildCropTemplate(), ...EXTRA_CROP_TEMPLATES];
 
-export function generatePlannedSchedule(template: CropTemplate, plantingDate: string): PlannedActivity[] {
+export function getTemplate(templateId?: string | null): CropTemplate {
+  return CROP_TEMPLATES.find((template) => template.id === templateId) || CROP_TEMPLATES[0];
+}
+
+export function generatePlannedSchedule(
+  template: CropTemplate,
+  plantingDate: string,
+  plantingDateB?: string
+): PlannedActivity[] {
   return template.stages.map((stage, index) => {
     const plannedDateA = offsetDate(plantingDate, stage.offsetDays);
-    const plannedDateB = offsetDate(plantingDate, stage.offsetDays + 3);
+    const plannedDateB = plantingDateB
+      ? offsetDate(plantingDateB, stage.offsetDays)
+      : offsetDate(plantingDate, stage.offsetDays + 3);
     return {
       id: stage.id,
       templateId: template.id,
