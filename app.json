@@ -43,14 +43,6 @@
     "experiments": {
       "typedRoutes": true
     },
-    "extra": {
-      "router": {
-        "origin": "https://replit.com/"
-      },
-      "eas": {
-        "projectId": "20decdbd-970a-4b12-bf1f-7b7459b7e880"
-      }
-    },
-    "owner": "agrisols2025"
+    "owner": "wesleyprojects"
   }
 }
