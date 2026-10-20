@@ -23,6 +23,7 @@ import {
   getHarvestRecords,
   getInventory,
   getObservations,
+  getSeasonBlocks,
   getSeasons,
   HarvestRecord,
   InventoryItem,
@@ -188,11 +189,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const currentSchedule = useMemo(() => {
     if (!activeSeason) return [];
     const template = getTemplate(activeSeason.template_id);
-    const plantingDate = activeSeason.section_a?.planting_date || new Date().toISOString().split("T")[0];
-    const plantingDateB = activeSeason.section_b?.acres > 0
-      ? activeSeason.section_b.planting_date
-      : undefined;
-    return generatePlannedSchedule(template, plantingDate, plantingDateB);
+    return generatePlannedSchedule(template, getSeasonBlocks(activeSeason));
   }, [activeSeason]);
   const seasonId = activeSeason?.id || "";
   const farmId = activeFarm?.id || "";
@@ -201,19 +198,27 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
   const getCompletedActivityIds = useCallback(() => {
     const ids = new Set<string>();
-    activityLogs.filter((l) => l.season_id === seasonId).forEach((log) => { if (log.schedule_activity_id) ids.add(log.schedule_activity_id); });
+    activityLogs.filter((l) => l.season_id === seasonId).forEach((log) => {
+      if (!log.schedule_activity_id) return;
+      ids.add(log.schedule_activity_id);
+      if (!log.schedule_activity_id.includes(":") && log.section_id) {
+        ids.add(`${log.schedule_activity_id}:${log.section_id}`);
+      }
+    });
     return Array.from(ids);
   }, [activityLogs, seasonId]);
 
-  const getNextActivity = useCallback((_sectionId: string) => {
+  const getNextActivity = useCallback((sectionId: string) => {
     const completedIds = getCompletedActivityIds();
-    return currentSchedule.find((activity) => !completedIds.includes(activity.id)) || null;
+    return currentSchedule.find((activity) =>
+      activity.blockId === sectionId && !completedIds.includes(activity.id)
+    ) || null;
   }, [currentSchedule, getCompletedActivityIds]);
 
   const quickCompleteActivity = useCallback(async (activity: any, sectionId: string | null) => {
     const today = new Date().toISOString().split("T")[0];
-    const isB = sectionId === "section-b";
-    const newLog = await addActivityLog({ farm_id: farmId, season_id: seasonId, section_id: sectionId, schedule_activity_id: activity.id, activity_name: activity.name, planned_date: isB ? activity.plannedDateB : activity.plannedDateA, actual_date: today, products_used: [], is_deviation: false, deviation_reason: null, num_workers: 0, labor_cost_kes: 0, total_cost_kes: 0, weather_conditions: null, is_historical: false, notes: "Quick-completed (no costs logged)" });
+    const blockId = activity.blockId || sectionId;
+    const newLog = await addActivityLog({ farm_id: farmId, season_id: seasonId, section_id: blockId, schedule_activity_id: activity.id, activity_name: activity.name, planned_date: activity.plannedDate || activity.plannedDateA, actual_date: today, products_used: [], is_deviation: false, deviation_reason: null, num_workers: 0, labor_cost_kes: 0, total_cost_kes: 0, weather_conditions: null, is_historical: false, notes: "Quick-completed (no costs logged)" });
     setActivityLogs((prev) => [...prev, newLog]);
   }, [farmId, seasonId]);
 

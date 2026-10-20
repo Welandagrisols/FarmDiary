@@ -16,7 +16,7 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { CROP_TEMPLATES, generatePlannedSchedule, getTemplate } from "@/constants/farmData";
 import { getCropMeta } from "@/constants/cropTemplates";
-import { formatDate, formatKES, addCost } from "@/lib/storage";
+import { CropBlock, formatDate, formatKES, addCost } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
 const SEASON_TYPES = ["Long Rains", "Short Rains", "Irrigation Season"];
@@ -28,6 +28,13 @@ interface PlannerRow {
   description: string;
   amount: string;
   enabled: boolean;
+}
+
+interface ExtraBlockDraft {
+  id: string;
+  variety: string;
+  planting_date: string;
+  acres: string;
 }
 
 function makePlannerRows(rows: ReturnType<typeof getCropMeta>["prePlanting"]): PlannerRow[] {
@@ -77,6 +84,7 @@ export default function SeasonSetupScreen() {
   const [plantingDateB, setPlantingDateB] = useState(new Date().toISOString().split("T")[0]);
   const [acresB, setAcresB] = useState("2");
   const [useSectionB, setUseSectionB] = useState(false);
+  const [extraBlocks, setExtraBlocks] = useState<ExtraBlockDraft[]>([]);
 
   const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -template.prePlantingLeadDays));
   const [seasonNotes, setSeasonNotes] = useState("");
@@ -91,24 +99,57 @@ export default function SeasonSetupScreen() {
   const actualVarietyA = varietyA === "Custom" ? customVarietyA : varietyA;
   const actualVarietyB = varietyB === "Custom" ? customVarietyB : varietyB;
 
-  const previewScheduleA = useMemo(
-    () => generatePlannedSchedule(template, plantingDateA),
-    [plantingDateA, template]
-  );
-  const previewScheduleB = useMemo(
-    () => useSectionB ? generatePlannedSchedule(template, plantingDateB) : [],
-    [plantingDateB, template, useSectionB]
-  );
-  const previewSchedule = previewScheduleA;
-
   const estimatedHarvestA = addDays(plantingDateA, selectedVarA.maturityDays);
   const estimatedHarvestB = useSectionB ? addDays(plantingDateB, selectedVarB.maturityDays) : null;
+  const plantingBlocks: CropBlock[] = [
+    {
+      id: "section-a",
+      name: "Block 1",
+      variety: actualVarietyA,
+      planting_date: plantingDateA,
+      acres: parseFloat(acresA) || 0,
+      blight_risk: selectedVarA.blightRisk,
+      notes: null,
+    },
+    ...(useSectionB
+      ? [
+          {
+            id: "section-b",
+            name: "Block 2",
+            variety: actualVarietyB,
+            planting_date: plantingDateB,
+            acres: parseFloat(acresB) || 0,
+            blight_risk: selectedVarB.blightRisk,
+            notes: null,
+          },
+          ...extraBlocks.map((block, index) => ({
+            id: block.id,
+            name: `Block ${index + 3}`,
+            variety: block.variety.trim(),
+            planting_date: block.planting_date,
+            acres: parseFloat(block.acres) || 0,
+            blight_risk: VARIETIES.find((v) => v.label === block.variety)?.blightRisk || "LOW" as const,
+            notes: null,
+          })),
+        ]
+      : []),
+  ];
+  const previewSchedule = generatePlannedSchedule(template, plantingBlocks.slice(0, 1));
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const canProceedStep1 = seasonName.trim().length > 0;
-  const canProceedStep2 = plantingDateA.length === 10 && (!useSectionB || plantingDateB.length === 10);
-  const canProceedStep3 = !useSectionB || actualVarietyB.length > 0;
+  const canProceedStep2 = plantingDateA.length === 10 && (parseFloat(acresA) || 0) > 0;
+  const canProceedStep3 = !useSectionB || (
+    actualVarietyB.length > 0 &&
+    plantingDateB.length === 10 &&
+    (parseFloat(acresB) || 0) > 0 &&
+    extraBlocks.every((block) =>
+      block.variety.trim().length > 0 &&
+      block.planting_date.length === 10 &&
+      (parseFloat(block.acres) || 0) > 0
+    )
+  );
 
   const enabledPlannerRows = plannerRows.filter((r) => r.enabled && r.amount.trim() !== "");
   const plannerTotal = enabledPlannerRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
@@ -143,6 +184,7 @@ export default function SeasonSetupScreen() {
     setVarietyB((nextMeta.varieties[1] || nextMeta.varieties[0]).label);
     setCustomVarietyA("");
     setCustomVarietyB("");
+    setExtraBlocks([]);
     setPrePlantingDate(addDays(plantingDateA, -nextTemplate.prePlantingLeadDays));
     setPlannerRows(makePlannerRows(nextMeta.prePlanting));
   };
@@ -162,20 +204,29 @@ export default function SeasonSetupScreen() {
         season_type: seasonType,
         status: "active",
         template_id: template.id,
+        blocks: plantingBlocks,
         section_a: {
-          variety: actualVarietyA,
-          planting_date: plantingDateA,
-          acres: parseFloat(acresA) || 2,
-          blight_risk: selectedVarA.blightRisk,
+          variety: plantingBlocks[0].variety,
+          planting_date: plantingBlocks[0].planting_date,
+          acres: plantingBlocks[0].acres,
+          blight_risk: plantingBlocks[0].blight_risk,
           notes: null,
         },
-        section_b: {
-          variety: actualVarietyB || "Not planted",
-          planting_date: useSectionB ? plantingDateB : plantingDateA,
-          acres: useSectionB ? (parseFloat(acresB) || 2) : 0,
-          blight_risk: selectedVarB.blightRisk,
-          notes: null,
-        },
+        section_b: plantingBlocks[1]
+          ? {
+              variety: plantingBlocks[1].variety,
+              planting_date: plantingBlocks[1].planting_date,
+              acres: plantingBlocks[1].acres,
+              blight_risk: plantingBlocks[1].blight_risk,
+              notes: null,
+            }
+          : {
+              variety: "Not planted",
+              planting_date: plantingDateA,
+              acres: 0,
+              blight_risk: selectedVarB.blightRisk,
+              notes: null,
+            },
         pre_planting_start_date: prePlantingDate || null,
         total_revenue_kes: null,
         total_cost_kes: null,
