@@ -73,8 +73,8 @@ export default function AuthScreen() {
           <View style={styles.logoCircle}>
             <Ionicons name="leaf" size={36} color={COLORS.white} />
           </View>
-          <Text style={styles.appName}>Agrisols Farm Diary</Text>
-          <Text style={styles.tagline}>Your farm, your data — always safe.</Text>
+          <Text style={styles.appName}>Agrisols</Text>
+          <Text style={styles.tagline}>Your complete farm management tool</Text>
         </View>
 
         <View style={styles.card}>

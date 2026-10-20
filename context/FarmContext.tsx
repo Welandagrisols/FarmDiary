@@ -36,6 +36,7 @@ import {
   updateSeason,
 } from "@/lib/storage";
 import { generatePlannedSchedule, getTemplate } from "@/constants/farmData";
+import { useAuth } from "@/context/AuthContext";
 
 const CACHE_KEY = "farm_offline_cache_v1";
 
@@ -54,6 +55,8 @@ type FarmContextValue = {
   farmId: string;
   isLoading: boolean;
   isOffline: boolean;
+  loadError: string | null;
+  retryLoad: () => Promise<void>;
   refresh: () => Promise<void>;
   addCostEntry: typeof addCost;
   removeCost: typeof deleteCost;
@@ -85,6 +88,7 @@ type FarmContextValue = {
 const FarmContext = createContext<FarmContextValue | null>(null);
 
 export function FarmProvider({ children }: { children: React.ReactNode }) {
+  const { user, isLoading: authLoading } = useAuth();
   const [costs, setCosts] = useState<Awaited<ReturnType<typeof getCosts>>>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -96,6 +100,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const [activeFarm, setActiveFarm] = useState<Awaited<ReturnType<typeof getActiveFarmRecord>>>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const applyData = useCallback((allFarms: any[], farm: any, allSeasons: SeasonRecord[], active: SeasonRecord | null, c: any[], inv: InventoryItem[], logs: ActivityLog[], obs: ObservationRecord[], harvest: HarvestRecord[]) => {
     const farmId = farm?.id || allFarms[0]?.id || "";
@@ -111,6 +116,8 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
     try {
       const [allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest] = await Promise.all([
         getFarms(),
@@ -126,6 +133,9 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
       applyData(allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest);
       setIsOffline(false);
+      if (allFarms.length === 0) {
+        setLoadError("No farm is assigned to this account. Contact your farm manager.");
+      }
 
       try {
         await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest }));
@@ -139,6 +149,9 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
           const { allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest } = JSON.parse(raw);
           applyData(allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest);
           setIsOffline(true);
+          setLoadError("Showing saved farm data offline. Reconnect and retry to sync.");
+        } else {
+          setLoadError("Unable to load farm data. Check your connection and try again.");
         }
       } catch (cacheErr) {
         console.error("[FarmContext] cache load failed:", cacheErr);
@@ -148,7 +161,29 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyData]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const clearFarmData = useCallback(() => {
+    setCosts([]);
+    setInventory([]);
+    setActivityLogs([]);
+    setObservations([]);
+    setHarvestRecords([]);
+    setSeasons([]);
+    setActiveSeason(null);
+    setFarms([]);
+    setActiveFarm(null);
+    setIsOffline(false);
+    setLoadError(null);
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      clearFarmData();
+      setIsLoading(false);
+      return;
+    }
+    void refresh();
+  }, [authLoading, user?.id, refresh, clearFarmData]);
 
   const currentSchedule = useMemo(() => {
     if (!activeSeason) return [];
@@ -235,7 +270,8 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason,
-    currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, isOffline, refresh,
+    currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, isOffline,
+    loadError, retryLoad: refresh, refresh,
     addCostEntry, removeCost, addInventory, removeInventory, logActivity, editActivityLog,
     removeActivityLog, addFieldObservation: addObservation, removeObservation, totalSpent, totalRevenue,
     getCompletedActivityIds, getNextActivity, quickCompleteActivity, getLastSprayDate: () => null,
@@ -243,7 +279,8 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     reopenActiveSeason, updateActiveSeason, createFarm, switchFarm, updateActiveFarm,
   }), [
     costs, inventory, activityLogs, observations, harvestRecords, seasons, activeSeason,
-    currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, isOffline, refresh,
+    currentSchedule, seasonId, farms, activeFarm, farmId, isLoading, isOffline,
+    loadError, refresh,
     addCostEntry, removeCost, addInventory, removeInventory, logActivity, editActivityLog,
     removeActivityLog, addObservation, removeObservation, totalSpent, totalRevenue,
     getCompletedActivityIds, getNextActivity, quickCompleteActivity,

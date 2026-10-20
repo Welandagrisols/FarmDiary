@@ -76,7 +76,7 @@ export default function SeasonSetupScreen() {
   const [customVarietyB, setCustomVarietyB] = useState("");
   const [plantingDateB, setPlantingDateB] = useState(new Date().toISOString().split("T")[0]);
   const [acresB, setAcresB] = useState("2");
-  const [useSectionB, setUseSectionB] = useState(true);
+  const [useSectionB, setUseSectionB] = useState(false);
 
   const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -template.prePlantingLeadDays));
   const [seasonNotes, setSeasonNotes] = useState("");
@@ -419,6 +419,22 @@ export default function SeasonSetupScreen() {
                 </Text>
               </View>
             )}
+
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={styles.fieldLabel}>Add another planting section?</Text>
+                <Text style={styles.fieldHint}>Optional — turn this on only when you have another planting block.</Text>
+              </View>
+              <Pressable
+                style={[styles.toggleSwitch, useSectionB && styles.toggleSwitchOn]}
+                onPress={() => { Haptics.selectionAsync(); setUseSectionB(!useSectionB); }}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: useSectionB }}
+                accessibilityLabel="Add another planting section"
+              >
+                <View style={[styles.toggleKnob, useSectionB && styles.toggleKnobOn]} />
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -429,16 +445,6 @@ export default function SeasonSetupScreen() {
               <Ionicons name="grid-outline" size={28} color={COLORS.teal} />
               <Text style={styles.stepTitle}>Section B — {template.cropType}</Text>
               <Text style={styles.stepSubtitle}>Choose a Section B variety or {meta.plantingVerb.toLowerCase()} date. Badges show {meta.riskLabel.toLowerCase()}.</Text>
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.fieldLabel}>Plant Section B this season</Text>
-              <Pressable
-                style={[styles.toggleSwitch, useSectionB && styles.toggleSwitchOn]}
-                onPress={() => { Haptics.selectionAsync(); setUseSectionB(!useSectionB); }}
-              >
-                <View style={[styles.toggleKnob, useSectionB && styles.toggleKnobOn]} />
-              </Pressable>
             </View>
 
             {useSectionB && (
@@ -699,7 +705,10 @@ export default function SeasonSetupScreen() {
             <Pressable
               style={[styles.nextBtn, !canProceedCurrent() && { opacity: 0.4 }]}
               disabled={!canProceedCurrent()}
-              onPress={() => { Haptics.selectionAsync(); setStep(step + 1); }}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setStep(step === 2 && !useSectionB ? step + 2 : step + 1);
+              }}
             >
               <Text style={styles.nextBtnText}>Continue</Text>
               <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
