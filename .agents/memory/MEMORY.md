@@ -2,3 +2,4 @@
 - [Farm account provisioning](farm-account-provisioning.md) — Farmers use accounts created by a farm manager; keep public signup out of the login screen.
 - [Farm operations scope](farm-operations-scope.md) — Capture all farm work, track labour effectiveness, and plan for livestock and poultry later.
 - [Feature sequencing](feature-sequencing.md) — Build and verify one capability at a time before moving to the next.
+- [GitHub sync safety](github-sync-safety.md) — Inspect local-only commits and user-owned configuration before merging remote changes.
