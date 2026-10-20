@@ -45,14 +45,6 @@ args = "Start App"
 task = "workflow.run"
 args = "Build APK"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Backend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Frontend"
-
 [[workflows.workflow]]
 name = "Start App"
 author = "agent"
