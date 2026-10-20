@@ -32,15 +32,29 @@ A mobile-first farm management app supporting multiple farms. Built with Expo Re
 - `currentSchedule` computed from `generatePlannedSchedule()` using active season's planting date
 - Backward-compat: Season-001 seeded via `seedSeasonIfNeeded()` on first load
 
+## Auth System
+- **Supabase Auth**: Email + password sign-in/sign-up via `context/AuthContext.tsx`
+- **Session persistence**: `lib/supabase.ts` uses AsyncStorage as the auth storage adapter — session is saved locally on the device
+- **Offline access**: Session is read from AsyncStorage on startup (instant, no network needed) — user stays logged in
+- **Routing**: `app/index.tsx` redirects to `/(tabs)` if session exists, `/auth` if not
+- **Logout**: More tab → Account section → Sign Out (clears session + offline cache)
+- **Fast re-entry**: As long as the user doesn't sign out, they go directly to their dashboard on every app open
+
 ## Data Storage
-- All data persisted in AsyncStorage (local device storage)
-- Keys: `farm_farms`, `farm_active_farm_id`, `farm_seasons`, `farm_active_season_id`, `farm_costs`, `farm_inventory`, `farm_activity_logs`, `farm_observations`, `farm_harvest`
-- Auto-seeds default farm, season, inventory on first load
+- **Cloud database**: Supabase (PostgreSQL) — project `ckluambcgnmjxcmpcfvg`
+- **Tables**: `farms`, `seasons`, `costs`, `inventory`, `activity_logs`, `observations`, `harvest_records`, `app_meta`
+- `app_meta` stores: `active_farm_id`, `active_season_id`, `asyncstorage_migrated_v1`
+- **Migration**: `lib/migration.ts` runs once on startup — reads existing AsyncStorage data and upserts to Supabase, then sets `asyncstorage_migrated_v1=true` in `app_meta` so it never runs again
+- **Seeding**: `seedIfNeeded()` in `lib/storage.ts` inserts default farm + season + inventory if `farms` table is empty
+- **Offline cache**: `context/FarmContext.tsx` saves last-loaded data to AsyncStorage (`farm_offline_cache_v1`) after every successful `refresh()`. If Supabase is unreachable, data is loaded from the cache and `isOffline=true` is set in context
+- **RLS**: Enabled with open `allow_all` policies on all tables (no auth required beyond Supabase anon key)
+- **Env vars**: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (shared); `SUPABASE_SERVICE_ROLE_KEY` (secret)
 
 ## Tech Stack
 - **Frontend**: Expo 54 + React Native + Expo Router (file-based routing)
 - **Font**: DM Sans (Google Fonts via @expo-google-fonts/dm-sans)
-- **State**: FarmContext (React Context + AsyncStorage)
+- **State**: FarmContext (React Context + Supabase)
+- **Database**: Supabase (`@supabase/supabase-js`) — replaces AsyncStorage for all CRUD
 - **Navigation**: 5-tab bottom bar (Home, Schedule, Log, Costs, More)
 - **Backend**: Express.js server (port 5000) — API only
 
@@ -84,7 +98,9 @@ context/
   FarmContext.tsx        # Shared state: activeSeason, currentSchedule, CRUD
 
 lib/
-  storage.ts            # AsyncStorage CRUD + SeasonRecord interface + utilities
+  supabase.ts           # Supabase client (uses EXPO_PUBLIC_ env vars)
+  storage.ts            # Supabase CRUD + all interfaces + utility functions
+  migration.ts          # One-time AsyncStorage → Supabase migration (runs on startup)
   query-client.ts       # React Query client
 
 server/

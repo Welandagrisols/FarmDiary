@@ -1,26 +1,33 @@
-import { useEffect, useState } from "react";
-import { Redirect } from "expo-router";
+import { useEffect } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { router } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { hasMigrated } from "@/lib/supabase-storage";
+import COLORS from "@/constants/colors";
 
 export default function Index() {
-  const { user, isAdmin, isLoading } = useAuth();
-  const [migrationChecked, setMigrationChecked] = useState(false);
-  const [migrated, setMigrated] = useState(false);
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
+    if (isLoading) return;
     if (user) {
-      hasMigrated().then((done) => {
-        setMigrated(done);
-        setMigrationChecked(true);
-      });
+      router.replace("/(tabs)");
+    } else {
+      router.replace("/auth");
     }
-  }, [user]);
+  }, [user, isLoading]);
 
-  if (isLoading) return null;
-  if (!user) return <Redirect href="/auth" />;
-  if (!migrationChecked) return null;
-  if (!migrated) return <Redirect href="/migration" />;
-  if (isAdmin) return <Redirect href="/admin" />;
-  return <Redirect href="/farm-picker" />;
+  return (
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color={COLORS.primary} />
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

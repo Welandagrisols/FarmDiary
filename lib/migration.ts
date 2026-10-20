@@ -1,115 +1,78 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  FarmRecord,
-  CostEntry,
-  InventoryItem,
-  ActivityLog,
-  ObservationRecord,
-  HarvestRecord,
-  SeasonRecord,
-  PersonalExpense,
-} from "./storage";
-import { hasMigrated, markMigrated } from "./supabase-storage";
-import { supabase } from "./supabase";
-import { migrateViaServer } from "./api";
+import { supabase } from "@/lib/supabase";
 
-const KEYS = {
-  COSTS: "farm_costs",
-  INVENTORY: "farm_inventory",
-  ACTIVITY_LOGS: "farm_activity_logs",
-  OBSERVATIONS: "farm_observations",
-  HARVEST: "farm_harvest",
-  SEASONS: "farm_seasons",
-  FARMS: "farm_farms",
-  PERSONAL_EXPENSES: "farm_personal_expenses",
-};
+const MIGRATION_KEY = "asyncstorage_migrated_v1";
 
-async function readLocal<T>(key: string): Promise<T[]> {
+export async function migrateFromAsyncStorage(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+    const { data } = await supabase
+      .from("app_meta")
+      .select("value")
+      .eq("key", MIGRATION_KEY)
+      .maybeSingle();
 
-export interface MigrationResult {
-  alreadyDone: boolean;
-  success: boolean;
-  counts: {
-    farms: number;
-    seasons: number;
-    costs: number;
-    inventory: number;
-    activityLogs: number;
-    observations: number;
-    harvestRecords: number;
-    personalExpenses: number;
-  };
-  error?: string;
-}
+    if (data?.value === "true") return;
 
-export async function runMigrationIfNeeded(): Promise<MigrationResult> {
-  const done = await hasMigrated();
-  if (done) {
-    return { alreadyDone: true, success: true, counts: { farms: 0, seasons: 0, costs: 0, inventory: 0, activityLogs: 0, observations: 0, harvestRecords: 0, personalExpenses: 0 } };
-  }
-
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      return {
-        alreadyDone: false,
-        success: false,
-        counts: { farms: 0, seasons: 0, costs: 0, inventory: 0, activityLogs: 0, observations: 0, harvestRecords: 0, personalExpenses: 0 },
-        error: "Not logged in. Please log in and try again.",
-      };
-    }
-
-    const [farms, seasons, costs, inventory, activityLogs, observations, harvestRecords, personalExpenses] = await Promise.all([
-      readLocal<FarmRecord>(KEYS.FARMS),
-      readLocal<SeasonRecord>(KEYS.SEASONS),
-      readLocal<CostEntry>(KEYS.COSTS),
-      readLocal<InventoryItem>(KEYS.INVENTORY),
-      readLocal<ActivityLog>(KEYS.ACTIVITY_LOGS),
-      readLocal<ObservationRecord>(KEYS.OBSERVATIONS),
-      readLocal<HarvestRecord>(KEYS.HARVEST),
-      readLocal<PersonalExpense>(KEYS.PERSONAL_EXPENSES),
+    const [
+      farmsJson,
+      seasonsJson,
+      costsJson,
+      inventoryJson,
+      logsJson,
+      obsJson,
+      harvestJson,
+      activeFarmId,
+      activeSeasonId,
+    ] = await Promise.all([
+      AsyncStorage.getItem("farm_farms"),
+      AsyncStorage.getItem("farm_seasons"),
+      AsyncStorage.getItem("farm_costs"),
+      AsyncStorage.getItem("farm_inventory"),
+      AsyncStorage.getItem("farm_activity_logs"),
+      AsyncStorage.getItem("farm_observations"),
+      AsyncStorage.getItem("farm_harvest"),
+      AsyncStorage.getItem("farm_active_farm_id"),
+      AsyncStorage.getItem("farm_active_season_id"),
     ]);
 
-    await migrateViaServer(session.access_token, {
-      farms,
-      seasons,
-      costs,
-      inventory,
-      activityLogs,
-      observations,
-      harvestRecords,
-      personalExpenses,
-    });
+    const farms = farmsJson ? JSON.parse(farmsJson) : [];
 
-    await markMigrated();
+    if (farms.length > 0) {
+      const seasons = seasonsJson ? JSON.parse(seasonsJson) : [];
+      const costs = costsJson ? JSON.parse(costsJson) : [];
+      const inventory = inventoryJson ? JSON.parse(inventoryJson) : [];
+      const logs = logsJson ? JSON.parse(logsJson) : [];
+      const observations = obsJson ? JSON.parse(obsJson) : [];
+      const harvests = harvestJson ? JSON.parse(harvestJson) : [];
 
-    return {
-      alreadyDone: false,
-      success: true,
-      counts: {
-        farms: farms.length,
-        seasons: seasons.length,
-        costs: costs.length,
-        inventory: inventory.length,
-        activityLogs: activityLogs.length,
-        observations: observations.length,
-        harvestRecords: harvestRecords.length,
-        personalExpenses: personalExpenses.length,
-      },
-    };
-  } catch (err: any) {
-    return {
-      alreadyDone: false,
-      success: false,
-      counts: { farms: 0, seasons: 0, costs: 0, inventory: 0, activityLogs: 0, observations: 0, harvestRecords: 0, personalExpenses: 0 },
-      error: err?.message || "Unknown error",
-    };
+      await supabase.from("farms").upsert(farms, { onConflict: "id" });
+      if (seasons.length)
+        await supabase.from("seasons").upsert(seasons, { onConflict: "id" });
+      if (costs.length)
+        await supabase.from("costs").upsert(costs, { onConflict: "id" });
+      if (inventory.length)
+        await supabase.from("inventory").upsert(inventory, { onConflict: "id" });
+      if (logs.length)
+        await supabase.from("activity_logs").upsert(logs, { onConflict: "id" });
+      if (observations.length)
+        await supabase
+          .from("observations")
+          .upsert(observations, { onConflict: "id" });
+      if (harvests.length)
+        await supabase
+          .from("harvest_records")
+          .upsert(harvests, { onConflict: "id" });
+    }
+
+    const metaRows: { key: string; value: string }[] = [
+      { key: MIGRATION_KEY, value: "true" },
+    ];
+    if (activeFarmId) metaRows.push({ key: "active_farm_id", value: activeFarmId });
+    if (activeSeasonId)
+      metaRows.push({ key: "active_season_id", value: activeSeasonId });
+
+    await supabase.from("app_meta").upsert(metaRows);
+  } catch (err) {
+    console.warn("[migration] AsyncStorage → Supabase migration failed:", err);
   }
 }
