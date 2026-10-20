@@ -6,6 +6,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatDate, formatKES } from "@/lib/storage";
+import { getTemplate } from "@/constants/farmData";
+import { formatHarvestTotals, getCropMeta } from "@/constants/cropTemplates";
 
 export default function SeasonHistoryScreen() {
   const insets = useSafeAreaInsets();
@@ -58,14 +60,15 @@ export default function SeasonHistoryScreen() {
             const spent = seasonCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
             const revenue = seasonHarvests.reduce((sum, record) => sum + record.total_revenue_kes, 0);
             const net = revenue - spent;
-            const yieldKg = seasonHarvests.reduce((sum, record) => sum + record.total_kg, 0);
+            const crop = getTemplate(season.template_id).cropType;
+            const harvestSummary = formatHarvestTotals(seasonHarvests, getCropMeta(season.template_id));
 
             return (
               <View key={season.id} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View>
                     <Text style={styles.cardTitle}>{season.season_name}</Text>
-                    <Text style={styles.cardSub}>{season.season_type} · Closed {season.closed_at ? formatDate(season.closed_at) : formatDate(season.created_at)}</Text>
+                    <Text style={styles.cardSub}>{crop} · {season.season_type} · Closed {season.closed_at ? formatDate(season.closed_at) : formatDate(season.created_at)}</Text>
                   </View>
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>Closed</Text>
@@ -75,7 +78,7 @@ export default function SeasonHistoryScreen() {
                   <View style={styles.stat}><Text style={styles.value}>{formatKES(revenue)}</Text><Text style={styles.label}>Revenue</Text></View>
                   <View style={styles.stat}><Text style={styles.value}>{formatKES(spent)}</Text><Text style={styles.label}>Costs</Text></View>
                   <View style={styles.stat}><Text style={[styles.value, net >= 0 ? styles.good : styles.bad]}>{formatKES(net)}</Text><Text style={styles.label}>Net</Text></View>
-                  <View style={styles.stat}><Text style={styles.value}>{yieldKg.toLocaleString()}</Text><Text style={styles.label}>Yield kg</Text></View>
+                  <View style={styles.stat}><Text style={styles.value} numberOfLines={2}>{harvestSummary}</Text><Text style={styles.label}>Harvest quantity</Text></View>
                 </View>
               </View>
             );

@@ -39,3 +39,9 @@ yarn-error.*
 .vercel
 
 .env
+
+# Signing keys and credentials: never commit these
+*.keystore
+credentials.json
+*.jks
+.env.*

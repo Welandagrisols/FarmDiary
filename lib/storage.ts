@@ -125,9 +125,58 @@ export interface HarvestRecord {
   total_kg: number;
   price_per_bag_kes: number;
   total_revenue_kes: number;
+  unit?: string | null;
+  grade?: string | null;
   buyer: string | null;
   notes: string | null;
   created_at: string;
+}
+
+export interface PersonalExpense {
+  id: string;
+  farm_id: string;
+  season_id: string;
+  category: string;
+  subcategory: string;
+  description: string;
+  expense_date: string;
+  amount_kes: number;
+  visitor_name: string | null;
+  visitor_role: string | null;
+  trip_from: string | null;
+  trip_to: string | null;
+  receipt_reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
+export const PERSONAL_EXPENSE_CATEGORIES: Record<string, string[]> = {
+  "Meals & Food": ["Meals", "Refreshments", "Drinking Water", "Other"],
+  Accommodation: ["Lodging", "Guest House", "Other Accommodation"],
+  "Household Setup": ["Household Supplies", "Household Equipment", "Utilities", "Other"],
+  "Personal Care": ["Personal Care", "Laundry", "Other"],
+  "Health & Medication": ["Medication", "Medical Visit", "First Aid", "Other"],
+  "Protective Gear": ["Work Boots", "Gloves", "Rain Gear", "Other Protective Gear"],
+  "Farm Transport": ["Fuel", "Public Transport", "Vehicle Hire", "Other Transport"],
+  "Stakeholder Visits": ["Visitor Meals", "Transport", "Meeting Costs", "Other"],
+  Other: ["Other"],
+};
+
+export interface CropBlock {
+  id: string;
+  name: string;
+  variety: string;
+  planting_date: string;
+  acres: number;
+  blight_risk: "LOW" | "MEDIUM" | "HIGH";
+  notes: string | null;
 }
 
 export interface SeasonRecord {
@@ -152,12 +201,63 @@ export interface SeasonRecord {
     blight_risk: "LOW" | "MEDIUM" | "HIGH";
     notes: string | null;
   };
+  /** New planting blocks; legacy A/B fields remain for older app versions. */
+  blocks?: CropBlock[];
   pre_planting_start_date: string | null;
   total_revenue_kes: number | null;
   total_cost_kes: number | null;
   notes: string | null;
   created_at: string;
   closed_at: string | null;
+}
+
+function legacySectionToBlock(
+  section: SeasonRecord["section_a"] | SeasonRecord["section_b"],
+  id: string,
+  name: string,
+): CropBlock {
+  return {
+    id,
+    name,
+    variety: section?.variety || "",
+    planting_date: section?.planting_date || new Date().toISOString().split("T")[0],
+    acres: Number(section?.acres) || 0,
+    blight_risk: section?.blight_risk || "LOW",
+    notes: section?.notes ?? null,
+  };
+}
+
+export function getSeasonBlocks(season: SeasonRecord | null | undefined): CropBlock[] {
+  if (!season) return [];
+  if (Array.isArray(season.blocks) && season.blocks.length > 0) {
+    return season.blocks.filter((block) => Number(block.acres) > 0);
+  }
+
+  const blocks = [legacySectionToBlock(season.section_a, "section-a", "Block 1")];
+  if (Number(season.section_b?.acres) > 0) {
+    blocks.push(legacySectionToBlock(season.section_b, "section-b", "Block 2"));
+  }
+  return blocks.filter((block) => block.acres > 0);
+}
+
+function sectionsFromBlocks(blocks: CropBlock[]) {
+  const first = blocks[0];
+  const second = blocks[1];
+  const empty = {
+    variety: "Not planted",
+    planting_date: first?.planting_date || new Date().toISOString().split("T")[0],
+    acres: 0,
+    blight_risk: "LOW" as const,
+    notes: null,
+  };
+  return {
+    section_a: first
+      ? { ...first }
+      : empty,
+    section_b: second
+      ? { ...second }
+      : empty,
+  };
 }
 
 function genId(): string {
@@ -205,6 +305,22 @@ export async function seedIfNeeded(): Promise<void> {
       blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
       notes: sB.notes ?? null,
     },
+    blocks: [
+      legacySectionToBlock({
+        variety: sA.variety,
+        planting_date: sA.planting_date,
+        acres: sA.acres,
+        blight_risk: sA.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+        notes: sA.notes ?? null,
+      }, "section-a", "Block 1"),
+      legacySectionToBlock({
+        variety: sB.variety,
+        planting_date: sB.planting_date,
+        acres: sB.acres,
+        blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+        notes: sB.notes ?? null,
+      }, "section-b", "Block 2"),
+    ].filter((block) => block.acres > 0),
     pre_planting_start_date: null,
     total_revenue_kes: null,
     total_cost_kes: null,
@@ -273,6 +389,22 @@ export async function seedSeasonIfNeeded(): Promise<void> {
       blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
       notes: sB.notes ?? null,
     },
+    blocks: [
+      legacySectionToBlock({
+        variety: sA.variety,
+        planting_date: sA.planting_date,
+        acres: sA.acres,
+        blight_risk: sA.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+        notes: sA.notes ?? null,
+      }, "section-a", "Block 1"),
+      legacySectionToBlock({
+        variety: sB.variety,
+        planting_date: sB.planting_date,
+        acres: sB.acres,
+        blight_risk: sB.blight_risk as "LOW" | "MEDIUM" | "HIGH",
+        notes: sB.notes ?? null,
+      }, "section-b", "Block 2"),
+    ].filter((block) => block.acres > 0),
     pre_planting_start_date: null,
     total_revenue_kes: null,
     total_cost_kes: null,
@@ -311,7 +443,15 @@ export async function getSeasons(): Promise<SeasonRecord[]> {
     .select("*")
     .order("created_at");
   if (error) throw error;
-  return (data || []) as SeasonRecord[];
+  return (data || []).map((season) => {
+    const record = season as SeasonRecord;
+    return {
+      ...record,
+      blocks: Array.isArray(record.blocks) && record.blocks.length > 0
+        ? record.blocks
+        : getSeasonBlocks(record),
+    };
+  });
 }
 
 export async function getActiveSeason(): Promise<SeasonRecord | null> {
@@ -404,7 +544,17 @@ export async function setActiveFarmId(id: string): Promise<void> {
 export async function addSeason(
   season: Omit<SeasonRecord, "id" | "created_at">
 ): Promise<SeasonRecord> {
-  const record = { ...season, id: genId(), created_at: new Date().toISOString() };
+  const blocks = season.blocks?.length
+    ? season.blocks
+    : getSeasonBlocks(season as SeasonRecord);
+  if (blocks.length === 0) throw new Error("A crop cycle needs at least one planted block.");
+  const record = {
+    ...season,
+    ...sectionsFromBlocks(blocks),
+    blocks,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
     .from("seasons")
     .insert(record)
@@ -418,9 +568,12 @@ export async function updateSeason(
   id: string,
   updates: Partial<SeasonRecord>
 ): Promise<SeasonRecord> {
+  const updatePayload = updates.blocks
+    ? { ...updates, ...sectionsFromBlocks(updates.blocks) }
+    : updates;
   const { data, error } = await supabase
     .from("seasons")
-    .update(updates)
+    .update(updatePayload)
     .eq("id", id)
     .select()
     .single();
@@ -558,6 +711,10 @@ export function getDaysSincePlanting(plantingDate: string): number {
   return Math.floor(
     (today.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24)
   );
+}
+
+export function isPrePlanting(date: string, plantingDate?: string | null): boolean {
+  return Boolean(date && plantingDate && date < plantingDate);
 }
 
 export function getDaysUntil(dateStr: string): number {

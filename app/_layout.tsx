@@ -48,7 +48,7 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_600SemiBold,
@@ -57,19 +57,20 @@ export default function RootLayout() {
   const [migrationDone, setMigrationDone] = useState(false);
 
   useEffect(() => {
-    migrateFromAsyncStorage()
+    // Cloud migration/seeding should not hold the app shell behind a blank screen.
+    setMigrationDone(true);
+    void migrateFromAsyncStorage()
       .then(() => seedIfNeeded())
-      .catch((err) => console.warn("[layout] seed error:", err))
-      .finally(() => setMigrationDone(true));
+      .catch((err) => console.warn("[layout] seed error:", err));
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded && migrationDone) {
+    if ((fontsLoaded || fontError) && migrationDone) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, migrationDone]);
+  }, [fontsLoaded, fontError, migrationDone]);
 
-  if (!fontsLoaded || !migrationDone) return null;
+  if ((!fontsLoaded && !fontError) || !migrationDone) return null;
 
   return (
     <ErrorBoundary>

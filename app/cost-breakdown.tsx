@@ -276,24 +276,32 @@ function ActivityCostCard({
 
 export default function CostBreakdownScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, activityLogs } = useFarm();
+  const { costs, activityLogs, activeSeason } = useFarm();
   const [sectionTab, setSectionTab] = useState(0);
   const [viewMode, setViewMode] = useState(0);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const seasonCosts = useMemo(
+    () => activeSeason ? costs.filter((cost) => cost.season_id === activeSeason.id) : [],
+    [activeSeason, costs]
+  );
+  const seasonLogs = useMemo(
+    () => activeSeason ? activityLogs.filter((log) => log.season_id === activeSeason.id) : [],
+    [activeSeason, activityLogs]
+  );
 
   const filteredCosts = useMemo(() => {
-    if (sectionTab === 0) return costs;
+    if (sectionTab === 0) return seasonCosts;
     const id = sectionTab === 1 ? "section-a" : "section-b";
-    return costs.filter((c) => c.section_id === id || c.section_id === null);
-  }, [costs, sectionTab]);
+    return seasonCosts.filter((c) => c.section_id === id || c.section_id === null);
+  }, [seasonCosts, sectionTab]);
 
   const filteredLogs = useMemo(() => {
-    if (sectionTab === 0) return activityLogs;
+    if (sectionTab === 0) return seasonLogs;
     const id = sectionTab === 1 ? "section-a" : "section-b";
-    return activityLogs.filter((l) => l.section_id === id || l.section_id === null);
-  }, [activityLogs, sectionTab]);
+    return seasonLogs.filter((l) => l.section_id === id || l.section_id === null);
+  }, [seasonLogs, sectionTab]);
 
   const grandTotal = useMemo(() => filteredCosts.reduce((s, c) => s + c.amount_kes, 0), [filteredCosts]);
 

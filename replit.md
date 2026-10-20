@@ -3,6 +3,10 @@
 ## Overview
 A mobile-first farm management app supporting multiple farms. Built with Expo React Native, designed to replace the farm manager's physical notebook. The active farm gates all data — switching farms instantly updates every screen.
 
+## Development Approach
+- Build one capability at a time.
+- Inspect the current code and data model before changing them; complete each feature's logic and screens together, then verify it before starting the next.
+
 ## Features
 - **Multi-Farm**: Create unlimited farms, switch active farm from More tab → "My Farms"
 - **Farm Setup**: Create/edit form — name, location, acres, ownership, crop type, notes

@@ -138,6 +138,8 @@ export async function setupSupabaseTables() {
       total_kg NUMERIC NOT NULL DEFAULT 0,
       price_per_bag_kes NUMERIC NOT NULL DEFAULT 0,
       total_revenue_kes NUMERIC NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'bag',
+      grade TEXT,
       buyer TEXT,
       notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()

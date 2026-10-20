@@ -6,6 +6,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CATEGORY_COLORS } from "@/constants/colors";
 import { formatDate, formatKES } from "@/lib/storage";
+import { getTemplate } from "@/constants/farmData";
+import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit } from "@/constants/cropTemplates";
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={rpt.sectionHeader}>{title}</Text>;
@@ -60,16 +62,21 @@ export default function SeasonReportScreen() {
   const netPL = totalRevenue - totalCosts;
   const marginPct = totalRevenue > 0 ? (netPL / totalRevenue) * 100 : null;
 
-  const totalBags = seasonHarvest.reduce((s, r) => s + r.bags, 0);
+  const cropTemplate = getTemplate(activeSeason.template_id);
+  const cropMeta = getCropMeta(activeSeason.template_id);
+  const unitTotals = harvestTotalsByUnit(seasonHarvest, cropMeta);
+  const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
   const totalKg = seasonHarvest.reduce((s, r) => s + r.total_kg, 0);
+  const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
   const totalAcres = activeSeason.section_a.acres + activeSeason.section_b.acres;
-  const bagsPerAcre = totalAcres > 0 && totalBags > 0 ? (totalBags / totalAcres).toFixed(1) : "—";
-  const kesPerKg = totalKg > 0 ? formatKES(Math.round(totalRevenue / totalKg)) : "—";
+  const quantityPerAcre = unitTotals.length === 1 && totalAcres > 0
+    ? `${(unitTotals[0].quantity / totalAcres).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unitTotals[0].plural.toLowerCase()}/acre`
+    : unitTotals.length > 1 ? "Mixed units" : "—";
+  const allWeightsKnown = seasonHarvest.length > 0 && seasonHarvest.every((record) => record.total_kg > 0);
+  const kesPerKg = allWeightsKnown && totalKg > 0 ? formatKES(Math.round(totalRevenue / totalKg)) : "—";
 
   const harvestA = seasonHarvest.filter((r) => r.section_id === "section-a");
   const harvestB = seasonHarvest.filter((r) => r.section_id === "section-b");
-  const bagsA = harvestA.reduce((s, r) => s + r.bags, 0);
-  const bagsB = harvestB.reduce((s, r) => s + r.bags, 0);
   const revenueA = harvestA.reduce((s, r) => s + r.total_revenue_kes, 0);
   const revenueB = harvestB.reduce((s, r) => s + r.total_revenue_kes, 0);
 
@@ -102,7 +109,7 @@ export default function SeasonReportScreen() {
         {/* Hero */}
         <View style={rpt.hero}>
           <Text style={rpt.heroSeason}>{activeSeason.season_name}</Text>
-          <Text style={rpt.heroFarm}>{activeFarm?.name} · {activeSeason.season_type}</Text>
+          <Text style={rpt.heroFarm}>{activeFarm?.name} · {activeSeason.season_type} · {cropTemplate.cropType}</Text>
           <View style={rpt.heroMeta}>
             <View style={rpt.heroPill}><Ionicons name="calendar-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>Planted {formatDate(activeSeason.section_a.planting_date)}</Text></View>
             <View style={rpt.heroPill}><Ionicons name="grid-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>{totalAcres} acres</Text></View>
@@ -189,22 +196,24 @@ export default function SeasonReportScreen() {
             <View style={rpt.harvestHero}>
               <Text style={rpt.harvestRevLabel}>Total Revenue</Text>
               <Text style={rpt.harvestRevValue}>{formatKES(totalRevenue)}</Text>
-              <Text style={rpt.harvestMeta}>{totalBags} bags · {totalKg.toLocaleString()} kg</Text>
+              <Text style={rpt.harvestMeta}>
+                {harvestQuantitySummary}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
+              </Text>
             </View>
             <View style={rpt.divider} />
-            <StatRow label="Bags per Acre" value={String(bagsPerAcre)} />
+            <StatRow label="Quantity per Acre" value={quantityPerAcre} />
             <StatRow label="Revenue per kg" value={kesPerKg} />
             <View style={rpt.divider} />
             <View style={rpt.sectionSplit}>
               <View style={rpt.splitItem}>
                 <Text style={rpt.splitLabel}>Sec A — {activeSeason.section_a.variety}</Text>
-                <Text style={rpt.splitBags}>{bagsA} bags</Text>
+                <Text style={rpt.splitBags}>{formatHarvestTotals(harvestA, cropMeta)}</Text>
                 <Text style={rpt.splitRevenue}>{formatKES(revenueA)}</Text>
               </View>
               <View style={rpt.splitDivider} />
               <View style={rpt.splitItem}>
                 <Text style={rpt.splitLabel}>Sec B — {activeSeason.section_b.variety}</Text>
-                <Text style={rpt.splitBags}>{bagsB} bags</Text>
+                <Text style={rpt.splitBags}>{formatHarvestTotals(harvestB, cropMeta)}</Text>
                 <Text style={rpt.splitRevenue}>{formatKES(revenueB)}</Text>
               </View>
             </View>
@@ -239,10 +248,10 @@ export default function SeasonReportScreen() {
             <View key={label}>
               {i > 0 && activeSeason.section_b.acres > 0 && <View style={rpt.divider} />}
               <Text style={rpt.sectionLabel}>{label} — {data.variety}</Text>
-              <StatRow label="Planting Date" value={formatDate(data.planting_date)} />
+               <StatRow label={`${cropMeta.plantingVerb} Date`} value={formatDate(data.planting_date)} />
               <StatRow label="Area" value={`${data.acres} acres`} />
               <StatRow
-                label="Blight Risk"
+                 label={cropMeta.riskLabel}
                 value={data.blight_risk}
                 valueColor={data.blight_risk === "HIGH" ? COLORS.red : data.blight_risk === "MEDIUM" ? COLORS.amber : COLORS.primary}
               />

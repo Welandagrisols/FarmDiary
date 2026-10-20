@@ -13,6 +13,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
+import { getTemplate } from "@/constants/farmData";
+import { formatHarvestTotals, getCropMeta } from "@/constants/cropTemplates";
 import {
   getGrowthStage,
   getDaysSincePlanting,
@@ -40,7 +42,7 @@ function getActivityTypeIcon(type: string) {
     case "Herbicide": return "leaf-outline";
     case "Earthing Up + Fertilizer":
     case "Earthing Up": return "layers-outline";
-    case "Harvest": return "bag-handle-outline";
+    case "Harvest": return "basket-outline";
     case "Observation": return "eye-outline";
     default: return "checkmark-circle-outline";
   }
@@ -50,11 +52,9 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const {
     costs,
-    activityLogs,
     refresh,
     retryLoad,
     loadError,
-    totalSpent,
     getCompletedActivityIds,
     getNextActivity,
     getLastSprayDate,
@@ -75,10 +75,14 @@ export default function DashboardScreen() {
 
   const completedIds = getCompletedActivityIds();
   const plannedBudget = currentSchedule.reduce((sum, a) => sum + a.estimatedTotalCost, 0);
+  const seasonCosts = costs.filter((cost) => cost.season_id === activeSeason?.id);
+  const totalSpent = seasonCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
+  const seasonHarvest = harvestRecords.filter((record) => record.season_id === activeSeason?.id);
+  const cropMeta = getCropMeta(activeSeason?.template_id);
+  const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
   const budgetPercent = plannedBudget > 0 ? Math.min((totalSpent / plannedBudget) * 100, 100) : null;
   const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
-  const totalRevenue = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_revenue_kes, 0);
-  const totalYield = harvestRecords.filter((r) => r.season_id === activeSeason?.id).reduce((sum, r) => sum + r.total_kg, 0);
+  const totalRevenue = seasonHarvest.reduce((sum, r) => sum + r.total_revenue_kes, 0);
   const netProfit = totalRevenue - totalSpent;
 
   const lowStockItems = inventory.filter((item) => {
@@ -151,7 +155,7 @@ export default function DashboardScreen() {
         <View>
           <Text style={styles.farmName}>{activeFarm?.name || "My Farm"}</Text>
           <Text style={styles.farmSub}>
-            {activeFarm?.crop_type || "Farm"} — {activeSeason?.season_name || "No active season"}
+            {activeSeason ? getTemplate(activeSeason.template_id).cropType : (activeFarm?.crop_type || "Farm")} — {activeSeason?.season_name || "No active season"}
           </Text>
         </View>
         <Pressable
@@ -240,8 +244,8 @@ export default function DashboardScreen() {
           </View>
           <View style={styles.harvestGrid}>
             <View style={styles.harvestItem}>
-              <Text style={styles.harvestValue}>{totalYield.toLocaleString()}</Text>
-              <Text style={styles.harvestText}>Yield kg</Text>
+              <Text style={styles.harvestValue} numberOfLines={2}>{harvestQuantitySummary}</Text>
+              <Text style={styles.harvestText}>Harvest quantity</Text>
             </View>
             <View style={styles.harvestItem}>
               <Text style={styles.harvestValue}>{formatKES(totalRevenue)}</Text>
@@ -316,8 +320,12 @@ export default function DashboardScreen() {
         const daysSinceSpray = lastSpray
           ? Math.floor((new Date().getTime() - new Date(lastSpray).getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        const sprayWarning = section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 10;
-        const sprayAlert = section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 12;
+        // The fixed spray interval is only established for the potato schedule.
+        // Other crops show their crop-specific schedule and require local advice.
+        const sprayWarning = getTemplate(activeSeason?.template_id).id === "potato-template-stephen-shangi"
+          && section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 10;
+        const sprayAlert = getTemplate(activeSeason?.template_id).id === "potato-template-stephen-shangi"
+          && section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 12;
 
         return (
           <View key={section.id} style={styles.sectionCard}>

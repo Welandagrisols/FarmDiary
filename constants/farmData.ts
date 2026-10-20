@@ -1,3 +1,5 @@
+import { EXTRA_CROP_TEMPLATES } from "./cropTemplates";
+
 export const FARM_SEED = {
   id: "farm-001",
   name: "Rift Valley Potato Farm",
@@ -84,6 +86,10 @@ export interface PlannedActivity {
   stage: string;
   activityType: string;
   name: string;
+  plannedDate: string;
+  blockId: string;
+  blockName: string;
+  /** Kept for older screens and saved schedule data. */
   plannedDateA: string;
   plannedDateB: string;
   daysAfterGermA: number | null;
@@ -92,6 +98,13 @@ export interface PlannedActivity {
   estimatedTotalCost: number;
   purpose: string;
   alert: string | null;
+}
+
+interface ScheduleBlockInput {
+  id: string;
+  name?: string;
+  planting_date: string;
+  acres?: number;
 }
 
 function offsetDate(dateStr: string, days: number): string {
@@ -211,18 +224,60 @@ function buildCropTemplate(): CropTemplate {
   };
 }
 
-export const CROP_TEMPLATES: CropTemplate[] = [buildCropTemplate()];
+export const CROP_TEMPLATES: CropTemplate[] = [buildCropTemplate(), ...EXTRA_CROP_TEMPLATES];
 
-export function generatePlannedSchedule(template: CropTemplate, plantingDate: string): PlannedActivity[] {
+export function getTemplate(templateId?: string | null): CropTemplate {
+  return CROP_TEMPLATES.find((template) => template.id === templateId) || CROP_TEMPLATES[0];
+}
+
+export function generatePlannedSchedule(
+  template: CropTemplate,
+  plantingDate: string | ScheduleBlockInput[],
+  plantingDateB?: string
+): PlannedActivity[] {
+  if (Array.isArray(plantingDate)) {
+    return plantingDate.flatMap((block, blockIndex) =>
+      template.stages.map((stage) => {
+        const plannedDate = offsetDate(block.planting_date, stage.offsetDays);
+        const areaFactor = block.acres && block.acres > 0 ? block.acres / 2 : 1;
+        return {
+          id: `${stage.id}:${block.id}`,
+          templateId: template.id,
+          stage: stage.title,
+          activityType: stage.activityType,
+          name: stage.title,
+          plannedDate,
+          blockId: block.id,
+          blockName: block.name || `Block ${blockIndex + 1}`,
+          plannedDateA: plannedDate,
+          plannedDateB: plannedDate,
+          daysAfterGermA: Math.max(0, stage.offsetDays - template.germinationDays),
+          plannedProducts: stage.products,
+          estimatedLaborCost: stage.estimatedLaborCost
+            ? stage.estimatedLaborCost * areaFactor
+            : undefined,
+          estimatedTotalCost: stage.estimatedTotalCost * areaFactor,
+          purpose: stage.purpose,
+          alert: stage.alert,
+        };
+      })
+    );
+  }
+
   return template.stages.map((stage, index) => {
     const plannedDateA = offsetDate(plantingDate, stage.offsetDays);
-    const plannedDateB = offsetDate(plantingDate, stage.offsetDays + 3);
+    const plannedDateB = plantingDateB
+      ? offsetDate(plantingDateB, stage.offsetDays)
+      : offsetDate(plantingDate, stage.offsetDays + 3);
     return {
       id: stage.id,
       templateId: template.id,
       stage: stage.title,
       activityType: stage.activityType,
       name: stage.title,
+      plannedDate: plannedDateA,
+      blockId: "section-a",
+      blockName: "Block 1",
       plannedDateA,
       plannedDateB,
       daysAfterGermA: Math.max(0, stage.offsetDays - template.germinationDays),

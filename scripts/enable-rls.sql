@@ -1,3 +1,10 @@
+/*
+DEPRECATED: Do not run this script. Its policies allow any signed-in user to
+read and edit farms with no owner (user_id IS NULL).
+
+Use scripts/supabase-patch-fixed.sql followed by scripts/rls-hardening.sql.
+This block comment intentionally disables the old SQL below.
+
 -- ============================================================
 --  Farm Diary — Full RLS + Multi-user Setup
 --  Run this in: https://supabase.com/dashboard/project/ckluambcgnmjxcmpcfvg/sql/new
@@ -164,3 +171,4 @@ SELECT id, email, 'admin'
 FROM auth.users
 WHERE email = 'your@email.com'
 ON CONFLICT (id) DO UPDATE SET role = 'admin';
+*/
