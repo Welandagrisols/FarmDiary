@@ -1,17 +1,18 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
-import { upsertUserProfile, getMyProfile } from "@/lib/supabase-storage";
-import { clearAllCaches } from "@/lib/offline-storage";
-import type { Session, User } from "@supabase/supabase-js";
-import type { UserProfile } from "@/lib/storage";
+
+const OFFLINE_CACHE_KEYS = [
+  "farm_offline_cache",
+  "farm_personal_expenses",
+];
 
 type AuthContextValue = {
   user: User | null;
   session: Session | null;
-  profile: UserProfile | null;
-  isAdmin: boolean;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<string | null>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 
@@ -20,69 +21,48 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const currentUserId = useRef<string | null>(null);
-
-  const loadProfile = useCallback(async (u: User) => {
-    try {
-      await upsertUserProfile(u.id, u.email ?? "");
-      const p = await getMyProfile();
-      setProfile(p);
-    } catch {
-      setProfile(null);
-    }
-  }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        console.warn("[auth] session restore failed:", err);
+        setSession(null);
+        setUser(null);
+        setIsLoading(false);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) {
-        currentUserId.current = session.user.id;
-        await loadProfile(session.user);
-      }
-      setIsLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const newUserId = session?.user?.id ?? null;
-      const prevUserId = currentUserId.current;
-      const userChanged = !newUserId || newUserId !== prevUserId;
-
-      currentUserId.current = newUserId;
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (userChanged) {
-        clearAllCaches().catch(() => {});
-      }
-
-      if (session?.user) {
-        await loadProfile(session.user);
-      } else {
-        setProfile(null);
-      }
     });
 
     return () => subscription.unsubscribe();
-  }, [loadProfile]);
+  }, []);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return error ? error.message : null;
+  const signIn = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    if (error) return { error: error.message };
+    setSession(data.session);
+    setUser(data.user);
+    return { error: null };
   }, []);
 
   const signOut = useCallback(async () => {
-    await clearAllCaches();
     await supabase.auth.signOut();
-    setProfile(null);
+    await AsyncStorage.multiRemove(OFFLINE_CACHE_KEYS);
   }, []);
 
-  const isAdmin = profile?.role === "admin";
-
   return (
-    <AuthContext.Provider value={{ user, session, profile, isAdmin, isLoading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, isLoading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

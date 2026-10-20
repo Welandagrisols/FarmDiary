@@ -23,7 +23,7 @@ type ActivityStatus = "completed" | "overdue" | "due-soon" | "upcoming";
 
 function getStatus(activity: PlannedActivity, completedIds: string[]): ActivityStatus {
   if (completedIds.includes(activity.id)) return "completed";
-  const daysUntil = getDaysUntil(activity.plannedDateA);
+  const daysUntil = getDaysUntil(activity.plannedDate);
   if (daysUntil < -3) return "overdue";
   if (daysUntil <= 3) return "due-soon";
   return "upcoming";
@@ -71,7 +71,7 @@ function ActivityCard({
   completing?: boolean;
 }) {
   const typeColor = getTypeColor(activity.activityType);
-  const daysUntil = getDaysUntil(activity.plannedDateA);
+  const daysUntil = getDaysUntil(activity.plannedDate);
 
   return (
     <Pressable style={({ pressed }) => [styles.activityCard, pressed && { opacity: 0.85 }]} onPress={onPress}>
@@ -89,8 +89,7 @@ function ActivityCard({
         <Text style={styles.activityName} numberOfLines={2}>{activity.name}</Text>
         <Text style={styles.activityStage}>{activity.stage}</Text>
         <View style={styles.datesRow}>
-          <Text style={styles.dateValue}>Sec A · {formatDate(activity.plannedDateA)}</Text>
-          <Text style={styles.dateValue}>Sec B · {formatDate(activity.plannedDateB)}</Text>
+          <Text style={styles.dateValue}>{activity.blockName} · {formatDate(activity.plannedDate)}</Text>
         </View>
         <View style={styles.cardFooter}>
           <Text style={[styles.dueText, { color: status === "overdue" ? COLORS.red : status === "due-soon" ? COLORS.amber : COLORS.textSecondary }]}>
@@ -138,13 +137,9 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
           <View style={styles.modalDates}>
             <View style={styles.modalDateCard}>
-              <Text style={styles.modalDateLabel}>Section A</Text>
-              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDateA)}</Text>
+              <Text style={styles.modalDateLabel}>{activity.blockName}</Text>
+              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDate)}</Text>
               <StatusChip status={status} />
-            </View>
-            <View style={styles.modalDateCard}>
-              <Text style={styles.modalDateLabel}>Section B</Text>
-              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDateB)}</Text>
             </View>
           </View>
 
@@ -178,8 +173,8 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
           {activity.estimatedTotalCost > 0 && (
             <View style={styles.costSummary}>
-              <Text style={styles.costSummaryLabel}>Estimated Total</Text>
-              <Text style={styles.costSummaryValue}>{formatKES(activity.estimatedTotalCost)}</Text>
+              <Text style={styles.modalCostLabel}>Estimated Total</Text>
+              <Text style={styles.modalCostValue}>{formatKES(activity.estimatedTotalCost)}</Text>
             </View>
           )}
         </ScrollView>
@@ -251,7 +246,7 @@ export default function ScheduleScreen() {
   const handleQuickDone = useCallback(async (item: typeof data[0]) => {
     setCompletingId(item.id);
     try {
-      await quickCompleteActivity(item, "section-a");
+      await quickCompleteActivity(item, item.blockId);
     } finally {
       setCompletingId(null);
     }
@@ -299,7 +294,7 @@ export default function ScheduleScreen() {
               <Text style={styles.upcomingName} numberOfLines={1}>{item.name}</Text>
               <StatusChip status={item.status} />
             </View>
-            <Text style={styles.upcomingDate}>{formatDate(item.plannedDateA)} · {item.activityType}</Text>
+            <Text style={styles.upcomingDate}>{item.blockName} · {formatDate(item.plannedDate)} · {item.activityType}</Text>
           </Pressable>
         ))}
       </View>
@@ -463,8 +458,8 @@ const styles = StyleSheet.create({
   productRate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
   productPrice: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
   costSummary: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: COLORS.primarySurface, borderRadius: 10, padding: 14, marginBottom: 20 },
-  costSummaryLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
-  costSummaryValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
+  modalCostLabel: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.primary },
+  modalCostValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
   modalFooter: { padding: 16, paddingBottom: 34, borderTopWidth: 1, borderTopColor: COLORS.borderLight, gap: 10 },
   quickBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primarySurface, borderWidth: 1.5, borderColor: COLORS.primaryLight, borderRadius: 14, paddingVertical: 14 },
   quickBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.primary },

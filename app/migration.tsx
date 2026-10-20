@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView, Platform } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,17 +17,25 @@ export default function MigrationScreen() {
   const [proceeding, setProceeding] = useState(false);
   const { refresh } = useFarm();
 
-  useEffect(() => {
-    runMigrationIfNeeded().then((res) => {
-      setResult(res);
-      setPhase(res.success ? "success" : "error");
-    });
+  const executeMigration = useCallback(async () => {
+    setPhase("running");
+    const res = await runMigrationIfNeeded();
+    setResult(res);
+    setPhase(res.success ? "success" : "error");
   }, []);
+
+  useEffect(() => {
+    void executeMigration();
+  }, [executeMigration]);
 
   const proceed = async () => {
     setProceeding(true);
-    await refresh();
-    router.replace("/farm-picker");
+    try {
+      await refresh();
+      router.replace("/farm-picker");
+    } catch {
+      setProceeding(false);
+    }
   };
 
   if (phase === "running") {
@@ -57,13 +65,7 @@ export default function MigrationScreen() {
           </View>
         ) : null}
         <Text style={styles.hint}>Please check your internet connection and try restarting the app. Your local data is safe and has not been deleted.</Text>
-        <Pressable style={styles.retryBtn} onPress={() => {
-          setPhase("running");
-          runMigrationIfNeeded().then((res) => {
-            setResult(res);
-            setPhase(res.success ? "success" : "error");
-          });
-        }}>
+        <Pressable style={styles.retryBtn} onPress={() => void executeMigration()}>
           <Ionicons name="refresh" size={18} color={COLORS.white} />
           <Text style={styles.retryBtnText}>Retry Migration</Text>
         </Pressable>

@@ -1,0 +1,41 @@
+Running "expo doctor"
+Running 17 checks on your project...
+14/17 checks passed. 3 checks failed. Possible issues detected:
+Use the --verbose flag to see more details about passed checks.
+✖ Check Expo config for common issues
+You have an app.json file in your project, but your app.config.js is not using the values from it.
+Advice:
+Remove the static app.json, or use its values in your dynamic app.config.js. Learn more: https://docs.expo.dev/workflow/configuration
+✖ Check for legacy global CLI installed locally
+EAS CLI should not be installed in your project. Instead, install it globally or use "npx", "pnpx", or "bunx" depending on your preferred package manager.
+Advice:
+Remove eas-cli from your project dependencies.
+✖ Check that packages match versions required by installed Expo SDK
+❗ Major version mismatches
+package                           expected  found    
+expo-document-picker              ~14.0.8   55.0.13  
+⚠️ Minor version mismatches
+package                           expected  found    
+react-native-keyboard-controller  1.18.5    1.20.6   
+🔧 Patch version mismatches
+package                           expected  found    
+expo                              ~54.0.34  54.0.32  
+expo-glass-effect                 ~0.1.10   0.1.8    
+expo-image-picker                 ~17.0.11  17.0.10  
+expo-linking                      ~8.0.12   8.0.11   
+expo-router                       ~6.0.23   6.0.22   
+expo-web-browser                  ~15.0.11  15.0.10  
+Changelogs:
+- expo-document-picker → https://github.com/expo/expo/blob/sdk-54/packages/expo-document-picker/CHANGELOG.md
+- expo-glass-effect → https://github.com/expo/expo/blob/sdk-54/packages/expo-glass-effect/CHANGELOG.md
+- expo-image-picker → https://github.com/expo/expo/blob/sdk-54/packages/expo-image-picker/CHANGELOG.md
+- expo-linking → https://github.com/expo/expo/blob/sdk-54/packages/expo-linking/CHANGELOG.md
+- expo-router → https://github.com/expo/expo/blob/sdk-54/packages/expo-router/CHANGELOG.md
+- expo-web-browser → https://github.com/expo/expo/blob/sdk-54/packages/expo-web-browser/CHANGELOG.md
+8 packages out of date.
+Advice:
+Use 'npx expo install --check' to review and upgrade your dependencies.
+To ignore specific packages, add them to "expo.install.exclude" in package.json. Learn more: https://expo.fyi/dependency-validation
+3 checks failed, indicating possible issues with the project.
+Command "expo doctor" failed.
+npx -y expo-doctor exited with non-zero code: 1

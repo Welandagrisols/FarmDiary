@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { formatKES, formatDate } from "@/lib/storage";
+import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit, unitFor } from "@/constants/cropTemplates";
 import * as Haptics from "expo-haptics";
 
 function SectionBadge({ sectionId }: { sectionId: string }) {
@@ -24,6 +25,7 @@ export default function HarvestScreen() {
   const insets = useSafeAreaInsets();
   const { harvestRecords, removeHarvestRecord, refresh, activeSeason } = useFarm();
   const [refreshing, setRefreshing] = useState(false);
+  const cropMeta = getCropMeta(activeSeason?.template_id);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -45,19 +47,19 @@ export default function HarvestScreen() {
     ]);
   }, [removeHarvestRecord]);
 
-  const sorted = [...harvestRecords].sort((a, b) => new Date(b.harvest_date).getTime() - new Date(a.harvest_date).getTime());
-  const totalBags = harvestRecords.reduce((s, r) => s + r.bags, 0);
-  const totalKg = harvestRecords.reduce((s, r) => s + r.total_kg, 0);
-  const totalRevenue = harvestRecords.reduce((s, r) => s + r.total_revenue_kes, 0);
+  const sorted = (activeSeason ? harvestRecords.filter((record) => record.season_id === activeSeason.id) : [])
+    .sort((a, b) => new Date(b.harvest_date).getTime() - new Date(a.harvest_date).getTime());
+  const totalKg = sorted.reduce((s, r) => s + r.total_kg, 0);
+  const totalRevenue = sorted.reduce((s, r) => s + r.total_revenue_kes, 0);
   const totalAcres = activeSeason ? activeSeason.section_a.acres + activeSeason.section_b.acres : 0;
-  const bagsPerAcre = totalAcres > 0 && totalBags > 0 ? (totalBags / totalAcres).toFixed(1) : null;
-  const kesPerKg = totalKg > 0 ? Math.round(totalRevenue / totalKg) : null;
-  const sectionA = harvestRecords.filter((r) => r.section_id === "section-a");
-  const sectionB = harvestRecords.filter((r) => r.section_id === "section-b");
+  const unitTotals = harvestTotalsByUnit(sorted, cropMeta);
+  const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
+  const allWeightsKnown = sorted.length > 0 && sorted.every((record) => record.total_kg > 0);
+  const kesPerKg = allWeightsKnown && totalKg > 0 ? Math.round(totalRevenue / totalKg) : null;
+  const sectionA = sorted.filter((r) => r.section_id === "section-a");
+  const sectionB = sorted.filter((r) => r.section_id === "section-b");
   const revenueA = sectionA.reduce((s, r) => s + r.total_revenue_kes, 0);
   const revenueB = sectionB.reduce((s, r) => s + r.total_revenue_kes, 0);
-  const bagsA = sectionA.reduce((s, r) => s + r.bags, 0);
-  const bagsB = sectionB.reduce((s, r) => s + r.bags, 0);
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -80,43 +82,50 @@ export default function HarvestScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryTop}>
             <View style={styles.summaryMain}>
-              <Text style={styles.summaryLabel}>Total Revenue</Text>
+              <Text style={styles.summaryLabel}>{activeSeason?.season_name || "Season"} · Total Revenue</Text>
               <Text style={styles.summaryRevenue}>{formatKES(totalRevenue)}</Text>
-              <Text style={styles.summaryMeta}>{totalBags} bags · {totalKg.toFixed(0)} kg</Text>
+              <Text style={styles.summaryMeta}>
+                {formatHarvestTotals(sorted, cropMeta)}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
+              </Text>
             </View>
             <Ionicons name="leaf-outline" size={32} color={COLORS.white} style={{ opacity: 0.5 }} />
           </View>
 
-          {totalBags > 0 && (
+          {sorted.length > 0 && (
             <View style={styles.yieldMetrics}>
               <View style={styles.yieldMetric}>
-                <Text style={styles.yieldValue}>{bagsPerAcre ?? "—"}</Text>
-                <Text style={styles.yieldLabel}>Bags/Acre</Text>
+                <Text style={styles.yieldValue}>
+                  {unitTotals.length === 1 && totalAcres > 0
+                    ? (unitTotals[0].quantity / totalAcres).toLocaleString(undefined, { maximumFractionDigits: 1 })
+                    : unitTotals.length > 1 ? "Mixed" : "—"}
+                </Text>
+                <Text style={styles.yieldLabel}>{unitTotals.length === 1 ? `${unitTotals[0].plural}/Acre` : "Units/Acre"}</Text>
               </View>
               <View style={styles.yieldDivider} />
               <View style={styles.yieldMetric}>
                 <Text style={styles.yieldValue}>{kesPerKg != null ? `${kesPerKg.toLocaleString()}` : "—"}</Text>
-                <Text style={styles.yieldLabel}>KES/kg</Text>
+                <Text style={styles.yieldLabel}>{allWeightsKnown ? "KES/kg" : "KES/kg*"}</Text>
               </View>
               <View style={styles.yieldDivider} />
               <View style={styles.yieldMetric}>
-                <Text style={styles.yieldValue}>{totalKg > 0 && totalBags > 0 ? (totalKg / totalBags).toFixed(1) : "—"}</Text>
-                <Text style={styles.yieldLabel}>kg/Bag</Text>
+                <Text style={styles.yieldValue}>{allWeightsKnown && unitTotals.length === 1 && unitTotals[0].quantity > 0 ? (totalKg / unitTotals[0].quantity).toFixed(1) : "—"}</Text>
+                <Text style={styles.yieldLabel}>{unitTotals.length === 1 ? `kg/${unitTotals[0].label}` : "kg/Unit"}</Text>
               </View>
             </View>
           )}
+          {sorted.length > 0 && !allWeightsKnown && <Text style={styles.summaryMeta}>*Requires weight for every harvest record</Text>}
 
           {(sectionA.length > 0 || sectionB.length > 0) && (
             <View style={styles.sectionSplit}>
               <View style={styles.sectionSplitItem}>
                 <Text style={styles.sectionSplitLabel}>Section A{activeSeason?.section_a.variety ? ` (${activeSeason.section_a.variety})` : ""}</Text>
-                <Text style={styles.sectionSplitValue}>{bagsA} bags</Text>
+                <Text style={styles.sectionSplitValue}>{formatHarvestTotals(sectionA, cropMeta)}</Text>
                 <Text style={styles.sectionSplitRevenue}>{formatKES(revenueA)}</Text>
               </View>
               <View style={styles.splitDivider} />
               <View style={styles.sectionSplitItem}>
                 <Text style={styles.sectionSplitLabel}>Section B{activeSeason?.section_b.variety ? ` (${activeSeason.section_b.variety})` : ""}</Text>
-                <Text style={styles.sectionSplitValue}>{bagsB} bags</Text>
+                <Text style={styles.sectionSplitValue}>{formatHarvestTotals(sectionB, cropMeta)}</Text>
                 <Text style={styles.sectionSplitRevenue}>{formatKES(revenueB)}</Text>
               </View>
             </View>
@@ -127,7 +136,7 @@ export default function HarvestScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="basket-outline" size={48} color={COLORS.border} />
             <Text style={styles.emptyTitle}>No harvest recorded yet</Text>
-            <Text style={styles.emptySubtitle}>Record each harvest load — bags collected, weight, price and buyer.</Text>
+            <Text style={styles.emptySubtitle}>Record harvest quantities in this crop’s units, with optional weight, price and buyer details.</Text>
             <Pressable style={styles.emptyBtn} onPress={() => router.push("/add-harvest")}>
               <Ionicons name="add" size={18} color={COLORS.white} />
               <Text style={styles.emptyBtnText}>Record First Harvest</Text>
@@ -135,12 +144,14 @@ export default function HarvestScreen() {
           </View>
         ) : (
           <>
-            <Text style={styles.listLabel}>{sorted.length} {sorted.length === 1 ? "record" : "records"}</Text>
-            {sorted.map((record) => (
+            <Text style={styles.listLabel}>{activeSeason?.season_name || "Season"} · {sorted.length} {sorted.length === 1 ? "record" : "records"}</Text>
+            {sorted.map((record) => {
+              const unit = unitFor(cropMeta, record.unit);
+              return (
               <Pressable
                 key={record.id}
                 style={({ pressed }) => [styles.recordCard, pressed && { opacity: 0.88 }]}
-                onLongPress={() => handleDelete(record.id, `${record.bags} bags on ${formatDate(record.harvest_date)}`)}
+                onLongPress={() => handleDelete(record.id, `${record.bags} ${unit.plural.toLowerCase()} on ${formatDate(record.harvest_date)}`)}
               >
                 <View style={styles.recordTop}>
                   <View style={styles.recordLeft}>
@@ -155,16 +166,19 @@ export default function HarvestScreen() {
                 <View style={styles.recordStats}>
                   <View style={styles.recordStat}>
                     <Ionicons name="cube-outline" size={13} color={COLORS.textMuted} />
-                    <Text style={styles.recordStatText}>{record.bags} bags</Text>
+                    <Text style={styles.recordStatText}>{record.bags} {unit.plural.toLowerCase()}</Text>
                   </View>
-                  <View style={styles.recordStat}>
-                    <Ionicons name="scale-outline" size={13} color={COLORS.textMuted} />
-                    <Text style={styles.recordStatText}>{record.kg_per_bag} kg/bag · {record.total_kg} kg total</Text>
-                  </View>
+                  {record.total_kg > 0 && unit.key !== "kg" ? (
+                    <View style={styles.recordStat}>
+                      <Ionicons name="scale-outline" size={13} color={COLORS.textMuted} />
+                      <Text style={styles.recordStatText}>{record.kg_per_bag} kg / {unit.label.toLowerCase()} · {record.total_kg} kg total</Text>
+                    </View>
+                  ) : null}
                   <View style={styles.recordStat}>
                     <Ionicons name="pricetag-outline" size={13} color={COLORS.textMuted} />
-                    <Text style={styles.recordStatText}>{formatKES(record.price_per_bag_kes)}/bag</Text>
+                    <Text style={styles.recordStatText}>{formatKES(record.price_per_bag_kes)} / {unit.label.toLowerCase()}</Text>
                   </View>
+                  {record.grade ? <Text style={styles.recordStatText}>Grade: {record.grade}</Text> : null}
                   {record.buyer && (
                     <View style={styles.recordStat}>
                       <Ionicons name="person-outline" size={13} color={COLORS.textMuted} />
@@ -176,7 +190,8 @@ export default function HarvestScreen() {
 
                 <Text style={styles.longPressHint}>Hold to delete</Text>
               </Pressable>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>

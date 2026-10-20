@@ -141,10 +141,14 @@ function CostRow({
 
 export default function CostsScreen() {
   const insets = useSafeAreaInsets();
-  const { costs, removeCost, isLoading, refresh, totalSpent, totalRevenue } = useFarm();
+  const { costs, harvestRecords, removeCost, refresh, activeSeason } = useFarm();
   const [activeFilter, setActiveFilter] = useState("All");
   const [refreshing, setRefreshing] = useState(false);
 
+  const seasonCosts = activeSeason ? costs.filter((cost) => cost.season_id === activeSeason.id) : [];
+  const seasonHarvest = activeSeason ? harvestRecords.filter((record) => record.season_id === activeSeason.id) : [];
+  const totalSpent = seasonCosts.reduce((sum, cost) => sum + cost.amount_kes, 0);
+  const totalRevenue = seasonHarvest.reduce((sum, record) => sum + record.total_revenue_kes, 0);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
@@ -155,8 +159,8 @@ export default function CostsScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
   const filtered = activeFilter === "All"
-    ? costs
-    : costs.filter((c) => c.cost_category === activeFilter);
+    ? seasonCosts
+    : seasonCosts.filter((c) => c.cost_category === activeFilter);
 
   const sortedCosts = [...filtered].sort(
     (a, b) => new Date(b.cost_date).getTime() - new Date(a.cost_date).getTime()
@@ -165,13 +169,13 @@ export default function CostsScreen() {
   const filteredTotal = filtered.reduce((sum, c) => sum + c.amount_kes, 0);
 
   const categorySums: Record<string, number> = {};
-  for (const c of costs) {
+  for (const c of seasonCosts) {
     categorySums[c.cost_category] = (categorySums[c.cost_category] || 0) + c.amount_kes;
   }
   const sortedCategories = Object.entries(categorySums).sort((a, b) => b[1] - a[1]);
   const maxCategoryAmt = sortedCategories[0]?.[1] || 1;
 
-  const prePlantingTotal = costs
+  const prePlantingTotal = seasonCosts
     .filter((c) => c.cost_category === "Pre-Planting")
     .reduce((sum, c) => sum + c.amount_kes, 0);
   const otherTotal = totalSpent - prePlantingTotal;
@@ -191,7 +195,7 @@ export default function CostsScreen() {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.screenTitle}>Costs</Text>
-            <Text style={styles.screenSubtitle}>Season Ledger</Text>
+            <Text style={styles.screenSubtitle}>{activeSeason?.season_name || "No active season"} · Season Ledger</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <Pressable style={styles.breakdownBtn} onPress={() => router.push("/cost-breakdown")}>
@@ -209,7 +213,7 @@ export default function CostsScreen() {
             <Text style={styles.totalValue}>{formatKES(totalSpent)}</Text>
           </View>
           <View style={styles.totalRight}>
-            <Text style={styles.entryCount}>{costs.length} entries</Text>
+            <Text style={styles.entryCount}>{seasonCosts.length} entries</Text>
           </View>
         </View>
 

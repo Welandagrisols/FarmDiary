@@ -175,11 +175,15 @@ CREATE TABLE IF NOT EXISTS public.harvest_records (
   total_kg          numeric NOT NULL DEFAULT 0,
   price_per_bag_kes numeric NOT NULL DEFAULT 0,
   total_revenue_kes numeric NOT NULL DEFAULT 0,
+  unit              text NOT NULL DEFAULT 'bag',
+  grade             text,
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.harvest_records
   ADD COLUMN IF NOT EXISTS buyer text,
-  ADD COLUMN IF NOT EXISTS notes text;
+  ADD COLUMN IF NOT EXISTS notes text,
+  ADD COLUMN IF NOT EXISTS unit text NOT NULL DEFAULT 'bag',
+  ADD COLUMN IF NOT EXISTS grade text;
 
 -- personal_expenses
 CREATE TABLE IF NOT EXISTS public.personal_expenses (

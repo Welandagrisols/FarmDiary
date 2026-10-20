@@ -83,10 +83,11 @@ function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: 
   );
 }
 
-function AddObservationModal({ onClose, onSubmit, seasonId }: {
+function AddObservationModal({ onClose, onSubmit, seasonId, farmId }: {
   onClose: () => void;
   onSubmit: (obs: Omit<ObservationRecord, "id" | "created_at">) => void;
   seasonId: string;
+  farmId: string;
 }) {
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -272,7 +273,7 @@ export default function ObservationsScreen() {
         }
       />
 
-      {showAdd && <AddObservationModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} />}
+      {showAdd && <AddObservationModal onClose={() => setShowAdd(false)} onSubmit={handleAdd} seasonId={seasonId} farmId={farmId} />}
     </View>
   );
 }

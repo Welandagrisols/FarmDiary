@@ -1,12 +1,11 @@
-import React from "react";
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Alert } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { useAuth } from "@/context/AuthContext";
-import { SyncBadge } from "@/components/SyncBadge";
 
 function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React.ReactNode; label: string; subtitle: string; color: string; onPress: () => void; badge?: string }) {
   return (
@@ -24,9 +23,9 @@ function MenuRow({ icon, label, subtitle, color, onPress, badge }: { icon: React
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms, personalExpenses } = useFarm();
+  const { inventory, observations, activityLogs, harvestRecords, seasons, activeSeason, activeFarm, farms } = useFarm();
   const { user, signOut } = useAuth();
-  const personalExpenseCount = personalExpenses.length;
+  const [signingOut, setSigningOut] = useState(false);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const lowStockCount = inventory.filter((item) => {
@@ -38,30 +37,11 @@ export default function MoreScreen() {
   const activeSeasonName = activeSeason?.season_name || "No season";
   const seasonStatusLabel = activeSeason?.status === "active" ? "Active" : activeSeason?.status === "closed" ? "Closed" : "Planning";
 
-  const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: signOut },
-    ]);
-  };
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: topPadding + 8, paddingBottom: bottomPadding + 100 }}>
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.screenTitle}>More</Text>
-            <Text style={styles.screenSubtitle}>Tools & Records</Text>
-          </View>
-          <Pressable style={styles.signOutBtn} onPress={handleSignOut}>
-            <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
-          </Pressable>
-        </View>
-        <View style={styles.accountRow}>
-          <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
-          <Text style={styles.accountEmail} numberOfLines={1}>{user?.email || "Signed in"}</Text>
-          <SyncBadge />
-        </View>
+        <Text style={styles.screenTitle}>More</Text>
+        <Text style={styles.screenSubtitle}>Tools & Records</Text>
       </View>
 
       <View style={styles.section}>
@@ -81,6 +61,10 @@ export default function MoreScreen() {
             <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
           </View>
         </Pressable>
+        <Pressable style={styles.backToPicker} onPress={() => router.replace("/farm-picker")}>
+          <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.backToPickerText}>Go back to farm picker</Text>
+        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -88,7 +72,7 @@ export default function MoreScreen() {
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="leaf-outline" size={22} color={COLORS.primary} />} label="Season Control" subtitle={`${activeSeasonName} · ${seasonStatusLabel} · ${seasons.length} season${seasons.length !== 1 ? "s" : ""}`} color={COLORS.primary} onPress={() => router.push("/season-control")} />
           <View style={styles.separator} />
-          <MenuRow icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />} label="Start New Season" subtitle="Choose variety, planting date — schedule is auto-generated" color={COLORS.teal} onPress={() => router.push("/season-setup")} />
+          <MenuRow icon={<Ionicons name="add-circle-outline" size={22} color={COLORS.teal} />} label="Start New Season" subtitle="Choose crop, variety and planting dates" color={COLORS.teal} onPress={() => router.push("/season-setup")} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="time-outline" size={22} color={COLORS.primaryLight} />} label="Season History" subtitle="Review closed seasons and compare results" color={COLORS.primaryLight} onPress={() => router.push("/season-history")} />
         </View>
@@ -104,23 +88,9 @@ export default function MoreScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>People & Personnel</Text>
-        <View style={styles.menuCard}>
-          <MenuRow
-            icon={<Ionicons name="person-circle-outline" size={22} color={COLORS.purple} />}
-            label="Personal Expenses"
-            subtitle="Perdiem, transport, meals, protective gear & visits"
-            color={COLORS.purple}
-            onPress={() => router.push("/personal-expenses")}
-            badge={personalExpenseCount > 0 ? `${personalExpenseCount} entries` : undefined}
-          />
-        </View>
-      </View>
-
-      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
-          <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log bags, weight, price and revenue" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.length > 0 ? `${harvestRecords.length} loads` : undefined} />
+          <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log crop-specific units, weight and price" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.filter((record) => record.season_id === activeSeason?.id).length > 0 ? `${harvestRecords.filter((record) => record.season_id === activeSeason?.id).length} loads` : undefined} />
           <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="bar-chart-outline" size={22} color={COLORS.primary} />} label="Full P&L Report" subtitle="Revenue, cost, and profit for the active season" color={COLORS.primary} onPress={() => router.push("/season-report")} />
         </View>
@@ -165,9 +135,48 @@ export default function MoreScreen() {
       </View>
 
       <View style={styles.section}>
-        <Pressable style={styles.signOutFullBtn} onPress={handleSignOut}>
-          <Ionicons name="log-out-outline" size={18} color={COLORS.red} />
-          <Text style={styles.signOutFullBtnText}>Sign Out</Text>
+        <Text style={styles.sectionTitle}>Account</Text>
+        {user?.email ? (
+          <View style={styles.accountCard}>
+            <View style={styles.accountRow}>
+              <View style={styles.accountAvatar}>
+                <Ionicons name="person" size={18} color={COLORS.primary} />
+              </View>
+              <View style={styles.accountInfo}>
+                <Text style={styles.accountEmail} numberOfLines={1}>{user.email}</Text>
+                <Text style={styles.accountStatus}>Signed in · data synced to cloud</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+        <Pressable
+          style={[styles.signOutBtn, signingOut && { opacity: 0.6 }]}
+          onPress={() => {
+            Alert.alert(
+              "Sign out",
+              "You will need to sign in again to access your farm data.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Sign Out",
+                  style: "destructive",
+                  onPress: async () => {
+                    setSigningOut(true);
+                    await signOut();
+                    router.replace("/auth");
+                  },
+                },
+              ]
+            );
+          }}
+          disabled={signingOut}
+        >
+          {signingOut ? (
+            <ActivityIndicator size="small" color={COLORS.red} />
+          ) : (
+            <Ionicons name="log-out-outline" size={18} color={COLORS.red} />
+          )}
+          <Text style={styles.signOutText}>{signingOut ? "Signing out…" : "Sign Out"}</Text>
         </Pressable>
       </View>
     </ScrollView>
@@ -176,13 +185,9 @@ export default function MoreScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 16, gap: 6 },
-  headerRow: { flexDirection: "row", alignItems: "flex-start" },
+  header: { paddingHorizontal: 16, paddingBottom: 16, gap: 2 },
   screenTitle: { fontFamily: "DMSans_700Bold", fontSize: 28, color: COLORS.text, letterSpacing: -0.5 },
   screenSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.textSecondary },
-  signOutBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.borderLight, alignItems: "center", justifyContent: "center", marginTop: 4 },
-  accountRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  accountEmail: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
   section: { paddingHorizontal: 16, marginBottom: 20, gap: 10 },
   sectionTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
   farmSwitchCard: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, backgroundColor: COLORS.cardBg, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.primary + "40", shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
@@ -193,6 +198,8 @@ const styles = StyleSheet.create({
   farmRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   farmCountBadge: { backgroundColor: COLORS.primarySurface, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   farmCountText: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
+  backToPicker: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardBg },
+  backToPickerText: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
   menuCard: { backgroundColor: COLORS.cardBg, borderRadius: 16, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: "hidden" },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
   menuIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
@@ -212,6 +219,12 @@ const styles = StyleSheet.create({
   infoValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%" },
   editFarmRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
   editFarmText: { flex: 1, fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.primary },
-  signOutFullBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: COLORS.redLight, borderRadius: 14, paddingVertical: 15, borderWidth: 1, borderColor: COLORS.red + "30" },
-  signOutFullBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.red },
+  accountCard: { backgroundColor: COLORS.cardBg, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: 14, marginBottom: 10 },
+  accountRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  accountAvatar: { width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.primarySurface, alignItems: "center", justifyContent: "center" },
+  accountInfo: { flex: 1, gap: 2 },
+  accountEmail: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: COLORS.text },
+  accountStatus: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  signOutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#FEE2E2", borderRadius: 14, paddingVertical: 14, borderWidth: 1, borderColor: "#FECACA" },
+  signOutText: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: COLORS.red },
 });

@@ -70,7 +70,12 @@ export default function ExportScreen() {
         summary: {
           total_costs: costs.reduce((s, c) => s + c.amount_kes, 0),
           total_activities: activityLogs.length,
-          total_harvest_bags: harvestRecords.reduce((s, r) => s + r.bags, 0),
+          total_harvest_bags: harvestRecords.filter((record) => !record.unit || record.unit === "bag").reduce((s, r) => s + r.bags, 0),
+          total_harvest_quantity_by_unit: harvestRecords.reduce((totals: Record<string, number>, record) => {
+            const unit = record.unit || "bag";
+            totals[unit] = (totals[unit] || 0) + record.bags;
+            return totals;
+          }, {}),
           total_revenue: harvestRecords.reduce((s, r) => s + r.total_revenue_kes, 0),
         },
         costs,
@@ -142,7 +147,7 @@ export default function ExportScreen() {
                 }
                 for (const l of importLogs) {
                   try {
-                    await addActivityLog({ ...l, farm_id: farmId, season_id: seasonId, id: undefined }, []);
+                    await addActivityLog({ ...l, farm_id: farmId, season_id: seasonId, id: undefined });
                     imported++;
                   } catch {}
                 }
@@ -154,7 +159,15 @@ export default function ExportScreen() {
                 }
                 for (const h of importHarvest) {
                   try {
-                    await addHarvestRecord({ ...h, farm_id: farmId, season_id: seasonId, id: undefined });
+                    const { unit, grade, ...legacyHarvestFields } = h;
+                    await addHarvestRecord({
+                      ...legacyHarvestFields,
+                      farm_id: farmId,
+                      season_id: seasonId,
+                      id: undefined,
+                      ...(typeof unit === "string" && unit ? { unit } : {}),
+                      ...(typeof grade === "string" && grade ? { grade } : {}),
+                    });
                     imported++;
                   } catch {}
                 }

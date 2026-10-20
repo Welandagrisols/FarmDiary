@@ -22,8 +22,10 @@ const tables = [
         lease_status TEXT NOT NULL DEFAULT '',
         crop_type TEXT NOT NULL DEFAULT '',
         notes TEXT,
+        user_id TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      ALTER TABLE farms ADD COLUMN IF NOT EXISTS user_id TEXT;
     `,
   },
   {
@@ -39,6 +41,7 @@ const tables = [
         template_id TEXT NOT NULL DEFAULT '',
         section_a JSONB NOT NULL DEFAULT '{}',
         section_b JSONB NOT NULL DEFAULT '{}',
+        blocks JSONB,
         pre_planting_start_date TEXT,
         budget_kes NUMERIC,
         total_revenue_kes NUMERIC,
@@ -47,6 +50,7 @@ const tables = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         closed_at TIMESTAMPTZ
       );
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS blocks JSONB;
     `,
   },
   {
@@ -164,6 +168,8 @@ const tables = [
         total_kg NUMERIC NOT NULL DEFAULT 0,
         price_per_bag_kes NUMERIC NOT NULL DEFAULT 0,
         total_revenue_kes NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'bag',
+        grade TEXT,
         buyer TEXT,
         notes TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()

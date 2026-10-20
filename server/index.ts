@@ -145,7 +145,7 @@ function serveLandingPage({
   const forwardedProto = req.header("x-forwarded-proto");
   const protocol = forwardedProto || req.protocol || "https";
   const forwardedHost = req.header("x-forwarded-host");
-  const host = forwardedHost || req.get("host");
+  const host = forwardedHost || req.get("host") || "localhost";
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = process.env.REPLIT_DEV_DOMAIN || host;
 
@@ -181,27 +181,19 @@ function configureExpoAndLanding(app: express.Application) {
 
   log("Serving Expo via Metro proxy");
 
+  app.get("/__expo-landing", (req, res) => {
+    serveLandingPage({ req, res, landingPageTemplate, appName });
+  });
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
 
-    const platform = req.header("expo-platform");
-    const isExpoClient = !!platform;
-
-    if (req.path === "/" && !isExpoClient) {
-      return serveLandingPage({
-        req,
-        res,
-        landingPageTemplate,
-        appName,
-      });
-    }
-
     return (metroProxy as any)(req, res, next);
   });
 
-  log("Expo routing: proxying Expo Go requests to Metro on port 8081");
+  log("Expo routing: proxying browser preview and Expo Go requests to Metro on port 8081");
 }
 
 function setupErrorHandler(app: express.Application) {

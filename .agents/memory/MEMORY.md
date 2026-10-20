@@ -1,0 +1,4 @@
+- [Expo validation limits](expo-validation-limits.md) — A web bundle does not verify Android; confirm each Expo target separately.
+- [Farm account provisioning](farm-account-provisioning.md) — Farmers use accounts created by a farm manager; keep public signup out of the login screen.
+- [Farm operations scope](farm-operations-scope.md) — Capture all farm work, track labour effectiveness, and plan for livestock and poultry later.
+- [Feature sequencing](feature-sequencing.md) — Build and verify one capability at a time before moving to the next.
