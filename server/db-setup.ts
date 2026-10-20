@@ -20,8 +20,10 @@ export async function setupSupabaseTables() {
       lease_status TEXT NOT NULL DEFAULT '',
       crop_type TEXT NOT NULL DEFAULT '',
       notes TEXT,
+      user_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE farms ADD COLUMN IF NOT EXISTS user_id TEXT;
 
     CREATE TABLE IF NOT EXISTS seasons (
       id TEXT PRIMARY KEY,
@@ -33,6 +35,7 @@ export async function setupSupabaseTables() {
       template_id TEXT NOT NULL DEFAULT '',
       section_a JSONB NOT NULL DEFAULT '{}',
       section_b JSONB NOT NULL DEFAULT '{}',
+      blocks JSONB,
       pre_planting_start_date TEXT,
       budget_kes NUMERIC,
       total_revenue_kes NUMERIC,
@@ -41,6 +44,7 @@ export async function setupSupabaseTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       closed_at TIMESTAMPTZ
     );
+    ALTER TABLE seasons ADD COLUMN IF NOT EXISTS blocks JSONB;
 
     CREATE TABLE IF NOT EXISTS costs (
       id TEXT PRIMARY KEY,
@@ -169,9 +173,15 @@ export async function setupSupabaseTables() {
     );
   `;
 
-  const { error } = await supabase.rpc("exec_sql", { sql }).catch(() => ({ error: null }));
+  let rpcError: string | null = null;
+  try {
+    const { error } = await supabase.rpc("exec_sql", { sql });
+    rpcError = error?.message ?? null;
+  } catch (error) {
+    rpcError = error instanceof Error ? error.message : "Unknown RPC error";
+  }
 
-  if (error) {
+  if (rpcError) {
     console.warn("RPC exec_sql not available — tables may need to be created manually");
   } else {
     console.log("Supabase tables verified/created");

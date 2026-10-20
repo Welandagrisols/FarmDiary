@@ -49,9 +49,20 @@ function makePlannerRows(rows: ReturnType<typeof getCropMeta>["prePlanting"]): P
 }
 
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().split("T")[0];
+}
+
+function isValidIsoDate(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function isPositiveNumber(value: string): boolean {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
 }
 
 function genId(): string {
@@ -134,20 +145,23 @@ export default function SeasonSetupScreen() {
         ]
       : []),
   ];
-  const previewSchedule = generatePlannedSchedule(template, plantingBlocks.slice(0, 1));
+  const previewSchedule = generatePlannedSchedule(template, plantingBlocks);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const canProceedStep1 = seasonName.trim().length > 0;
-  const canProceedStep2 = plantingDateA.length === 10 && (parseFloat(acresA) || 0) > 0;
+  const canProceedStep2 =
+    actualVarietyA.trim().length > 0 &&
+    isValidIsoDate(plantingDateA) &&
+    isPositiveNumber(acresA);
   const canProceedStep3 = !useSectionB || (
-    actualVarietyB.length > 0 &&
-    plantingDateB.length === 10 &&
-    (parseFloat(acresB) || 0) > 0 &&
+    actualVarietyB.trim().length > 0 &&
+    isValidIsoDate(plantingDateB) &&
+    isPositiveNumber(acresB) &&
     extraBlocks.every((block) =>
       block.variety.trim().length > 0 &&
-      block.planting_date.length === 10 &&
-      (parseFloat(block.acres) || 0) > 0
+      isValidIsoDate(block.planting_date) &&
+      isPositiveNumber(block.acres)
     )
   );
 
@@ -190,8 +204,12 @@ export default function SeasonSetupScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!actualVarietyA) {
-      Alert.alert("Missing", "Please enter Section A variety name.");
+    if (!farmId) {
+      Alert.alert("Select a farm", "Choose a farm before creating a season.");
+      return;
+    }
+    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3) {
+      Alert.alert("Incomplete season", "Review the season name, varieties, planting dates, and block sizes.");
       return;
     }
     setSubmitting(true);
@@ -704,22 +722,21 @@ export default function SeasonSetupScreen() {
             ) : null}
 
             <Text style={styles.scheduleLabel}>
-              {previewSchedule.length} activities generated from {meta.plantingVerb.toLowerCase()} dates
+              {previewSchedule.length} activities across {plantingBlocks.length} {plantingBlocks.length === 1 ? "block" : "blocks"} generated from {meta.plantingVerb.toLowerCase()} dates
             </Text>
 
-            {previewScheduleA.map((activity, idx) => {
-              const secBDate = previewScheduleB[idx]?.plannedDateA;
+            {previewSchedule.map((activity, idx) => {
+              const stageNumber = template.stages.findIndex((stage) => stage.title === activity.stage) + 1;
               return (
                 <View key={activity.id} style={styles.scheduleRow}>
                   <View style={styles.scheduleRowLeft}>
                     <View style={[styles.scheduleNum, { backgroundColor: COLORS.primarySurface }]}>
-                      <Text style={styles.scheduleNumText}>{idx + 1}</Text>
+                      <Text style={styles.scheduleNumText}>{stageNumber || idx + 1}</Text>
                     </View>
                     <View style={styles.scheduleInfo}>
                       <Text style={styles.scheduleName}>{activity.name}</Text>
                       <Text style={styles.scheduleDate}>
-                        Sec A: {formatDate(activity.plannedDateA)}
-                        {useSectionB && secBDate ? `  ·  Sec B: ${formatDate(secBDate)}` : ""}
+                        {activity.blockName}: {formatDate(activity.plannedDate)}
                       </Text>
                     </View>
                   </View>

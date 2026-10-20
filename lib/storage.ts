@@ -9,6 +9,7 @@ import {
 
 export interface FarmRecord {
   id: string;
+  user_id?: string | null;
   name: string;
   location: string;
   total_acres: number;
@@ -204,6 +205,7 @@ export interface SeasonRecord {
   /** New planting blocks; legacy A/B fields remain for older app versions. */
   blocks?: CropBlock[];
   pre_planting_start_date: string | null;
+  budget_kes?: number | null;
   total_revenue_kes: number | null;
   total_cost_kes: number | null;
   notes: string | null;
@@ -622,6 +624,20 @@ export async function addInventoryItem(
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function updateInventoryItem(
+  id: string,
+  updates: Partial<InventoryItem>
+): Promise<InventoryItem> {
+  const { data, error } = await supabase
+    .from("inventory")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as InventoryItem;
 }
 
 export async function addActivityLog(

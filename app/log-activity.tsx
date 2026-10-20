@@ -373,7 +373,7 @@ export default function LogActivityScreen() {
 
       router.back();
     } catch (e) {
-      Alert.alert("Error", "Failed to save. Please try again.");
+      Alert.alert("Error", e instanceof Error ? e.message : "Failed to save. Please try again.");
     } finally {
       setSubmitting(false);
     }

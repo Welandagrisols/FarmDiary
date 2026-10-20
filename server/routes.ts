@@ -1,12 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import { createClient } from "@supabase/supabase-js";
-import ws from "ws";
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: ws } }
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
@@ -59,7 +57,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Delete user ─────────────────────────────────────────────────────
   app.delete("/api/admin/users/:userId", requireAdmin, async (req: Request, res: Response) => {
-    const { userId } = req.params;
+    const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    if (!userId) { res.status(400).json({ message: "User ID required" }); return; }
     await supabaseAdmin.from("user_profiles").delete().eq("id", userId);
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (error) { res.status(400).json({ message: error.message }); return; }
@@ -68,7 +67,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Update user role ────────────────────────────────────────────────
   app.patch("/api/admin/users/:userId/role", requireAdmin, async (req: Request, res: Response) => {
-    const { userId } = req.params;
+    const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    if (!userId) { res.status(400).json({ message: "User ID required" }); return; }
     const { role } = req.body;
     if (!["farmer", "admin"].includes(role)) { res.status(400).json({ message: "Invalid role" }); return; }
     const { error } = await supabaseAdmin.from("user_profiles").update({ role }).eq("id", userId);
@@ -120,25 +120,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
       if (authError || !user) { res.status(401).json({ message: "Invalid token" }); return; }
 
-      const userId = user.id;
-      const { farms = [], seasons = [], costs = [], inventory = [],
-              activityLogs = [], observations = [], harvestRecords = [],
-              personalExpenses = [] } = req.body;
-
-      const farmsWithOwner = farms.map((f: any) => ({ ...f, user_id: f.user_id || userId }));
-
-      const tables = [
-        { name: "farms",            rows: farmsWithOwner },
-        { name: "seasons",          rows: seasons },
-        { name: "costs",            rows: costs },
-        { name: "inventory",        rows: inventory },
-        { name: "activity_logs",    rows: activityLogs },
-        { name: "observations",     rows: observations },
-        { name: "harvest_records",  rows: harvestRecords },
-        { name: "personal_expenses",rows: personalExpenses },
+      const payload = req.body ?? {};
+      const collections: { name: string; rows: any[] }[] = [
+        { name: "farms", rows: payload.farms ?? [] },
+        { name: "seasons", rows: payload.seasons ?? [] },
+        { name: "costs", rows: payload.costs ?? [] },
+        { name: "inventory", rows: payload.inventory ?? [] },
+        { name: "activity_logs", rows: payload.activityLogs ?? [] },
+        { name: "observations", rows: payload.observations ?? [] },
+        { name: "harvest_records", rows: payload.harvestRecords ?? [] },
+        { name: "personal_expenses", rows: payload.personalExpenses ?? [] },
       ];
 
-      for (const { name, rows } of tables) {
+      for (const collection of collections) {
+        if (!Array.isArray(collection.rows)) {
+          res.status(400).json({ message: `Invalid ${collection.name} migration data` });
+          return;
+        }
+      }
+
+      const farms = collections.find((collection) => collection.name === "farms")!.rows;
+      const importedFarmIds = new Set<string>();
+      for (const farm of farms) {
+        if (typeof farm.id !== "string" || !farm.id) {
+          res.status(400).json({ message: "Every imported farm must have an ID" });
+          return;
+        }
+        importedFarmIds.add(farm.id);
+      }
+
+      const relatedCollections = collections.filter((collection) => collection.name !== "farms");
+      const referencedFarmIds = new Set(importedFarmIds);
+      for (const collection of relatedCollections) {
+        for (const row of collection.rows) {
+          if (typeof row.farm_id !== "string" || !row.farm_id) {
+            res.status(400).json({ message: `Every ${collection.name} record must reference a farm` });
+            return;
+          }
+          referencedFarmIds.add(row.farm_id);
+        }
+      }
+
+      const referencedIds = [...referencedFarmIds];
+      const existingFarms = referencedIds.length
+        ? await supabaseAdmin.from("farms").select("id,user_id").in("id", referencedIds)
+        : { data: [], error: null };
+      if (existingFarms.error) {
+        res.status(500).json({ message: existingFarms.error.message });
+        return;
+      }
+
+      const existingFarmById = new Map(
+        (existingFarms.data ?? []).map((farm) => [farm.id, farm.user_id as string | null])
+      );
+      const conflictingFarm = [...importedFarmIds].find((id) => {
+        const ownerId = existingFarmById.get(id);
+        return ownerId != null && ownerId !== user.id;
+      });
+      if (conflictingFarm) {
+        res.status(409).json({ message: "An imported farm is already assigned to another account." });
+        return;
+      }
+
+      const allowedFarmIds = new Set<string>([
+        ...[...importedFarmIds],
+        ...[...existingFarmById.entries()]
+          .filter(([, ownerId]) => ownerId === user.id)
+          .map(([id]) => id),
+      ]);
+      const unrelatedFarmId = [...relatedCollections]
+        .flatMap((collection) => collection.rows)
+        .find((row) => !allowedFarmIds.has(row.farm_id))?.farm_id;
+      if (unrelatedFarmId) {
+        res.status(403).json({ message: "Migration contains records for a farm not assigned to this account." });
+        return;
+      }
+
+      const farmsWithOwner = farms.map((farm) => ({ ...farm, user_id: user.id }));
+      collections[0].rows = farmsWithOwner;
+
+      for (const { name, rows } of collections) {
         if (!rows.length) continue;
         const { error } = await supabaseAdmin.from(name).upsert(rows, { onConflict: "id" });
         if (error) { res.status(400).json({ message: `${name}: ${error.message}` }); return; }

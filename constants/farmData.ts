@@ -108,8 +108,8 @@ interface ScheduleBlockInput {
 }
 
 function offsetDate(dateStr: string, days: number): string {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + days);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
   return date.toISOString().split("T")[0];
 }
 

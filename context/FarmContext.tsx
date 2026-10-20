@@ -35,6 +35,7 @@ import {
   setActiveSeasonId,
   updateActivityLog,
   updateFarmRecord,
+  updateInventoryItem,
   updateSeason,
 } from "@/lib/storage";
 import {
@@ -46,6 +47,8 @@ import { generatePlannedSchedule, getTemplate } from "@/constants/farmData";
 import { useAuth } from "@/context/AuthContext";
 
 const CACHE_KEY = "farm_offline_cache_v1";
+
+type InventoryUse = { name: string; qty: number };
 
 type FarmContextValue = {
   costs: Awaited<ReturnType<typeof getCosts>>;
@@ -70,7 +73,7 @@ type FarmContextValue = {
   removeCost: typeof deleteCost;
   addInventory: typeof addInventoryItem;
   removeInventory: typeof deleteInventoryItem;
-  logActivity: typeof addActivityLog;
+  logActivity: (entry: Parameters<typeof addActivityLog>[0], inventoryUpdates?: InventoryUse[]) => Promise<ActivityLog>;
   editActivityLog: (id: string, updates: Partial<ActivityLog>) => Promise<void>;
   removeActivityLog: typeof deleteActivityLog;
   addFieldObservation: typeof addFieldObservation;
@@ -259,11 +262,41 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     await deleteInventoryItem(id);
     setInventory((prev) => prev.filter((i) => i.id !== id));
   }, []);
-  const logActivity = useCallback(async (entry: Omit<Parameters<typeof addActivityLog>[0], never>) => {
+  const logActivity = useCallback(async (
+    entry: Parameters<typeof addActivityLog>[0],
+    inventoryUpdates: InventoryUse[] = [],
+  ) => {
     const newRecord = await addActivityLog(entry);
     setActivityLogs((prev) => [...prev, newRecord]);
+    const totalsByProduct = new Map<string, number>();
+    for (const use of inventoryUpdates) {
+      const name = use.name.trim().toLocaleLowerCase();
+      const quantity = Number(use.qty);
+      if (!name || !Number.isFinite(quantity) || quantity <= 0) continue;
+      totalsByProduct.set(name, (totalsByProduct.get(name) || 0) + quantity);
+    }
+
+    try {
+      for (const [name, quantity] of totalsByProduct) {
+        const item = inventory.find((candidate) =>
+          candidate.farm_id === entry.farm_id &&
+          candidate.season_id === entry.season_id &&
+          candidate.product_name.trim().toLocaleLowerCase() === name
+        );
+        if (!item) continue;
+
+        const updated = await updateInventoryItem(item.id, {
+          quantity_used: item.quantity_used + quantity,
+        });
+        setInventory((prev) => prev.map((current) => current.id === updated.id ? updated : current));
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Inventory could not be updated.";
+      throw new Error(`Activity was saved, but inventory usage could not be updated. ${detail}`);
+    }
+
     return newRecord;
-  }, []);
+  }, [inventory]);
   const removeActivityLog = useCallback(async (id: string) => {
     await deleteActivityLog(id);
     setActivityLogs((prev) => prev.filter((l) => l.id !== id));

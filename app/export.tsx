@@ -147,7 +147,7 @@ export default function ExportScreen() {
                 }
                 for (const l of importLogs) {
                   try {
-                    await addActivityLog({ ...l, farm_id: farmId, season_id: seasonId, id: undefined }, []);
+                    await addActivityLog({ ...l, farm_id: farmId, season_id: seasonId, id: undefined });
                     imported++;
                   } catch {}
                 }

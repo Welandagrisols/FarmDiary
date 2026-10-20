@@ -40,7 +40,7 @@ export default function AuthScreen() {
       if (error) {
         setErrorMsg(error);
       } else {
-        router.replace("/(tabs)");
+        router.replace("/");
       }
     } catch (err) {
       setErrorMsg(
