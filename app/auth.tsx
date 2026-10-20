@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,9 +18,8 @@ import COLORS from "@/constants/colors";
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn, signUp } = useAuth();
+  const { signIn } = useAuth();
 
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,25 +29,25 @@ export default function AuthScreen() {
   const isValid = email.trim().length > 3 && password.length >= 6;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      setErrorMsg("Enter a valid email and password to sign in.");
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const { error } = mode === "signin"
-        ? await signIn(email, password)
-        : await signUp(email, password);
-
+      const { error } = await signIn(email, password);
       if (error) {
         setErrorMsg(error);
-      } else if (mode === "signup") {
-        Alert.alert(
-          "Account created",
-          "You can now sign in with your email and password.",
-          [{ text: "Sign in", onPress: () => setMode("signin") }]
-        );
       } else {
         router.replace("/(tabs)");
       }
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error
+          ? err.message
+          : "Unable to sign in. Check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -63,7 +61,10 @@ export default function AuthScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
+          {
+            paddingTop: Platform.OS === "web" ? 72 : insets.top + 40,
+            paddingBottom: Platform.OS === "web" ? 48 : insets.bottom + 32,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -72,22 +73,18 @@ export default function AuthScreen() {
           <View style={styles.logoCircle}>
             <Ionicons name="leaf" size={36} color={COLORS.white} />
           </View>
-          <Text style={styles.appName}>Farm Diary</Text>
-          <Text style={styles.tagline}>Your complete farm management tool</Text>
+          <Text style={styles.appName}>Agrisols Farm Diary</Text>
+          <Text style={styles.tagline}>Your farm, your data — always safe.</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            {mode === "signin" ? "Welcome back" : "Create account"}
-          </Text>
+          <Text style={styles.cardTitle}>Sign In</Text>
           <Text style={styles.cardSubtitle}>
-            {mode === "signin"
-              ? "Sign in to access your farm data"
-              : "Set up your account to get started"}
+            Enter the credentials provided by your farm manager.
           </Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email address</Text>
+            <Text style={styles.label}>Email</Text>
             <View style={styles.inputWrap}>
               <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -112,12 +109,12 @@ export default function AuthScreen() {
                 style={[styles.input, { flex: 1 }]}
                 value={password}
                 onChangeText={(t) => { setPassword(t); setErrorMsg(null); }}
-                placeholder={mode === "signup" ? "At least 6 characters" : "Your password"}
+                placeholder="Your password"
                 placeholderTextColor={COLORS.textMuted}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 onSubmitEditing={handleSubmit}
                 returnKeyType="go"
               />
@@ -139,42 +136,32 @@ export default function AuthScreen() {
           ) : null}
 
           <Pressable
-            style={[styles.submitBtn, (!isValid || loading) && styles.submitBtnDisabled]}
+            style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
             onPress={handleSubmit}
-            disabled={!isValid || loading}
+            disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.white} size="small" />
             ) : (
               <>
                 <Ionicons
-                  name={mode === "signin" ? "log-in-outline" : "person-add-outline"}
+                  name="log-in-outline"
                   size={18}
                   color={COLORS.white}
                 />
                 <Text style={styles.submitBtnText}>
-                  {mode === "signin" ? "Sign In" : "Create Account"}
+                  Sign In
                 </Text>
               </>
             )}
           </Pressable>
 
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>
-              {mode === "signin" ? "Don't have an account?" : "Already have an account?"}
-            </Text>
-            <Pressable onPress={() => { setMode(mode === "signin" ? "signup" : "signin"); setErrorMsg(null); }}>
-              <Text style={styles.switchLink}>
-                {mode === "signin" ? "Sign up" : "Sign in"}
-              </Text>
-            </Pressable>
-          </View>
         </View>
 
-        <View style={styles.offlineNote}>
-          <Ionicons name="wifi-outline" size={14} color={COLORS.textMuted} />
-          <Text style={styles.offlineNoteText}>
-            Once signed in, your data is cached so you can work offline too
+        <View style={styles.accessNote}>
+          <Ionicons name="information-circle-outline" size={16} color={COLORS.textMuted} />
+          <Text style={styles.accessNoteText}>
+            Accounts are created by your farm manager. Contact them if you need access.
           </Text>
         </View>
       </ScrollView>
@@ -186,17 +173,17 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: 24,
   },
   logoWrap: {
     alignItems: "center",
-    gap: 8,
+    gap: 16,
   },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -221,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardBg,
     borderRadius: 20,
     padding: 24,
-    gap: 16,
+    gap: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: COLORS.shadow,
@@ -256,7 +243,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.border,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 16,
     gap: 10,
   },
   inputIcon: { flexShrink: 0 },
@@ -287,7 +274,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: COLORS.primary,
     borderRadius: 14,
-    paddingVertical: 15,
+    paddingVertical: 17,
     marginTop: 4,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
@@ -301,33 +288,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.white,
   },
-  switchRow: {
+  accessNote: {
     flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#F4F4F4",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: "#F4F4F4",
   },
-  switchLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  switchLink: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 13,
-    color: COLORS.primary,
-  },
-  offlineNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  offlineNoteText: {
+  accessNoteText: {
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
-    color: COLORS.textMuted,
     flex: 1,
-    textAlign: "center",
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
 });

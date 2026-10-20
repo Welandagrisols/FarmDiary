@@ -13,7 +13,6 @@ type AuthContextValue = {
   session: Session | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 
@@ -52,19 +51,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password });
-    if (error) return { error: error.message };
-    return { error: null };
-  }, []);
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     await AsyncStorage.multiRemove(OFFLINE_CACHE_KEYS);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, isLoading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
