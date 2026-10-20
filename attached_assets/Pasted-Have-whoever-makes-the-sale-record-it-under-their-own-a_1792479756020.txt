@@ -1,0 +1,24 @@
+Have whoever makes the sale record it under their own account. Don't have one person enter everyone's sales. Then make a different person check those records.
+Why not one person entering everything
+That person becomes a bottleneck, and sales get entered later from memory or paper, which is where records go missing.
+It puts all the control in one pair of hands, so one dishonest or careless person can hide everything.
+You can't tell who actually sold what.
+What works instead
+Personal accounts, shared devices are fine. Each worker has their own login. On the Sunmi POS they sign in with a personal PIN, so several people can use one gadget but every sale carries their name. Never share a login.
+Record at the moment of sale. The seller enters it, the buyer gets a printed or phone receipt, and the buyer sees the amount. Receipts are the cheapest theft control because the buyer checks them.
+Payments go straight to the owner. Use M-Pesa to the farm's till or paybill, not a worker's phone. For cash sales, count the cash against the day's records.
+Sellers can't erase their own sales. A saved sale can't be edited or deleted by the seller. A void or a discount needs a manager's approval with a reason.
+Separate the three jobs. One person harvests and weighs, one stores and releases, one sells, and the manager checks. Nobody does all of them.
+POS or phone
+POS: counter and farm-gate sales. It prints a receipt, ties payment to the sale, and is hard to bypass.
+Phone: field, delivery and broker sales, using the same ledger. It should capture the weight, buyer, price and M-Pesa reference, and it works offline now.
+The control that catches the most
+Reconcile harvested, stored, sold and lost quantities. Harvested minus sold minus recorded losses minus what's in store should come to zero. A gap means unrecorded sales, over-reported losses, or stock leaving without a sale. The app can flag it daily.
+Roles I'd build
+Owner: sees everything and approves voids.
+Manager: sees costs and reports, approves discounts and stock issues.
+Seller or worker: records sales, harvests and activities, and sees only their own entries.
+Storekeeper: issues stock, with a second person confirming receipt.
+The app will flag unusual patterns (voids, discounts, edits, sales with no payment reference, stock leaving with no sale) so you check exceptions instead of everything.
+Honest limit: these controls make theft harder to hide and easier to spot, but they don't replace spot checks and supervision. Workers should know the records are checked.
+I'll design step five on this basis: roles, per-person attribution, the stock ledger, and the daily reconciliation.
