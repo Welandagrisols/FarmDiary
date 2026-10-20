@@ -23,7 +23,7 @@ type ActivityStatus = "completed" | "overdue" | "due-soon" | "upcoming";
 
 function getStatus(activity: PlannedActivity, completedIds: string[]): ActivityStatus {
   if (completedIds.includes(activity.id)) return "completed";
-  const daysUntil = getDaysUntil(activity.plannedDateA);
+  const daysUntil = getDaysUntil(activity.plannedDate);
   if (daysUntil < -3) return "overdue";
   if (daysUntil <= 3) return "due-soon";
   return "upcoming";
@@ -71,7 +71,7 @@ function ActivityCard({
   completing?: boolean;
 }) {
   const typeColor = getTypeColor(activity.activityType);
-  const daysUntil = getDaysUntil(activity.plannedDateA);
+  const daysUntil = getDaysUntil(activity.plannedDate);
 
   return (
     <Pressable style={({ pressed }) => [styles.activityCard, pressed && { opacity: 0.85 }]} onPress={onPress}>
@@ -89,8 +89,7 @@ function ActivityCard({
         <Text style={styles.activityName} numberOfLines={2}>{activity.name}</Text>
         <Text style={styles.activityStage}>{activity.stage}</Text>
         <View style={styles.datesRow}>
-          <Text style={styles.dateValue}>Sec A · {formatDate(activity.plannedDateA)}</Text>
-          <Text style={styles.dateValue}>Sec B · {formatDate(activity.plannedDateB)}</Text>
+          <Text style={styles.dateValue}>{activity.blockName} · {formatDate(activity.plannedDate)}</Text>
         </View>
         <View style={styles.cardFooter}>
           <Text style={[styles.dueText, { color: status === "overdue" ? COLORS.red : status === "due-soon" ? COLORS.amber : COLORS.textSecondary }]}>
@@ -138,13 +137,9 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
 
           <View style={styles.modalDates}>
             <View style={styles.modalDateCard}>
-              <Text style={styles.modalDateLabel}>Section A</Text>
-              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDateA)}</Text>
+              <Text style={styles.modalDateLabel}>{activity.blockName}</Text>
+              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDate)}</Text>
               <StatusChip status={status} />
-            </View>
-            <View style={styles.modalDateCard}>
-              <Text style={styles.modalDateLabel}>Section B</Text>
-              <Text style={styles.modalDateValue}>{formatDate(activity.plannedDateB)}</Text>
             </View>
           </View>
 
@@ -251,7 +246,7 @@ export default function ScheduleScreen() {
   const handleQuickDone = useCallback(async (item: typeof data[0]) => {
     setCompletingId(item.id);
     try {
-      await quickCompleteActivity(item, "section-a");
+      await quickCompleteActivity(item, item.blockId);
     } finally {
       setCompletingId(null);
     }
@@ -299,7 +294,7 @@ export default function ScheduleScreen() {
               <Text style={styles.upcomingName} numberOfLines={1}>{item.name}</Text>
               <StatusChip status={item.status} />
             </View>
-            <Text style={styles.upcomingDate}>{formatDate(item.plannedDateA)} · {item.activityType}</Text>
+            <Text style={styles.upcomingDate}>{item.blockName} · {formatDate(item.plannedDate)} · {item.activityType}</Text>
           </Pressable>
         ))}
       </View>

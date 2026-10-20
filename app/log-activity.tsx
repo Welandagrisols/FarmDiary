@@ -15,12 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { SEASON_SEED } from "@/constants/farmData";
-import { formatKES, isPrePlanting } from "@/lib/storage";
+import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
-
-type Section = "section-a" | "section-b" | "both";
 
 interface ProductRow {
   name: string;
@@ -76,6 +74,7 @@ export default function LogActivityScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ activityId?: string }>();
   const { logActivity, addCostEntry, activeSeason, currentSchedule, farmId } = useFarm();
+  const seasonBlocks = getSeasonBlocks(activeSeason);
 
   const preSelected = params.activityId
     ? currentSchedule.find((a) => a.id === params.activityId)
@@ -85,7 +84,7 @@ export default function LogActivityScreen() {
   const [activityType, setActivityType] = useState<"planned" | "other" | "historical">(preSelected ? "planned" : "planned");
   const [selectedActivityId, setSelectedActivityId] = useState<string>(preSelected?.id ?? "");
   const [customActivityName, setCustomActivityName] = useState("");
-  const [section, setSection] = useState<Section>("both");
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(preSelected?.blockId ?? null);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
   const [weather, setWeather] = useState("Sunny");
@@ -151,6 +150,7 @@ export default function LogActivityScreen() {
     (id: string) => {
       setSelectedActivityId(id);
       const activity = currentSchedule.find((a) => a.id === id);
+      setSelectedBlockId(activity?.blockId ?? null);
       if (activity) {
         setProducts(
           activity.plannedProducts.map((p) => ({
@@ -165,7 +165,7 @@ export default function LogActivityScreen() {
         );
       }
     },
-    []
+    [currentSchedule]
   );
 
   const addProduct = () => {
@@ -220,8 +220,8 @@ export default function LogActivityScreen() {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      const sectionId = section === "section-a" ? "section-a" : section === "section-b" ? "section-b" : null;
-      const plantingDate = activeSeason?.section_a.planting_date || "2026-02-17";
+      const sectionId = selectedBlockId;
+      const plantingDate = seasonBlocks[0]?.planting_date || activeSeason?.section_a.planting_date || "2026-02-17";
       const activeSeasonId = activeSeason?.id || SEASON_SEED.id;
       const isHist = activityType === "historical";
 
@@ -254,7 +254,7 @@ export default function LogActivityScreen() {
           activity_name: activityName,
           planned_date:
             activityType === "planned" && selectedActivity
-              ? selectedActivity.plannedDateA
+              ? selectedActivity.plannedDate
               : null,
           actual_date: date,
           products_used: productsUsed,

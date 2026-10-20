@@ -242,6 +242,18 @@ export function getSeasonBlocks(season: SeasonRecord | null | undefined): CropBl
   return blocks.filter((block) => block.acres > 0);
 }
 
+export function getSeasonBlockName(
+  season: SeasonRecord | null | undefined,
+  blockId: string | null | undefined,
+): string {
+  if (!blockId) return "Whole season";
+  const block = getSeasonBlocks(season).find((item) => item.id === blockId);
+  if (block) return block.name;
+  if (blockId === "section-a") return "Block 1";
+  if (blockId === "section-b") return "Block 2";
+  return "Former block";
+}
+
 function sectionsFromBlocks(blocks: CropBlock[]) {
   const first = blocks[0];
   const second = blocks[1];

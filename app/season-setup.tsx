@@ -30,9 +30,10 @@ interface PlannerRow {
   enabled: boolean;
 }
 
-interface ExtraBlockDraft {
+interface PlantingDraft {
   id: string;
   variety: string;
+  customVariety: string;
   planting_date: string;
   acres: string;
 }
@@ -69,12 +70,22 @@ function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
+function createPlantingDraft(variety: string): PlantingDraft {
+  return {
+    id: genId(),
+    variety,
+    customVariety: "",
+    planting_date: new Date().toISOString().split("T")[0],
+    acres: "2",
+  };
+}
+
 export default function SeasonSetupScreen() {
   const insets = useSafeAreaInsets();
   const { createSeason, seasons, farmId } = useFarm();
 
   const nextSeasonNumber = (seasons.length || 0) + 1;
-  const TOTAL_STEPS = 5;
+  const TOTAL_STEPS = 4;
 
   const [step, setStep] = useState(1);
   const [seasonName, setSeasonName] = useState(`Season ${nextSeasonNumber}`);
@@ -85,88 +96,69 @@ export default function SeasonSetupScreen() {
   const meta = getCropMeta(template.id);
   const VARIETIES = meta.varieties;
 
-  const [varietyA, setVarietyA] = useState(VARIETIES[0].label);
-  const [customVarietyA, setCustomVarietyA] = useState("");
-  const [plantingDateA, setPlantingDateA] = useState(new Date().toISOString().split("T")[0]);
-  const [acresA, setAcresA] = useState("2");
-
-  const [varietyB, setVarietyB] = useState((VARIETIES[1] || VARIETIES[0]).label);
-  const [customVarietyB, setCustomVarietyB] = useState("");
-  const [plantingDateB, setPlantingDateB] = useState(new Date().toISOString().split("T")[0]);
-  const [acresB, setAcresB] = useState("2");
-  const [useSectionB, setUseSectionB] = useState(false);
-  const [extraBlocks, setExtraBlocks] = useState<ExtraBlockDraft[]>([]);
-
-  const [prePlantingDate, setPrePlantingDate] = useState(addDays(plantingDateA, -template.prePlantingLeadDays));
+  const [plantingDrafts, setPlantingDrafts] = useState<PlantingDraft[]>(() => [
+    createPlantingDraft(getCropMeta(CROP_TEMPLATES[0].id).varieties[0].label),
+  ]);
+  const [prePlantingDate, setPrePlantingDate] = useState(
+    addDays(new Date().toISOString().split("T")[0], -template.prePlantingLeadDays),
+  );
   const [seasonNotes, setSeasonNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-planting cost planner state
   const [plannerRows, setPlannerRows] = useState<PlannerRow[]>(() => makePlannerRows(meta.prePlanting));
 
-  const selectedVarA = VARIETIES.find((v) => v.label === varietyA) || VARIETIES[0];
-  const selectedVarB = VARIETIES.find((v) => v.label === varietyB) || VARIETIES[1] || VARIETIES[0];
-
-  const actualVarietyA = varietyA === "Custom" ? customVarietyA : varietyA;
-  const actualVarietyB = varietyB === "Custom" ? customVarietyB : varietyB;
-
-  const estimatedHarvestA = addDays(plantingDateA, selectedVarA.maturityDays);
-  const estimatedHarvestB = useSectionB ? addDays(plantingDateB, selectedVarB.maturityDays) : null;
-  const plantingBlocks: CropBlock[] = [
-    {
-      id: "section-a",
-      name: "Block 1",
-      variety: actualVarietyA,
-      planting_date: plantingDateA,
-      acres: parseFloat(acresA) || 0,
-      blight_risk: selectedVarA.blightRisk,
+  const plantingBlocks: CropBlock[] = plantingDrafts.map((draft, index) => {
+    const variety = VARIETIES.find((item) => item.label === draft.variety) || VARIETIES[0];
+    return {
+      id: draft.id,
+      name: `Block ${index + 1}`,
+      variety: draft.variety === "Custom" ? draft.customVariety.trim() : draft.variety,
+      planting_date: draft.planting_date,
+      acres: parseFloat(draft.acres) || 0,
+      blight_risk: variety.blightRisk,
       notes: null,
-    },
-    ...(useSectionB
-      ? [
-          {
-            id: "section-b",
-            name: "Block 2",
-            variety: actualVarietyB,
-            planting_date: plantingDateB,
-            acres: parseFloat(acresB) || 0,
-            blight_risk: selectedVarB.blightRisk,
-            notes: null,
-          },
-          ...extraBlocks.map((block, index) => ({
-            id: block.id,
-            name: `Block ${index + 3}`,
-            variety: block.variety.trim(),
-            planting_date: block.planting_date,
-            acres: parseFloat(block.acres) || 0,
-            blight_risk: VARIETIES.find((v) => v.label === block.variety)?.blightRisk || "LOW" as const,
-            notes: null,
-          })),
-        ]
-      : []),
-  ];
+    };
+  });
   const previewSchedule = generatePlannedSchedule(template, plantingBlocks);
+  const totalPlantedAcres = plantingBlocks.reduce((total, block) => total + block.acres, 0);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const canProceedStep1 = seasonName.trim().length > 0;
-  const canProceedStep2 =
-    actualVarietyA.trim().length > 0 &&
-    isValidIsoDate(plantingDateA) &&
-    isPositiveNumber(acresA);
-  const canProceedStep3 = !useSectionB || (
-    actualVarietyB.trim().length > 0 &&
-    isValidIsoDate(plantingDateB) &&
-    isPositiveNumber(acresB) &&
-    extraBlocks.every((block) =>
-      block.variety.trim().length > 0 &&
-      isValidIsoDate(block.planting_date) &&
-      isPositiveNumber(block.acres)
-    )
-  );
+  const canProceedStep2 = plantingDrafts.length > 0 && plantingDrafts.every((draft) => {
+    const varietyName = draft.variety === "Custom" ? draft.customVariety : draft.variety;
+    return varietyName.trim().length > 0 &&
+      isValidIsoDate(draft.planting_date) &&
+      isPositiveNumber(draft.acres);
+  });
 
   const enabledPlannerRows = plannerRows.filter((r) => r.enabled && r.amount.trim() !== "");
   const plannerTotal = enabledPlannerRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+  const updatePlantingDraft = (
+    id: string,
+    field: keyof Omit<PlantingDraft, "id">,
+    value: string,
+  ) => {
+    setPlantingDrafts((previous) =>
+      previous.map((draft) => draft.id === id ? { ...draft, [field]: value } : draft),
+    );
+  };
+
+  const handleAddPlanting = () => {
+    Haptics.selectionAsync();
+    setPlantingDrafts((previous) => [
+      ...previous,
+      createPlantingDraft(VARIETIES[0].label),
+    ]);
+  };
+
+  const handleRemovePlanting = (id: string) => {
+    setPlantingDrafts((previous) =>
+      previous.length > 1 ? previous.filter((draft) => draft.id !== id) : previous,
+    );
+  };
 
   const handleAddCustomRow = () => {
     setPlannerRows((prev) => [
@@ -194,12 +186,17 @@ export default function SeasonSetupScreen() {
     const nextTemplate = getTemplate(id);
     const nextMeta = getCropMeta(nextTemplate.id);
     setCropId(nextTemplate.id);
-    setVarietyA(nextMeta.varieties[0].label);
-    setVarietyB((nextMeta.varieties[1] || nextMeta.varieties[0]).label);
-    setCustomVarietyA("");
-    setCustomVarietyB("");
-    setExtraBlocks([]);
-    setPrePlantingDate(addDays(plantingDateA, -nextTemplate.prePlantingLeadDays));
+    setPlantingDrafts((previous) =>
+      previous.map((draft) => ({
+        ...draft,
+        variety: nextMeta.varieties[0].label,
+        customVariety: "",
+      })),
+    );
+    setPrePlantingDate(addDays(
+      plantingDrafts[0]?.planting_date || new Date().toISOString().split("T")[0],
+      -nextTemplate.prePlantingLeadDays,
+    ));
     setPlannerRows(makePlannerRows(nextMeta.prePlanting));
   };
 
@@ -208,7 +205,7 @@ export default function SeasonSetupScreen() {
       Alert.alert("Select a farm", "Choose a farm before creating a season.");
       return;
     }
-    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3) {
+    if (!canProceedStep1 || !canProceedStep2) {
       Alert.alert("Incomplete season", "Review the season name, varieties, planting dates, and block sizes.");
       return;
     }
@@ -223,26 +220,14 @@ export default function SeasonSetupScreen() {
         status: "active",
         template_id: template.id,
         blocks: plantingBlocks,
-        section_a: {
-          variety: plantingBlocks[0].variety,
-          planting_date: plantingBlocks[0].planting_date,
-          acres: plantingBlocks[0].acres,
-          blight_risk: plantingBlocks[0].blight_risk,
-          notes: null,
-        },
+        section_a: { ...plantingBlocks[0] },
         section_b: plantingBlocks[1]
-          ? {
-              variety: plantingBlocks[1].variety,
-              planting_date: plantingBlocks[1].planting_date,
-              acres: plantingBlocks[1].acres,
-              blight_risk: plantingBlocks[1].blight_risk,
-              notes: null,
-            }
+          ? { ...plantingBlocks[1] }
           : {
               variety: "Not planted",
-              planting_date: plantingDateA,
+              planting_date: plantingBlocks[0].planting_date,
               acres: 0,
-              blight_risk: selectedVarB.blightRisk,
+              blight_risk: VARIETIES[1]?.blightRisk || VARIETIES[0].blightRisk,
               notes: null,
             },
         pre_planting_start_date: prePlantingDate || null,
@@ -301,8 +286,7 @@ export default function SeasonSetupScreen() {
   const canProceedCurrent = () => {
     if (step === 1) return canProceedStep1;
     if (step === 2) return canProceedStep2;
-    if (step === 3) return canProceedStep3;
-    return true; // steps 4 & 5 always passable
+    return true;
   };
 
   return (
@@ -409,193 +393,153 @@ export default function SeasonSetupScreen() {
           </View>
         )}
 
-        {/* ── STEP 2: Section A ── */}
+        {/* ── STEP 2: Planting blocks ── */}
         {step === 2 && (
           <View style={styles.stepContent}>
             <View style={styles.stepHeader}>
               <Ionicons name="grid-outline" size={28} color={COLORS.primary} />
-              <Text style={styles.stepTitle}>Section A — {template.cropType}</Text>
-              <Text style={styles.stepSubtitle}>Choose a {template.cropType.toLowerCase()} variety. Badges show {meta.riskLabel.toLowerCase()}.</Text>
+              <Text style={styles.stepTitle}>Planting blocks</Text>
+              <Text style={styles.stepSubtitle}>
+                Add each planting separately. Use another block when its date, area, or variety is different.
+              </Text>
             </View>
 
-            <View style={styles.varietyGrid}>
-              {VARIETIES.map((v) => (
-                <Pressable
-                  key={v.label}
-                  style={[styles.varietyCard, varietyA === v.label && styles.varietyCardActive]}
-                  onPress={() => { Haptics.selectionAsync(); setVarietyA(v.label); }}
-                >
-                  <View style={styles.varietyCardHeader}>
-                    <Text style={[styles.varietyName, varietyA === v.label && { color: COLORS.primary }]}>{v.label}</Text>
-                    <View style={[
-                      styles.riskBadge,
-                      { backgroundColor: v.blightRisk === "HIGH" ? COLORS.redLight : v.blightRisk === "MEDIUM" ? COLORS.amberLight : COLORS.primarySurface }
-                    ]}>
-                      <Text style={[
-                        styles.riskText,
-                        { color: v.blightRisk === "HIGH" ? COLORS.red : v.blightRisk === "MEDIUM" ? COLORS.amber : COLORS.primary }
-                      ]}>{v.blightRisk}</Text>
+            {plantingDrafts.map((draft, index) => {
+              const selectedVariety = VARIETIES.find((item) => item.label === draft.variety) || VARIETIES[0];
+              const estimatedHarvest = isValidIsoDate(draft.planting_date)
+                ? addDays(draft.planting_date, selectedVariety.maturityDays)
+                : null;
+              const riskColor = selectedVariety.blightRisk === "HIGH"
+                ? COLORS.red
+                : selectedVariety.blightRisk === "MEDIUM"
+                ? COLORS.amber
+                : COLORS.primary;
+              const riskBackground = selectedVariety.blightRisk === "HIGH"
+                ? COLORS.redLight
+                : selectedVariety.blightRisk === "MEDIUM"
+                ? COLORS.amberLight
+                : COLORS.primarySurface;
+
+              return (
+                <View key={draft.id} style={styles.plantingCard}>
+                  <View style={styles.plantingHeader}>
+                    <View style={styles.plantingTitleGroup}>
+                      <Text style={styles.plantingTitle}>Block {index + 1}</Text>
+                      <Text style={styles.plantingSubtitle}>Planting {index + 1}</Text>
+                    </View>
+                    <View style={styles.plantingHeaderActions}>
+                      <View style={[styles.riskBadge, { backgroundColor: riskBackground }]}>
+                        <Text style={[styles.riskText, { color: riskColor }]}>{selectedVariety.blightRisk} RISK</Text>
+                      </View>
+                      {plantingDrafts.length > 1 && (
+                        <Pressable
+                          testID={`remove-planting-${index + 1}`}
+                          style={styles.removePlantingButton}
+                          onPress={() => handleRemovePlanting(draft.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove Block ${index + 1}`}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={COLORS.red} />
+                        </Pressable>
+                      )}
                     </View>
                   </View>
-                  <Text style={styles.varietyNote}>{v.note}</Text>
-                </Pressable>
-              ))}
-            </View>
 
-            {varietyA === "Custom" && (
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Enter Variety Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={customVarietyA}
-                  onChangeText={setCustomVarietyA}
-                  placeholder="e.g. Solara"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoFocus
-                />
-              </View>
-            )}
+                  <Text style={styles.fieldLabel}>Variety</Text>
+                  <View style={styles.chipRow}>
+                    {VARIETIES.map((variety) => (
+                      <Pressable
+                        key={variety.label}
+                        testID={`planting-${index + 1}-variety-${variety.label}`}
+                        style={[styles.chip, draft.variety === variety.label && styles.chipActive]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          updatePlantingDraft(draft.id, "variety", variety.label);
+                          if (variety.label !== "Custom") updatePlantingDraft(draft.id, "customVariety", "");
+                        }}
+                      >
+                        <Text style={[styles.chipText, draft.variety === variety.label && styles.chipTextActive]}>
+                          {variety.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
 
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Section A {meta.plantingVerb} Date</Text>
-              <TextInput
-                style={styles.input}
-                value={plantingDateA}
-                onChangeText={setPlantingDateA}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numbers-and-punctuation"
-              />
-            </View>
+                  {draft.variety === "Custom" && (
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>Custom variety</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draft.customVariety}
+                        onChangeText={(value) => updatePlantingDraft(draft.id, "customVariety", value)}
+                        placeholder="Enter variety name"
+                        placeholderTextColor={COLORS.textMuted}
+                        testID={`planting-${index + 1}-custom-variety`}
+                      />
+                    </View>
+                  )}
 
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Section A Area (acres)</Text>
-              <TextInput
-                style={styles.input}
-                value={acresA}
-                onChangeText={setAcresA}
-                placeholder="2"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numeric"
-              />
-            </View>
+                  <View style={styles.plantingFieldsRow}>
+                    <View style={[styles.field, styles.plantingField]}>
+                      <Text style={styles.fieldLabel}>{meta.plantingVerb} date</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draft.planting_date}
+                        onChangeText={(value) => updatePlantingDraft(draft.id, "planting_date", value)}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numbers-and-punctuation"
+                        testID={`planting-${index + 1}-date`}
+                      />
+                    </View>
+                    <View style={[styles.field, styles.plantingField]}>
+                      <Text style={styles.fieldLabel}>Area (acres)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draft.acres}
+                        onChangeText={(value) => updatePlantingDraft(draft.id, "acres", value)}
+                        placeholder="2"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                        testID={`planting-${index + 1}-area`}
+                      />
+                    </View>
+                  </View>
 
-            {plantingDateA.length === 10 && (
-              <View style={styles.harvestPreview}>
-                <Ionicons name="sunny-outline" size={16} color={COLORS.amber} />
-                <Text style={styles.harvestPreviewText}>
-                  Estimated harvest: <Text style={{ fontFamily: "DMSans_700Bold" }}>{formatDate(estimatedHarvestA)}</Text>
-                  {" "}({selectedVarA.maturityDays} days)
-                </Text>
-              </View>
-            )}
+                  {estimatedHarvest && (
+                    <View style={styles.harvestPreview}>
+                      <Ionicons name="sunny-outline" size={16} color={COLORS.amber} />
+                      <Text style={styles.harvestPreviewText}>
+                        Estimated harvest: <Text style={{ fontFamily: "DMSans_700Bold" }}>{formatDate(estimatedHarvest)}</Text>
+                        {" "}({selectedVariety.maturityDays} days)
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
 
-            <View style={styles.toggleRow}>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.fieldLabel}>Add another planting section?</Text>
-                <Text style={styles.fieldHint}>Optional — turn this on only when you have another planting block.</Text>
-              </View>
-              <Pressable
-                style={[styles.toggleSwitch, useSectionB && styles.toggleSwitchOn]}
-                onPress={() => { Haptics.selectionAsync(); setUseSectionB(!useSectionB); }}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: useSectionB }}
-                accessibilityLabel="Add another planting section"
-              >
-                <View style={[styles.toggleKnob, useSectionB && styles.toggleKnobOn]} />
-              </Pressable>
+            <Pressable
+              testID="add-planting-block"
+              style={styles.addPlantingButton}
+              onPress={handleAddPlanting}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.addPlantingButtonText}>Add planting</Text>
+            </Pressable>
+
+            <View style={styles.plantingTotalCard}>
+              <Text style={styles.plantingTotalLabel}>Season planting total</Text>
+              <Text style={styles.plantingTotalValue}>
+                {plantingBlocks.length} {plantingBlocks.length === 1 ? "planting" : "plantings"} · {totalPlantedAcres.toFixed(2)} acres
+              </Text>
             </View>
           </View>
         )}
 
-        {/* ── STEP 3: Section B ── */}
+        {/* ── STEP 3: Pre-Planting Cost Planner ── */}
         {step === 3 && (
-          <View style={styles.stepContent}>
-            <View style={styles.stepHeader}>
-              <Ionicons name="grid-outline" size={28} color={COLORS.teal} />
-              <Text style={styles.stepTitle}>Section B — {template.cropType}</Text>
-              <Text style={styles.stepSubtitle}>Choose a Section B variety or {meta.plantingVerb.toLowerCase()} date. Badges show {meta.riskLabel.toLowerCase()}.</Text>
-            </View>
-
-            {useSectionB && (
-              <>
-                <View style={styles.varietyGrid}>
-                  {VARIETIES.map((v) => (
-                    <Pressable
-                      key={v.label}
-                      style={[styles.varietyCard, varietyB === v.label && styles.varietyCardActive]}
-                      onPress={() => { Haptics.selectionAsync(); setVarietyB(v.label); }}
-                    >
-                      <View style={styles.varietyCardHeader}>
-                        <Text style={[styles.varietyName, varietyB === v.label && { color: COLORS.primary }]}>{v.label}</Text>
-                        <View style={[
-                          styles.riskBadge,
-                          { backgroundColor: v.blightRisk === "HIGH" ? COLORS.redLight : v.blightRisk === "MEDIUM" ? COLORS.amberLight : COLORS.primarySurface }
-                        ]}>
-                          <Text style={[
-                            styles.riskText,
-                            { color: v.blightRisk === "HIGH" ? COLORS.red : v.blightRisk === "MEDIUM" ? COLORS.amber : COLORS.primary }
-                          ]}>{v.blightRisk}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.varietyNote}>{v.note}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                {varietyB === "Custom" && (
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Enter Variety Name</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={customVarietyB}
-                      onChangeText={setCustomVarietyB}
-                      placeholder="e.g. Solara"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                  </View>
-                )}
-
-                <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Section B {meta.plantingVerb} Date</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={plantingDateB}
-                    onChangeText={setPlantingDateB}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numbers-and-punctuation"
-                  />
-                </View>
-
-                <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Section B Area (acres)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={acresB}
-                    onChangeText={setAcresB}
-                    placeholder="2"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                {plantingDateB.length === 10 && estimatedHarvestB && (
-                  <View style={styles.harvestPreview}>
-                    <Ionicons name="sunny-outline" size={16} color={COLORS.amber} />
-                    <Text style={styles.harvestPreviewText}>
-                      Estimated harvest: <Text style={{ fontFamily: "DMSans_700Bold" }}>{formatDate(estimatedHarvestB)}</Text>
-                      {" "}({selectedVarB.maturityDays} days)
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* ── STEP 4: Pre-Planting Cost Planner ── */}
-        {step === 4 && (
           <View style={styles.stepContent}>
             <View style={styles.stepHeader}>
               <Ionicons name="wallet-outline" size={28} color={COLORS.amber} />
@@ -612,7 +556,7 @@ export default function SeasonSetupScreen() {
               </View>
               <View style={styles.plannerTotalRight}>
                 <Text style={styles.plannerTotalSub}>{enabledPlannerRows.length} items</Text>
-                <Pressable style={styles.skipHintBtn} onPress={() => setStep(5)}>
+                <Pressable style={styles.skipHintBtn} onPress={() => setStep(4)}>
                   <Text style={styles.skipHintText}>Skip for now</Text>
                 </Pressable>
               </View>
@@ -669,8 +613,8 @@ export default function SeasonSetupScreen() {
           </View>
         )}
 
-        {/* ── STEP 5: Generated Schedule ── */}
-        {step === 5 && (
+        {/* ── STEP 4: Generated Schedule ── */}
+        {step === 4 && (
           <View style={styles.stepContent}>
             <View style={styles.stepHeader}>
               <Ionicons name="calendar-outline" size={28} color={COLORS.primary} />
@@ -688,22 +632,20 @@ export default function SeasonSetupScreen() {
                   <Text style={styles.summaryValue}>{seasonType}</Text>
                 </View>
                 <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>Sections</Text>
-                  <Text style={styles.summaryValue}>{useSectionB ? "A + B" : "A only"}</Text>
+                  <Text style={styles.summaryLabel}>Season planting total</Text>
+                  <Text style={styles.summaryValue}>
+                    {plantingBlocks.length} {plantingBlocks.length === 1 ? "planting" : "plantings"} · {totalPlantedAcres.toFixed(2)} acres
+                  </Text>
                 </View>
               </View>
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>Sec A — {actualVarietyA}</Text>
-                  <Text style={styles.summaryValue}>Planted {formatDate(plantingDateA)}</Text>
+              {plantingBlocks.map((block) => (
+                <View key={block.id} style={styles.summaryPlantingRow}>
+                  <Text style={styles.summaryLabel}>{block.name} · {block.variety}</Text>
+                  <Text style={styles.summaryValue}>
+                    {formatDate(block.planting_date)} · {block.acres} acres
+                  </Text>
                 </View>
-                {useSectionB && (
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Sec B — {actualVarietyB}</Text>
-                    <Text style={styles.summaryValue}>Planted {formatDate(plantingDateB)}</Text>
-                  </View>
-                )}
-              </View>
+              ))}
               {plannerTotal > 0 && (
                 <View style={styles.summaryBudgetRow}>
                   <Ionicons name="wallet-outline" size={14} color={COLORS.amber} />
@@ -776,7 +718,7 @@ export default function SeasonSetupScreen() {
               disabled={!canProceedCurrent()}
               onPress={() => {
                 Haptics.selectionAsync();
-                setStep(step === 2 && !useSectionB ? step + 2 : step + 1);
+                setStep(step + 1);
               }}
             >
               <Text style={styles.nextBtnText}>Continue</Text>
@@ -870,6 +812,46 @@ const styles = StyleSheet.create({
   riskBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   riskText: { fontFamily: "DMSans_700Bold", fontSize: 11 },
   varietyNote: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  plantingCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+  },
+  plantingHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  plantingTitleGroup: { flex: 1, gap: 2 },
+  plantingTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text },
+  plantingSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  plantingHeaderActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  removePlantingButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  plantingFieldsRow: { flexDirection: "row", gap: 10 },
+  plantingField: { flex: 1, minWidth: 0 },
+  addPlantingButton: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
+    backgroundColor: COLORS.primarySurface,
+  },
+  addPlantingButtonText: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.primary },
+  plantingTotalCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.primarySurface,
+  },
+  plantingTotalLabel: { fontFamily: "DMSans_500Medium", fontSize: 12, color: COLORS.textSecondary },
+  plantingTotalValue: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.primary, textAlign: "right" },
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   toggleSwitch: {
     width: 48, height: 28, borderRadius: 14, backgroundColor: COLORS.borderLight,
@@ -929,6 +911,15 @@ const styles = StyleSheet.create({
   summaryItem: { flex: 1, gap: 2 },
   summaryLabel: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary },
   summaryValue: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
+  summaryPlantingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+  },
   summaryBudgetRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 4, borderTopWidth: 1, borderTopColor: COLORS.primaryLight + "30" },
   summaryBudgetText: { fontFamily: "DMSans_500Medium", fontSize: 12, color: COLORS.amber },
   scheduleLabel: {
