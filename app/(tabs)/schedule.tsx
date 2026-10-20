@@ -16,7 +16,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { PlannedActivity } from "@/constants/farmData";
-import { getDaysUntil, formatDate, formatKES, ActivityLog } from "@/lib/storage";
+import {
+  ActivityLog,
+  formatDate,
+  formatKES,
+  getDaysUntil,
+  getSeasonBlockName,
+  summarizeLabourEffectiveness,
+} from "@/lib/storage";
 import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
 
 type ActivityStatus = "completed" | "overdue" | "due-soon" | "upcoming";
@@ -238,6 +245,20 @@ export default function ScheduleScreen() {
     () => currentSchedule.map((activity) => ({ ...activity, status: getStatus(activity, completedIds) })),
     [currentSchedule, completedIds]
   );
+  const seasonLogs = useMemo(
+    () => activityLogs.filter((log) => log.season_id === activeSeason?.id),
+    [activityLogs, activeSeason?.id],
+  );
+  const labourSummary = useMemo(
+    () => summarizeLabourEffectiveness(seasonLogs),
+    [seasonLogs],
+  );
+  const recentLogs = useMemo(
+    () => [...seasonLogs]
+      .sort((a, b) => new Date(b.actual_date).getTime() - new Date(a.actual_date).getTime())
+      .slice(0, 5),
+    [seasonLogs],
+  );
 
   const upcoming = data.filter((item) => item.status !== "completed").slice(0, 3);
   const prePlantingCosts = costs.filter((cost) => cost.season_id === activeSeason?.id && cost.is_pre_planting);
@@ -328,6 +349,47 @@ export default function ScheduleScreen() {
         </View>
       )}
 
+      <View style={styles.labourSummaryCard}>
+        <View style={styles.labourSummaryHeader}>
+          <View>
+            <Text style={styles.labourSummaryTitle}>Labour effectiveness</Text>
+            <Text style={styles.labourSummarySubtitle}>
+              {labourSummary.records} field {labourSummary.records === 1 ? "record" : "records"}
+            </Text>
+          </View>
+          <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+        </View>
+        <View style={styles.labourMetricsRow}>
+          <View style={styles.labourMetric}>
+            <Text style={styles.labourMetricValue}>{labourSummary.workerDays.toFixed(1)}</Text>
+            <Text style={styles.labourMetricLabel}>worker-days</Text>
+          </View>
+          <View style={styles.labourMetric}>
+            <Text style={styles.labourMetricValue}>{formatKES(labourSummary.labourCost)}</Text>
+            <Text style={styles.labourMetricLabel}>labour cost</Text>
+          </View>
+        </View>
+        {labourSummary.groups.length > 0 ? (
+          <View style={styles.productivityList}>
+            {labourSummary.groups.slice(0, 3).map((group) => (
+              <View key={`${group.category}-${group.unit}`} style={styles.productivityRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.productivityCategory}>{group.category}</Text>
+                  <Text style={styles.productivityMeta}>{group.records} measured {group.records === 1 ? "record" : "records"}</Text>
+                </View>
+                <Text style={styles.productivityRate}>
+                  {group.quantityPerWorkerDay.toFixed(2)} {group.unit}/worker-day
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.labourSummaryHint}>
+            Record workers, days, and completed quantity to see output per worker-day.
+          </Text>
+        )}
+      </View>
+
       <View style={styles.legend}>
         {[
           { label: "Completed", color: COLORS.primary },
@@ -348,6 +410,32 @@ export default function ScheduleScreen() {
         renderItem={renderItem}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: bottomPadding + 100, gap: 10 }}
         showsVerticalScrollIndicator={false}
+        ListFooterComponent={
+          <View style={styles.recentWorkSection}>
+            <Text style={styles.recentWorkTitle}>Recent field work</Text>
+            {recentLogs.length > 0 ? recentLogs.map((log) => (
+              <Pressable
+                key={log.id}
+                style={styles.recentWorkRow}
+                onPress={() => setSelectedLog(log)}
+              >
+                <View style={styles.recentWorkIcon}>
+                  <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recentWorkName} numberOfLines={1}>{log.activity_name}</Text>
+                  <Text style={styles.recentWorkMeta}>
+                    {getSeasonBlockName(activeSeason, log.section_id)} · {formatDate(log.actual_date)}
+                    {log.worker_names ? ` · ${log.worker_names}` : ""}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </Pressable>
+            )) : (
+              <Text style={styles.recentWorkEmpty}>Logged farm operations will appear here.</Text>
+            )}
+          </View>
+        }
       />
 
       {selectedActivity && (
@@ -410,6 +498,27 @@ const styles = StyleSheet.create({
   costSummaryRowValue: { fontFamily: "DMSans_700Bold", fontSize: 12, color: COLORS.text },
   costSummaryMore: { fontFamily: "DMSans_600SemiBold", fontSize: 11, color: COLORS.primary },
   costSummaryEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted },
+  labourSummaryCard: { marginHorizontal: 16, marginBottom: 10, backgroundColor: COLORS.cardBg, borderRadius: 16, padding: 14, gap: 10, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  labourSummaryHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  labourSummaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 14, color: COLORS.text },
+  labourSummarySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  labourMetricsRow: { flexDirection: "row", gap: 10 },
+  labourMetric: { flex: 1, backgroundColor: COLORS.primarySurface, borderRadius: 10, padding: 10 },
+  labourMetricValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.primary },
+  labourMetricLabel: { fontFamily: "DMSans_500Medium", fontSize: 10, color: COLORS.textSecondary, marginTop: 2 },
+  productivityList: { gap: 8 },
+  productivityRow: { flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 8 },
+  productivityCategory: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
+  productivityMeta: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
+  productivityRate: { fontFamily: "DMSans_700Bold", fontSize: 11, color: COLORS.primary, textAlign: "right" },
+  labourSummaryHint: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textSecondary, lineHeight: 16 },
+  recentWorkSection: { paddingTop: 16, gap: 8 },
+  recentWorkTitle: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.text, marginBottom: 2 },
+  recentWorkRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.cardBg, borderRadius: 12, padding: 12 },
+  recentWorkIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primarySurface, alignItems: "center", justifyContent: "center" },
+  recentWorkName: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.text },
+  recentWorkMeta: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textSecondary, marginTop: 3 },
+  recentWorkEmpty: { fontFamily: "DMSans_400Regular", fontSize: 12, color: COLORS.textMuted, paddingVertical: 8 },
   legend: { flexDirection: "row", paddingHorizontal: 16, paddingBottom: 12, gap: 16, flexWrap: "wrap" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   legendDot: { width: 7, height: 7, borderRadius: 4 },

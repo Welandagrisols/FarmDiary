@@ -5,8 +5,8 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
-import { ActivityLog, formatDate, formatKES } from "@/lib/storage";
-import { PLANNED_SCHEDULE } from "@/constants/farmData";
+import { ActivityLog, formatDate, formatKES, getSeasonBlockName } from "@/lib/storage";
+import { useFarm } from "@/context/FarmContext";
 
 interface Props {
   log: ActivityLog;
@@ -24,16 +24,12 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props) {
-  const sectionLabel =
-    log.section_id === "section-a" ? "Section A" :
-    log.section_id === "section-b" ? "Section B" : "Both Sections";
-
-  const sectionColor =
-    log.section_id === "section-a" ? COLORS.primary :
-    log.section_id === "section-b" ? COLORS.teal : COLORS.amber;
-
-  const plannedActivity = log.schedule_activity_id
-    ? PLANNED_SCHEDULE.find((a) => a.id === log.schedule_activity_id)
+  const { activeSeason } = useFarm();
+  const sectionLabel = getSeasonBlockName(activeSeason, log.section_id);
+  const sectionColor = COLORS.primary;
+  const workerDays = (Number(log.num_workers) || 0) * (Number(log.days_worked) || 0);
+  const quantityPerWorkerDay = workerDays > 0 && Number(log.work_quantity) > 0
+    ? Number(log.work_quantity) / workerDays
     : null;
 
   const isQuickComplete =
@@ -78,11 +74,11 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
               <Text style={styles.dateCardLabel}>Actual Date</Text>
               <Text style={styles.dateCardValue}>{formatDate(log.actual_date)}</Text>
             </View>
-            {plannedActivity && (
+            {log.planned_date && (
               <View style={[styles.dateCard, styles.dateCardPlanned]}>
                 <Text style={styles.dateCardLabel}>Planned</Text>
                 <Text style={[styles.dateCardValue, { color: COLORS.textSecondary, fontSize: 13 }]}>
-                  {formatDate(plannedActivity.plannedDateA)}
+                  {formatDate(log.planned_date)}
                 </Text>
               </View>
             )}
@@ -102,7 +98,7 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
             </View>
           ) : (
             <>
-              {log.labor_cost_kes > 0 && (
+              {(log.labor_cost_kes > 0 || log.num_workers > 0 || log.worker_names || log.days_worked) && (
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Labour</Text>
                   <View style={styles.detailCard}>
@@ -110,10 +106,29 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
                       label="Workers"
                       value={log.num_workers > 0 ? `${log.num_workers} ${log.num_workers === 1 ? "worker" : "workers"}` : "—"}
                     />
+                    {log.worker_names ? <InfoRow label="Crew" value={log.worker_names} /> : null}
+                    {log.days_worked ? <InfoRow label="Days worked" value={String(log.days_worked)} /> : null}
+                    {workerDays > 0 && <InfoRow label="Worker-days" value={workerDays.toFixed(1)} />}
                     <InfoRow label="Labour Cost" value={formatKES(log.labor_cost_kes)} />
                   </View>
                 </View>
               )}
+
+              {Number(log.work_quantity) > 0 && log.work_unit ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Work completed</Text>
+                  <View style={styles.detailCard}>
+                    <InfoRow label="Operation" value={log.activity_category || log.activity_name} />
+                    <InfoRow label="Quantity" value={`${log.work_quantity} ${log.work_unit}`} />
+                    {quantityPerWorkerDay !== null && (
+                      <InfoRow
+                        label="Per worker-day"
+                        value={`${quantityPerWorkerDay.toFixed(2)} ${log.work_unit}`}
+                      />
+                    )}
+                  </View>
+                </View>
+              ) : null}
 
               {(log.products_used ?? []).length > 0 && (
                 <View style={styles.section}>

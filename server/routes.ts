@@ -30,6 +30,48 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+async function requireFarmManager(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) { res.status(401).json({ message: "Unauthorized" }); return; }
+
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) { res.status(401).json({ message: "Invalid token" }); return; }
+
+    const farmIdParam = req.params.farmId;
+    const farmId = Array.isArray(farmIdParam) ? farmIdParam[0] : farmIdParam;
+    if (!farmId) { res.status(400).json({ message: "Farm ID required" }); return; }
+
+    const [{ data: farm }, { data: profile }] = await Promise.all([
+      supabaseAdmin.from("farms").select("user_id").eq("id", farmId).maybeSingle(),
+      supabaseAdmin.from("user_profiles").select("role").eq("id", user.id).maybeSingle(),
+    ]);
+    if (!farm) { res.status(404).json({ message: "Farm not found" }); return; }
+
+    let farmRole = profile?.role === "admin" ? "admin" : farm.user_id === user.id ? "owner" : "none";
+    if (farmRole === "none") {
+      const { data: membership } = await supabaseAdmin
+        .from("farm_memberships")
+        .select("role")
+        .eq("farm_id", farmId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      farmRole = membership?.role ?? "none";
+    }
+    if (!["admin", "owner", "manager"].includes(farmRole)) {
+      res.status(403).json({ message: "Farm owner or manager access required" });
+      return;
+    }
+
+    (req as any).farmUser = user;
+    (req as any).farmRole = farmRole;
+    (req as any).farmId = farmId;
+    next();
+  } catch {
+    res.status(500).json({ message: "Farm access check failed" });
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Create user ─────────────────────────────────────────────────────
@@ -53,6 +95,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }, { onConflict: "id" });
 
     res.json({ user: { id: data.user.id, email: data.user.email } });
+  });
+
+  // ── Farm-scoped team access ─────────────────────────────────────────
+  app.get("/api/farms/:farmId/team", requireFarmManager, async (req: Request, res: Response) => {
+    const farmId = (req as any).farmId as string;
+    const { data: memberships, error } = await supabaseAdmin
+      .from("farm_memberships")
+      .select("user_id, role, created_at")
+      .eq("farm_id", farmId)
+      .order("created_at");
+    if (error) { res.status(400).json({ message: error.message }); return; }
+
+    const userIds = (memberships || []).map((membership) => membership.user_id);
+    const { data: profiles } = userIds.length
+      ? await supabaseAdmin.from("user_profiles").select("id, email").in("id", userIds)
+      : { data: [] };
+    const profileById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+    res.json({
+      currentRole: (req as any).farmRole,
+      members: (memberships || []).map((membership) => ({
+        ...membership,
+        email: profileById.get(membership.user_id)?.email ?? "",
+      })),
+    });
+  });
+
+  app.post("/api/farms/:farmId/team", requireFarmManager, async (req: Request, res: Response) => {
+    const farmId = (req as any).farmId as string;
+    const farmRole = (req as any).farmRole as string;
+    const { email, password, role } = req.body;
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      res.status(400).json({ message: "A valid email address is required" });
+      return;
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      res.status(400).json({ message: "Password must be at least 8 characters" });
+      return;
+    }
+    if (!["seller", "storekeeper", "manager"].includes(role)) {
+      res.status(400).json({ message: "Invalid farm role" });
+      return;
+    }
+    if (role === "manager" && !["admin", "owner"].includes(farmRole)) {
+      res.status(403).json({ message: "Only the farm owner can add a manager" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+    });
+    if (error || !data.user) {
+      res.status(400).json({ message: error?.message || "Unable to create account" });
+      return;
+    }
+
+    const { error: profileError } = await supabaseAdmin.from("user_profiles").upsert({
+      id: data.user.id,
+      email: normalizedEmail,
+      role: "farmer",
+      created_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+    const membershipId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const { error: membershipError } = profileError
+      ? { error: profileError }
+      : await supabaseAdmin.from("farm_memberships").insert({
+          id: membershipId,
+          farm_id: farmId,
+          user_id: data.user.id,
+          role,
+        });
+    if (membershipError) {
+      await supabaseAdmin.auth.admin.deleteUser(data.user.id);
+      res.status(400).json({ message: membershipError.message });
+      return;
+    }
+    res.json({ member: { user_id: data.user.id, email: normalizedEmail, role } });
+  });
+
+  app.delete("/api/farms/:farmId/team/:userId", requireFarmManager, async (req: Request, res: Response) => {
+    const farmId = (req as any).farmId as string;
+    const farmRole = (req as any).farmRole as string;
+    const userIdParam = req.params.userId;
+    const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
+    if (!userId) { res.status(400).json({ message: "User ID required" }); return; }
+
+    const { data: member, error: lookupError } = await supabaseAdmin
+      .from("farm_memberships")
+      .select("role")
+      .eq("farm_id", farmId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (lookupError || !member) { res.status(404).json({ message: "Team member not found" }); return; }
+    if (member.role === "manager" && !["admin", "owner"].includes(farmRole)) {
+      res.status(403).json({ message: "Only the farm owner can remove a manager" });
+      return;
+    }
+    const { error } = await supabaseAdmin.from("farm_memberships")
+      .delete().eq("farm_id", farmId).eq("user_id", userId);
+    if (error) { res.status(400).json({ message: error.message }); return; }
+    res.json({ success: true });
   });
 
   // ── Delete user ─────────────────────────────────────────────────────

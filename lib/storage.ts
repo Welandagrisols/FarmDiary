@@ -87,18 +87,76 @@ export interface ActivityLog {
   section_id: string | null;
   schedule_activity_id: string | null;
   activity_name: string;
+  activity_category?: string | null;
   planned_date: string | null;
   actual_date: string;
   products_used: ProductUsed[];
   is_deviation: boolean;
   deviation_reason: string | null;
   num_workers: number;
+  worker_names?: string | null;
+  days_worked?: number | null;
+  work_quantity?: number | null;
+  work_unit?: string | null;
   labor_cost_kes: number;
   total_cost_kes: number;
   weather_conditions: string | null;
   is_historical: boolean;
   notes: string | null;
+  recorded_by?: string | null;
   created_at: string;
+}
+
+export interface LabourEffectivenessGroup {
+  category: string;
+  unit: string;
+  quantity: number;
+  workerDays: number;
+  quantityPerWorkerDay: number;
+  records: number;
+}
+
+export function summarizeLabourEffectiveness(logs: ActivityLog[]) {
+  const groups = new Map<string, LabourEffectivenessGroup>();
+  let workerDays = 0;
+  let labourCost = 0;
+
+  for (const log of logs) {
+    const workers = Math.max(0, Number(log.num_workers) || 0);
+    const days = Math.max(0, Number(log.days_worked) || 0);
+    const activityWorkerDays = workers * days;
+    workerDays += activityWorkerDays;
+    labourCost += Math.max(0, Number(log.labor_cost_kes) || 0);
+
+    const quantity = Number(log.work_quantity);
+    const unit = log.work_unit?.trim();
+    if (!Number.isFinite(quantity) || quantity <= 0 || !unit || activityWorkerDays <= 0) continue;
+
+    const category = log.activity_category?.trim() || "Other";
+    const label = category.toLowerCase() === "other" ? log.activity_name : category;
+    const key = `${label.toLocaleLowerCase()}::${unit.toLocaleLowerCase()}`;
+    const group = groups.get(key) ?? {
+      category: label,
+      unit,
+      quantity: 0,
+      workerDays: 0,
+      quantityPerWorkerDay: 0,
+      records: 0,
+    };
+
+    group.quantity += quantity;
+    group.workerDays += activityWorkerDays;
+    group.quantityPerWorkerDay = group.quantity / group.workerDays;
+    group.records += 1;
+    groups.set(key, group);
+  }
+
+  return {
+    records: logs.length,
+    workerDays,
+    labourCost,
+    groups: Array.from(groups.values()).sort((a, b) => b.workerDays - a.workerDays),
+  };
 }
 
 export interface ObservationRecord {
@@ -246,7 +304,7 @@ export function getSeasonBlockName(
   season: SeasonRecord | null | undefined,
   blockId: string | null | undefined,
 ): string {
-  if (!blockId) return "Whole season";
+  if (!blockId) return "All blocks";
   const block = getSeasonBlocks(season).find((item) => item.id === blockId);
   if (block) return block.name;
   if (blockId === "section-a") return "Block 1";
@@ -655,7 +713,18 @@ export async function updateInventoryItem(
 export async function addActivityLog(
   entry: Omit<ActivityLog, "id" | "created_at">
 ): Promise<ActivityLog> {
-  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data: { session } } = await supabase.auth.getSession();
+  const record = {
+    ...entry,
+    activity_category: entry.activity_category ?? "other",
+    worker_names: entry.worker_names ?? null,
+    days_worked: entry.days_worked ?? 0,
+    work_quantity: entry.work_quantity ?? null,
+    work_unit: entry.work_unit ?? null,
+    recorded_by: entry.recorded_by ?? session?.user?.id ?? null,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
     .from("activity_logs")
     .insert(record)

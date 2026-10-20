@@ -88,6 +88,15 @@ export default function MoreScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>People & Sales</Text>
+        <View style={styles.menuCard}>
+          <MenuRow icon={<Ionicons name="cart-outline" size={22} color={COLORS.primary} />} label="Sales Control" subtitle="Seller records, approvals, payments and stock reconciliation" color={COLORS.primary} onPress={() => router.push("/sales")} />
+          <View style={styles.separator} />
+          <MenuRow icon={<Ionicons name="people-outline" size={22} color={COLORS.teal} />} label="Farm Team" subtitle="Create personal worker accounts and manage farm roles" color={COLORS.teal} onPress={() => router.push("/farm-team")} />
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Harvest</Text>
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="basket-outline" size={22} color={COLORS.primaryLight} />} label="Harvest Records" subtitle="Log crop-specific units, weight and price" color={COLORS.primaryLight} onPress={() => router.push("/harvest")} badge={harvestRecords.filter((record) => record.season_id === activeSeason?.id).length > 0 ? `${harvestRecords.filter((record) => record.season_id === activeSeason?.id).length} loads` : undefined} />

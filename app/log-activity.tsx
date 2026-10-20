@@ -19,6 +19,15 @@ import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
+const OPERATION_CATEGORIES = [
+  { id: "irrigation", label: "Irrigation / watering" },
+  { id: "weeding", label: "Weeding" },
+  { id: "land_preparation", label: "Land preparation" },
+  { id: "harvesting", label: "Harvesting" },
+  { id: "pest_disease_control", label: "Pest / disease spraying" },
+  { id: "scouting", label: "Scouting" },
+  { id: "other", label: "Other / custom" },
+];
 
 interface ProductRow {
   name: string;
@@ -84,6 +93,7 @@ export default function LogActivityScreen() {
   const [activityType, setActivityType] = useState<"planned" | "other" | "historical">(preSelected ? "planned" : "planned");
   const [selectedActivityId, setSelectedActivityId] = useState<string>(preSelected?.id ?? "");
   const [customActivityName, setCustomActivityName] = useState("");
+  const [operationCategory, setOperationCategory] = useState("other");
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(preSelected?.blockId ?? null);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
@@ -103,8 +113,11 @@ export default function LogActivityScreen() {
     return [];
   });
   const [numWorkers, setNumWorkers] = useState("2");
+  const [workerNames, setWorkerNames] = useState("");
   const [dailyRate, setDailyRate] = useState("500");
   const [daysWorked, setDaysWorked] = useState("1");
+  const [workQuantity, setWorkQuantity] = useState("");
+  const [workUnit, setWorkUnit] = useState("");
   const [laborMode, setLaborMode] = useState<"per_day" | "per_acre" | "per_pump">("per_day");
   const [acresWorked, setAcresWorked] = useState("2");
   const [ratePerAcre, setRatePerAcre] = useState("2400");
@@ -130,6 +143,15 @@ export default function LogActivityScreen() {
       ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 2400)
       : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 50)
   );
+  const measuredQuantity = workQuantity.trim()
+    ? Number(workQuantity)
+    : laborMode === "per_acre"
+    ? Number(acresWorked) || null
+    : laborMode === "per_pump"
+    ? Number(numPumps) || null
+    : null;
+  const measuredUnit = workUnit.trim() ||
+    (laborMode === "per_acre" ? "acres" : laborMode === "per_pump" ? "pumps" : null);
 
   const productCost = products.reduce((sum, p) => {
     const qty = parseFloat(p.qty) || 0;
@@ -211,8 +233,29 @@ export default function LogActivityScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!activityName) {
+    if (!activityName.trim()) {
       Alert.alert("Error", "Please select or enter an activity name.");
+      return;
+    }
+    const workerCount = Number(numWorkers);
+    const workDays = Number(daysWorked);
+    if (!Number.isInteger(workerCount) || workerCount < 0 || !Number.isFinite(workDays) || workDays < 0) {
+      Alert.alert("Check labour details", "Enter a valid worker count and number of days.");
+      return;
+    }
+    if (workerCount > 0 && workDays <= 0) {
+      Alert.alert("Check labour details", "Enter the number of days worked by the crew.");
+      return;
+    }
+    if (workerCount > 0 && !workerNames.trim()) {
+      Alert.alert("Add the worker names", "Enter the names or IDs of the workers involved so their work can be reviewed.");
+      return;
+    }
+    if (
+      measuredQuantity !== null &&
+      (!Number.isFinite(measuredQuantity) || measuredQuantity <= 0 || !measuredUnit)
+    ) {
+      Alert.alert("Check completed work", "Enter a positive quantity and its unit, or leave both fields blank.");
       return;
     }
 
@@ -221,7 +264,11 @@ export default function LogActivityScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       const sectionId = selectedBlockId;
-      const plantingDate = seasonBlocks[0]?.planting_date || activeSeason?.section_a.planting_date || "2026-02-17";
+      const plantingDate =
+        seasonBlocks.find((block) => block.id === sectionId)?.planting_date ||
+        seasonBlocks[0]?.planting_date ||
+        activeSeason?.section_a.planting_date ||
+        date;
       const activeSeasonId = activeSeason?.id || SEASON_SEED.id;
       const isHist = activityType === "historical";
 
@@ -251,7 +298,10 @@ export default function LogActivityScreen() {
           season_id: activeSeasonId,
           section_id: sectionId,
           schedule_activity_id: activityType === "planned" ? selectedActivityId : null,
-          activity_name: activityName,
+          activity_name: activityName.trim(),
+          activity_category: activityType === "planned"
+            ? selectedActivity?.activityType || "scheduled"
+            : operationCategory,
           planned_date:
             activityType === "planned" && selectedActivity
               ? selectedActivity.plannedDate
@@ -261,6 +311,10 @@ export default function LogActivityScreen() {
           is_deviation: products.some((p) => p.isDeviation),
           deviation_reason: null,
           num_workers: parseInt(numWorkers) || 0,
+          worker_names: workerNames.trim() || null,
+          days_worked: parseFloat(daysWorked) || 0,
+          work_quantity: measuredQuantity,
+          work_unit: measuredUnit,
           labor_cost_kes: laborCost,
           total_cost_kes: totalCost,
           weather_conditions: weather,
@@ -407,7 +461,7 @@ export default function LogActivityScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const canProceed =
-    step === 1 ? (activityType !== "planned" ? !!customActivityName : !!selectedActivityId) : true;
+    step === 1 ? (activityType !== "planned" ? !!customActivityName.trim() : !!selectedActivityId) : true;
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -472,7 +526,7 @@ export default function LogActivityScreen() {
                       >
                         {activity.name}
                       </Text>
-                      <Text style={styles.activityOptionDate}>Sec A: {activity.plannedDateA}</Text>
+                      <Text style={styles.activityOptionDate}>{activity.blockName} · {activity.plannedDate}</Text>
                     </View>
                     {selectedActivityId === activity.id && (
                       <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
@@ -484,27 +538,59 @@ export default function LogActivityScreen() {
 
             {(activityType === "other" || activityType === "historical") && (
               <View>
+                <Text style={styles.fieldLabel}>Farm operation</Text>
+                <View style={styles.operationCategoryRow}>
+                  {OPERATION_CATEGORIES.map((category) => (
+                    <Pressable
+                      key={category.id}
+                      style={[
+                        styles.sectionOption,
+                        operationCategory === category.id && styles.sectionOptionActive,
+                      ]}
+                      onPress={() => setOperationCategory(category.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: operationCategory === category.id }}
+                    >
+                      <Text
+                        style={[
+                          styles.sectionOptionText,
+                          operationCategory === category.id && styles.sectionOptionTextActive,
+                        ]}
+                      >
+                        {category.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <Text style={styles.fieldLabel}>Activity Name</Text>
                 <TextInput
                   style={styles.input}
                   value={customActivityName}
                   onChangeText={setCustomActivityName}
-                  placeholder="e.g. Spot spray blight"
+                  placeholder="Describe the work, including any custom operation"
                   placeholderTextColor={COLORS.textMuted}
                 />
               </View>
             )}
 
-            <Text style={styles.fieldLabel}>Section</Text>
-            <View style={styles.sectionSelector}>
-              {(["section-a", "section-b", "both"] as Section[]).map((opt) => (
+            <Text style={styles.fieldLabel}>Planting block</Text>
+            <View style={[styles.sectionSelector, styles.blockSelector]}>
+              <Pressable
+                style={[styles.sectionOption, selectedBlockId === null && styles.sectionOptionActive]}
+                onPress={() => setSelectedBlockId(null)}
+              >
+                <Text style={[styles.sectionOptionText, selectedBlockId === null && styles.sectionOptionTextActive]}>
+                  All blocks
+                </Text>
+              </Pressable>
+              {seasonBlocks.map((block) => (
                 <Pressable
-                  key={opt}
-                  style={[styles.sectionOption, section === opt && styles.sectionOptionActive]}
-                  onPress={() => setSection(opt)}
+                  key={block.id}
+                  style={[styles.sectionOption, selectedBlockId === block.id && styles.sectionOptionActive]}
+                  onPress={() => setSelectedBlockId(block.id)}
                 >
-                  <Text style={[styles.sectionOptionText, section === opt && styles.sectionOptionTextActive]}>
-                    {opt === "section-a" ? "Sec A" : opt === "section-b" ? "Sec B" : "Both"}
+                  <Text style={[styles.sectionOptionText, selectedBlockId === block.id && styles.sectionOptionTextActive]}>
+                    {block.name}
                   </Text>
                 </Pressable>
               ))}
@@ -710,7 +796,73 @@ export default function LogActivityScreen() {
         {/* Step 4: Labor */}
         {step === 4 && (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Labor</Text>
+            <Text style={styles.stepTitle}>Labour & work completed</Text>
+
+            <Text style={styles.fieldLabel}>Workers involved</Text>
+            <TextInput
+              style={styles.input}
+              value={workerNames}
+              onChangeText={setWorkerNames}
+              placeholder="Names or IDs, separated by commas"
+              placeholderTextColor={COLORS.textMuted}
+              accessibilityLabel="Names or IDs of workers involved"
+            />
+            <Text style={styles.fieldHint}>These details help managers compare work completed with worker-days.</Text>
+
+            <View style={styles.productInputRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Crew size</Text>
+                <TextInput
+                  style={styles.input}
+                  value={numWorkers}
+                  onChangeText={setNumWorkers}
+                  keyboardType="numeric"
+                  placeholder="2"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Days worked</Text>
+                <TextInput
+                  style={styles.input}
+                  value={daysWorked}
+                  onChangeText={setDaysWorked}
+                  keyboardType="decimal-pad"
+                  placeholder="1"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+            </View>
+            <Text style={styles.fieldHint}>
+              {((Number(numWorkers) || 0) * (Number(daysWorked) || 0)).toFixed(1)} worker-days
+            </Text>
+
+            <View style={styles.productInputRow}>
+              <View style={{ flex: 2 }}>
+                <Text style={styles.fieldLabel}>Work completed (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={workQuantity}
+                  onChangeText={setWorkQuantity}
+                  keyboardType="decimal-pad"
+                  placeholder={laborMode === "per_acre" ? acresWorked : laborMode === "per_pump" ? numPumps : "e.g. 2.5"}
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Unit</Text>
+                <TextInput
+                  style={styles.input}
+                  value={workUnit}
+                  onChangeText={setWorkUnit}
+                  placeholder={laborMode === "per_acre" ? "acres" : laborMode === "per_pump" ? "pumps" : "acres, kg…"}
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+            </View>
+            <Text style={styles.fieldHint}>
+              Record area, weight, rows, or another suitable measure. Per-acre and per-pump pay amounts can be used as the work quantity.
+            </Text>
 
             <Text style={styles.fieldLabel}>How is labor paid?</Text>
             <View style={styles.laborModeRow}>
@@ -731,15 +883,9 @@ export default function LogActivityScreen() {
 
             {laborMode === "per_day" && (
               <>
-                <Text style={styles.fieldLabel}>Number of Workers</Text>
-                <TextInput style={styles.input} value={numWorkers} onChangeText={setNumWorkers}
-                  keyboardType="numeric" placeholder="2" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
                 <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
                   keyboardType="numeric" placeholder="500" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldLabel}>Days Worked</Text>
-                <TextInput style={styles.input} value={daysWorked} onChangeText={setDaysWorked}
-                  keyboardType="numeric" placeholder="1" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldHint}>{numWorkers} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
               </>
             )}
@@ -912,10 +1058,8 @@ export default function LogActivityScreen() {
                 <Text style={styles.summaryValue}>{formatDateFriendly(date)}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Section</Text>
-                <Text style={styles.summaryValue}>
-                  {section === "section-a" ? "Section A" : section === "section-b" ? "Section B" : "Both"}
-                </Text>
+                <Text style={styles.summaryLabel}>Block</Text>
+                <Text style={styles.summaryValue}>{getSeasonBlockName(activeSeason, selectedBlockId)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Weather</Text>
@@ -927,8 +1071,20 @@ export default function LogActivityScreen() {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Labor</Text>
-                <Text style={styles.summaryValue}>{numWorkers} workers · {formatKES(laborCost)}</Text>
+                <Text style={styles.summaryValue}>{numWorkers} workers · {daysWorked} days · {formatKES(laborCost)}</Text>
               </View>
+              {workerNames.trim() ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Crew</Text>
+                  <Text style={styles.summaryValue}>{workerNames.trim()}</Text>
+                </View>
+              ) : null}
+              {measuredQuantity && measuredUnit ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Work completed</Text>
+                  <Text style={styles.summaryValue}>{measuredQuantity} {measuredUnit}</Text>
+                </View>
+              ) : null}
               {otherCosts.filter((c) => parseFloat(c.amount) > 0).map((c, i) => (
                 <View key={i} style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>{OTHER_COST_TYPES.find((t) => t.key === c.typeKey)?.label ?? c.typeKey}</Text>
@@ -1031,7 +1187,9 @@ const styles = StyleSheet.create({
   activityOptionLeft: { flex: 1, gap: 2 },
   activityOptionName: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: COLORS.text },
   activityOptionDate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted },
+  operationCategoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   sectionSelector: { flexDirection: "row", gap: 8 },
+  blockSelector: { flexWrap: "wrap", marginBottom: 8 },
   sectionOption: {
     flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center",
     backgroundColor: COLORS.borderLight, borderWidth: 1.5, borderColor: COLORS.border,

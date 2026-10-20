@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES, ProductUsed } from "@/lib/storage";
+import { formatKES, getSeasonBlockName, ProductUsed } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
@@ -63,14 +63,19 @@ function getQuickDates(): { label: string; value: string }[] {
 export default function EditActivityScreen() {
   const insets = useSafeAreaInsets();
   const { logId } = useLocalSearchParams<{ logId: string }>();
-  const { activityLogs, editActivityLog, removeActivityLog } = useFarm();
+  const { activityLogs, activeSeason, editActivityLog, removeActivityLog } = useFarm();
 
   const log = activityLogs.find((l) => l.id === logId);
 
   const [date, setDate] = useState(log?.actual_date ?? "");
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [weather, setWeather] = useState(log?.weather_conditions ?? "Sunny");
+  const [activityCategory, setActivityCategory] = useState(log?.activity_category ?? "other");
   const [numWorkers, setNumWorkers] = useState(String(log?.num_workers ?? 0));
+  const [workerNames, setWorkerNames] = useState(log?.worker_names ?? "");
+  const [daysWorked, setDaysWorked] = useState(String(log?.days_worked ?? 0));
+  const [workQuantity, setWorkQuantity] = useState(String(log?.work_quantity ?? ""));
+  const [workUnit, setWorkUnit] = useState(log?.work_unit ?? "");
   const [laborCost, setLaborCost] = useState(String(log?.labor_cost_kes ?? 0));
   const [products, setProducts] = useState<EditProductRow[]>(
     (log?.products_used ?? []).map((p) => ({
@@ -130,9 +135,7 @@ export default function EditActivityScreen() {
   const laborNum = parseFloat(laborCost) || 0;
   const computedTotal = laborNum + productTotal;
 
-  const sectionLabel =
-    log.section_id === "section-a" ? "Section A" :
-    log.section_id === "section-b" ? "Section B" : "Both Sections";
+  const sectionLabel = getSeasonBlockName(activeSeason, log.section_id);
 
   const handleSave = async () => {
     if (!date) {
@@ -157,7 +160,12 @@ export default function EditActivityScreen() {
       await editActivityLog(log.id, {
         actual_date: date,
         weather_conditions: weather,
+        activity_category: activityCategory.trim() || "other",
         num_workers: parseInt(numWorkers) || 0,
+        worker_names: workerNames.trim() || null,
+        days_worked: parseFloat(daysWorked) || 0,
+        work_quantity: workQuantity.trim() ? parseFloat(workQuantity) : null,
+        work_unit: workQuantity.trim() ? workUnit.trim() || null : null,
         labor_cost_kes: laborNum,
         products_used: productsUsed,
         is_deviation: productsUsed.some((p) => p.is_deviation),
@@ -290,6 +298,22 @@ export default function EditActivityScreen() {
         {/* ── LABOUR ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Labour</Text>
+          <Text style={styles.fieldHint}>Operation type</Text>
+          <TextInput
+            style={styles.input}
+            value={activityCategory}
+            onChangeText={setActivityCategory}
+            placeholder="e.g. Weeding, irrigation, scouting"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <Text style={styles.fieldHint}>Workers involved (names or IDs)</Text>
+          <TextInput
+            style={styles.input}
+            value={workerNames}
+            onChangeText={setWorkerNames}
+            placeholder="Names or IDs, separated by commas"
+            placeholderTextColor={COLORS.textMuted}
+          />
           <View style={styles.rowInputs}>
             <View style={styles.rowInputField}>
               <Text style={styles.fieldHint}>Workers</Text>
@@ -303,6 +327,17 @@ export default function EditActivityScreen() {
               />
             </View>
             <View style={styles.rowInputField}>
+              <Text style={styles.fieldHint}>Days worked</Text>
+              <TextInput
+                style={styles.input}
+                value={daysWorked}
+                onChangeText={setDaysWorked}
+                placeholder="0"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={styles.rowInputField}>
               <Text style={styles.fieldHint}>Labour cost (KES)</Text>
               <TextInput
                 style={styles.input}
@@ -311,6 +346,28 @@ export default function EditActivityScreen() {
                 placeholder="0"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="numeric"
+              />
+            </View>
+          </View>
+          <Text style={styles.fieldHint}>Work completed (optional)</Text>
+          <View style={styles.rowInputs}>
+            <View style={styles.rowInputField}>
+              <TextInput
+                style={styles.input}
+                value={workQuantity}
+                onChangeText={setWorkQuantity}
+                placeholder="Quantity"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={styles.rowInputField}>
+              <TextInput
+                style={styles.input}
+                value={workUnit}
+                onChangeText={setWorkUnit}
+                placeholder="Unit, e.g. acres or kg"
+                placeholderTextColor={COLORS.textMuted}
               />
             </View>
           </View>

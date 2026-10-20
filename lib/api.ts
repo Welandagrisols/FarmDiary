@@ -77,3 +77,14 @@ export const adminApi = {
     user_id: string | null;
   }) => adminRequest("/api/admin/farms", "POST", farm),
 };
+
+export const farmTeamApi = {
+  list: (farmId: string) =>
+    adminRequest(`/api/farms/${encodeURIComponent(farmId)}/team`, "GET"),
+
+  create: (farmId: string, email: string, password: string, role: "manager" | "seller" | "storekeeper") =>
+    adminRequest(`/api/farms/${encodeURIComponent(farmId)}/team`, "POST", { email, password, role }),
+
+  remove: (farmId: string, userId: string) =>
+    adminRequest(`/api/farms/${encodeURIComponent(farmId)}/team/${encodeURIComponent(userId)}`, "DELETE"),
+};

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ interface PlannerRow {
 
 interface PlantingDraft {
   id: string;
+  name: string;
   variety: string;
   customVariety: string;
   planting_date: string;
@@ -73,6 +74,7 @@ function genId(): string {
 function createPlantingDraft(variety: string): PlantingDraft {
   return {
     id: genId(),
+    name: "",
     variety,
     customVariety: "",
     planting_date: new Date().toISOString().split("T")[0],
@@ -112,7 +114,7 @@ export default function SeasonSetupScreen() {
     const variety = VARIETIES.find((item) => item.label === draft.variety) || VARIETIES[0];
     return {
       id: draft.id,
-      name: `Block ${index + 1}`,
+      name: draft.name.trim() || `Block ${index + 1}`,
       variety: draft.variety === "Custom" ? draft.customVariety.trim() : draft.variety,
       planting_date: draft.planting_date,
       acres: parseFloat(draft.acres) || 0,
@@ -424,7 +426,7 @@ export default function SeasonSetupScreen() {
                 <View key={draft.id} style={styles.plantingCard}>
                   <View style={styles.plantingHeader}>
                     <View style={styles.plantingTitleGroup}>
-                      <Text style={styles.plantingTitle}>Block {index + 1}</Text>
+                      <Text style={styles.plantingTitle}>{draft.name.trim() || `Block ${index + 1}`}</Text>
                       <Text style={styles.plantingSubtitle}>Planting {index + 1}</Text>
                     </View>
                     <View style={styles.plantingHeaderActions}>
@@ -443,6 +445,18 @@ export default function SeasonSetupScreen() {
                         </Pressable>
                       )}
                     </View>
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>Block name (optional)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={draft.name}
+                      onChangeText={(value) => updatePlantingDraft(draft.id, "name", value)}
+                      placeholder={`Block ${index + 1} — e.g. Upper Field`}
+                      placeholderTextColor={COLORS.textMuted}
+                      testID={`planting-${index + 1}-name`}
+                    />
                   </View>
 
                   <Text style={styles.fieldLabel}>Variety</Text>
