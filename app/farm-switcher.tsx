@@ -23,6 +23,7 @@ export default function FarmSwitcherScreen() {
     supabase
       .from("seasons")
       .select("id, farm_id, season_name, season_type, status")
+      .in("farm_id", farms.map((farm) => farm.id))
       .then(({ data }) => {
         if (!data) return;
         const counts: Record<string, number> = {};

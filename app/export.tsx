@@ -8,7 +8,8 @@ import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES, addCost, addInventoryItem, addHarvestRecord, addActivityLog, addFieldObservation } from "@/lib/storage";
+import { formatKES } from "@/lib/storage";
+import { addCost, addInventoryItem, addHarvestRecord, addActivityLog, addFieldObservation } from "@/lib/supabase-storage";
 import * as Haptics from "expo-haptics";
 
 function escapeCsv(val: string | number | boolean | null | undefined): string {

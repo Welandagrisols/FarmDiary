@@ -63,18 +63,28 @@ export async function getAllUserProfiles(): Promise<UserProfile[]> {
 
 // ─── Farms ───────────────────────────────────────────────────
 
-export async function getFarms(): Promise<FarmRecord[]> {
+export async function getFarms(onOfflineFallback?: () => void): Promise<FarmRecord[]> {
   const userId = await getAuthUserId();
   if (!userId) return [];
+  let isAdmin = false;
+  try {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    isAdmin = profile?.role === "admin";
+  } catch {
+    // Cached farms remain available when profile lookup is offline.
+  }
+
   return withCache(`farms_${userId}`, async () => {
-    const { data, error } = await supabase
-      .from("farms")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
+    let query = supabase.from("farms").select("*").order("created_at", { ascending: true });
+    if (!isAdmin) query = query.eq("user_id", userId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as FarmRecord[];
-  });
+  }, "farms", isAdmin ? undefined : { field: "user_id", id: userId }, onOfflineFallback);
 }
 
 export async function getAllFarmsAdmin(): Promise<FarmRecord[]> {
@@ -86,8 +96,8 @@ export async function getAllFarmsAdmin(): Promise<FarmRecord[]> {
   return data as FarmRecord[];
 }
 
-export async function getActiveFarmRecord(): Promise<FarmRecord | null> {
-  const farms = await getFarms();
+export async function getActiveFarmRecord(onOfflineFallback?: () => void): Promise<FarmRecord | null> {
+  const farms = await getFarms(onOfflineFallback);
   const id = await AsyncStorage.getItem(ACTIVE_FARM_KEY);
   return farms.find((f) => f.id === id) || farms[0] || null;
 }
@@ -121,7 +131,10 @@ export async function setActiveFarmId(id: string): Promise<void> {
 
 // ─── Seasons ─────────────────────────────────────────────────
 
-export async function getSeasons(farmId?: string): Promise<SeasonRecord[]> {
+export async function getSeasons(
+  farmId?: string,
+  onOfflineFallback?: () => void,
+): Promise<SeasonRecord[]> {
   const cacheKey = farmId ? `seasons_${farmId}` : "seasons";
   return withCache(cacheKey, async () => {
     let query = supabase.from("seasons").select("*").order("created_at", { ascending: true });
@@ -129,11 +142,11 @@ export async function getSeasons(farmId?: string): Promise<SeasonRecord[]> {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as SeasonRecord[];
-  });
+  }, "seasons", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
-export async function getActiveSeason(): Promise<SeasonRecord | null> {
-  const seasons = await getSeasons();
+export async function getActiveSeason(farmId?: string): Promise<SeasonRecord | null> {
+  const seasons = await getSeasons(farmId);
   const id = await AsyncStorage.getItem(ACTIVE_SEASON_KEY);
   return seasons.find((s) => s.id === id) || seasons[0] || null;
 }
@@ -169,7 +182,7 @@ export async function reopenSeason(id: string): Promise<SeasonRecord> {
 
 // ─── Costs ───────────────────────────────────────────────────
 
-export async function getCosts(farmId?: string): Promise<CostEntry[]> {
+export async function getCosts(farmId?: string, onOfflineFallback?: () => void): Promise<CostEntry[]> {
   const cacheKey = farmId ? `costs_${farmId}` : "costs";
   return withCache(cacheKey, async () => {
     let query = supabase.from("costs").select("*").order("created_at", { ascending: true });
@@ -177,7 +190,7 @@ export async function getCosts(farmId?: string): Promise<CostEntry[]> {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as CostEntry[];
-  });
+  }, "costs", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addCost(cost: Omit<CostEntry, "id" | "created_at">): Promise<CostEntry> {
@@ -198,7 +211,7 @@ export async function deleteCost(id: string): Promise<void> {
 
 // ─── Inventory ───────────────────────────────────────────────
 
-export async function getInventory(farmId?: string): Promise<InventoryItem[]> {
+export async function getInventory(farmId?: string, onOfflineFallback?: () => void): Promise<InventoryItem[]> {
   const cacheKey = farmId ? `inventory_${farmId}` : "inventory";
   return withCache(cacheKey, async () => {
     let query = supabase.from("inventory").select("*").order("created_at", { ascending: true });
@@ -206,7 +219,7 @@ export async function getInventory(farmId?: string): Promise<InventoryItem[]> {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as InventoryItem[];
-  });
+  }, "inventory", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addInventoryItem(item: Omit<InventoryItem, "id" | "created_at">): Promise<InventoryItem> {
@@ -225,9 +238,25 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   });
 }
 
+export async function updateInventoryItem(
+  id: string,
+  updates: Partial<InventoryItem>,
+): Promise<InventoryItem> {
+  return withWrite("inventory", "update", { id, ...updates }, async () => {
+    const { data, error } = await supabase
+      .from("inventory")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data as InventoryItem;
+  });
+}
+
 // ─── Activity Logs ───────────────────────────────────────────
 
-export async function getActivityLogs(farmId?: string): Promise<ActivityLog[]> {
+export async function getActivityLogs(farmId?: string, onOfflineFallback?: () => void): Promise<ActivityLog[]> {
   const cacheKey = farmId ? `activity_logs_${farmId}` : "activity_logs";
   return withCache(cacheKey, async () => {
     let query = supabase.from("activity_logs").select("*").order("created_at", { ascending: true });
@@ -235,7 +264,7 @@ export async function getActivityLogs(farmId?: string): Promise<ActivityLog[]> {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as ActivityLog[];
-  });
+  }, "activity_logs", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addActivityLog(entry: Omit<ActivityLog, "id" | "created_at">): Promise<ActivityLog> {
@@ -264,7 +293,7 @@ export async function deleteActivityLog(id: string): Promise<void> {
 
 // ─── Observations ────────────────────────────────────────────
 
-export async function getObservations(farmId?: string): Promise<ObservationRecord[]> {
+export async function getObservations(farmId?: string, onOfflineFallback?: () => void): Promise<ObservationRecord[]> {
   const cacheKey = farmId ? `observations_${farmId}` : "observations";
   return withCache(cacheKey, async () => {
     let query = supabase.from("observations").select("*").order("created_at", { ascending: true });
@@ -272,7 +301,7 @@ export async function getObservations(farmId?: string): Promise<ObservationRecor
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as ObservationRecord[];
-  });
+  }, "observations", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addFieldObservation(entry: Omit<ObservationRecord, "id" | "created_at">): Promise<ObservationRecord> {
@@ -293,7 +322,7 @@ export async function deleteObservation(id: string): Promise<void> {
 
 // ─── Harvest ─────────────────────────────────────────────────
 
-export async function getHarvestRecords(farmId?: string): Promise<HarvestRecord[]> {
+export async function getHarvestRecords(farmId?: string, onOfflineFallback?: () => void): Promise<HarvestRecord[]> {
   const cacheKey = farmId ? `harvest_records_${farmId}` : "harvest_records";
   return withCache(cacheKey, async () => {
     let query = supabase.from("harvest_records").select("*").order("created_at", { ascending: true });
@@ -301,7 +330,7 @@ export async function getHarvestRecords(farmId?: string): Promise<HarvestRecord[
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as HarvestRecord[];
-  });
+  }, "harvest_records", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addHarvestRecord(entry: Omit<HarvestRecord, "id" | "created_at">): Promise<HarvestRecord> {
@@ -322,7 +351,7 @@ export async function deleteHarvestRecord(id: string): Promise<void> {
 
 // ─── Personal Expenses ───────────────────────────────────────
 
-export async function getPersonalExpenses(farmId?: string): Promise<PersonalExpense[]> {
+export async function getPersonalExpenses(farmId?: string, onOfflineFallback?: () => void): Promise<PersonalExpense[]> {
   const cacheKey = farmId ? `personal_expenses_${farmId}` : "personal_expenses";
   return withCache(cacheKey, async () => {
     let query = supabase.from("personal_expenses").select("*").order("created_at", { ascending: true });
@@ -330,7 +359,7 @@ export async function getPersonalExpenses(farmId?: string): Promise<PersonalExpe
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as PersonalExpense[];
-  });
+  }, "personal_expenses", farmId ? { field: "farm_id", id: farmId } : undefined, onOfflineFallback);
 }
 
 export async function addPersonalExpense(expense: Omit<PersonalExpense, "id" | "created_at">): Promise<PersonalExpense> {

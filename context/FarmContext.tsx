@@ -1,13 +1,21 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
+import type {
   ActivityLog,
+  HarvestRecord,
+  InventoryItem,
+  ObservationRecord,
+  PersonalExpense,
+  SeasonRecord,
+} from "@/lib/storage";
+import {
   addActivityLog,
   addCost,
   addFieldObservation,
   addFarmRecord,
   addHarvestRecord,
   addInventoryItem,
+  addPersonalExpense,
   addSeason,
   closeSeason,
   deleteActivityLog,
@@ -15,40 +23,139 @@ import {
   deleteHarvestRecord,
   deleteInventoryItem,
   deleteObservation,
+  deletePersonalExpense,
   getActiveFarmRecord,
-  getActiveSeason,
   getActivityLogs,
   getCosts,
   getFarms,
   getHarvestRecords,
   getInventory,
   getObservations,
-  getSeasonBlocks,
+  getPersonalExpenses,
   getSeasons,
-  HarvestRecord,
-  InventoryItem,
-  ObservationRecord,
-  PersonalExpense,
   reopenSeason,
-  SeasonRecord,
   setActiveFarmId,
   setActiveSeasonId,
   updateActivityLog,
   updateFarmRecord,
   updateInventoryItem,
   updateSeason,
-} from "@/lib/storage";
-import {
-  addPersonalExpense,
-  deletePersonalExpense,
-  getPersonalExpenses,
 } from "@/lib/supabase-storage";
+import { getSeasonBlocks } from "@/lib/storage";
 import { generatePlannedSchedule, getTemplate } from "@/constants/farmData";
 import { useAuth } from "@/context/AuthContext";
+import { recordsForFarm } from "@/lib/farm-scope";
+import { applyPendingMutations } from "@/lib/offline-mutations";
+import { getQueue, writeCache } from "@/lib/offline-storage";
 
-const CACHE_KEY = "farm_offline_cache_v1";
+const ACTIVE_FARM_KEY = "farm_active_farm_id";
+const ACTIVE_SEASON_KEY = "farm_active_season_id";
+const LEGACY_CACHE_KEY = "farm_offline_cache_v1";
 
 type InventoryUse = { name: string; qty: number };
+type FarmDataSnapshot = {
+  allFarms: Awaited<ReturnType<typeof getFarms>>;
+  farm: Awaited<ReturnType<typeof getActiveFarmRecord>>;
+  allSeasons: SeasonRecord[];
+  active: SeasonRecord | null;
+  costs: Awaited<ReturnType<typeof getCosts>>;
+  inventory: InventoryItem[];
+  activityLogs: ActivityLog[];
+  observations: ObservationRecord[];
+  harvestRecords: HarvestRecord[];
+  personalExpenses: PersonalExpense[];
+};
+
+function arrayValue<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+async function migrateLegacyOfflineCache(
+  userId: string,
+  targetFarmId?: string,
+): Promise<FarmDataSnapshot | null> {
+  const raw = await AsyncStorage.getItem(LEGACY_CACHE_KEY);
+  if (!raw) return null;
+
+  const legacy = JSON.parse(raw);
+  const queue = await getQueue();
+  const savedFarms = arrayValue<any>(legacy.allFarms ?? (legacy.farm ? [legacy.farm] : []))
+    .filter((farm) => farm?.user_id === userId);
+  const allFarms = applyPendingMutations(
+    savedFarms,
+    queue,
+    "farms",
+    { field: "user_id", id: userId },
+  );
+  const savedActiveFarmId = await AsyncStorage.getItem(ACTIVE_FARM_KEY);
+  const requestedId = targetFarmId ?? savedActiveFarmId ?? legacy.farm?.id;
+  const farm = allFarms.find((candidate) => candidate.id === requestedId)
+    || (targetFarmId ? null : allFarms[0])
+    || null;
+  if (!farm) return null;
+
+  const scopedRecords = <T extends { farm_id?: string | null }>(key: string, table: string): T[] =>
+    applyPendingMutations(
+      recordsForFarm(arrayValue<T>(legacy[key]), farm.id),
+      queue,
+      table,
+      { field: "farm_id", id: farm.id },
+    );
+
+  const allSeasons = scopedRecords<SeasonRecord>("allSeasons", "seasons");
+  const costs = scopedRecords<Awaited<ReturnType<typeof getCosts>>[number]>("c", "costs");
+  const inventory = scopedRecords<InventoryItem>("inv", "inventory");
+  const activityLogs = scopedRecords<ActivityLog>("logs", "activity_logs");
+  const observations = scopedRecords<ObservationRecord>("obs", "observations");
+  const harvestRecords = scopedRecords<HarvestRecord>("harvest", "harvest_records");
+  const personalExpenses = scopedRecords<PersonalExpense>("expenses", "personal_expenses");
+  const savedSeasonId = await AsyncStorage.getItem(ACTIVE_SEASON_KEY);
+  const active = allSeasons.find((season) => season.id === savedSeasonId)
+    || (legacy.active?.farm_id === farm.id ? legacy.active as SeasonRecord : null)
+    || allSeasons.find((season) => season.status !== "closed")
+    || null;
+
+  try {
+    const writes: Promise<void>[] = [
+      writeCache(`farms_${userId}`, allFarms),
+    ];
+    for (const accessibleFarm of allFarms) {
+      const farmRows = <T extends { farm_id?: string | null }>(key: string, table: string): T[] =>
+        applyPendingMutations(
+          recordsForFarm(arrayValue<T>(legacy[key]), accessibleFarm.id),
+          queue,
+          table,
+          { field: "farm_id", id: accessibleFarm.id },
+        );
+      writes.push(
+        writeCache(`seasons_${accessibleFarm.id}`, farmRows<SeasonRecord>("allSeasons", "seasons")),
+        writeCache(`costs_${accessibleFarm.id}`, farmRows<Awaited<ReturnType<typeof getCosts>>[number]>("c", "costs")),
+        writeCache(`inventory_${accessibleFarm.id}`, farmRows<InventoryItem>("inv", "inventory")),
+        writeCache(`activity_logs_${accessibleFarm.id}`, farmRows<ActivityLog>("logs", "activity_logs")),
+        writeCache(`observations_${accessibleFarm.id}`, farmRows<ObservationRecord>("obs", "observations")),
+        writeCache(`harvest_records_${accessibleFarm.id}`, farmRows<HarvestRecord>("harvest", "harvest_records")),
+        writeCache(`personal_expenses_${accessibleFarm.id}`, farmRows<PersonalExpense>("expenses", "personal_expenses")),
+      );
+    }
+    await Promise.all(writes);
+    await AsyncStorage.removeItem(LEGACY_CACHE_KEY);
+  } catch (error) {
+    console.warn("[FarmContext] Could not migrate the previous offline cache:", error);
+  }
+
+  return {
+    allFarms,
+    farm,
+    allSeasons,
+    active,
+    costs,
+    inventory,
+    activityLogs,
+    observations,
+    harvestRecords,
+    personalExpenses,
+  };
+}
 
 type FarmContextValue = {
   costs: Awaited<ReturnType<typeof getCosts>>;
@@ -68,7 +175,7 @@ type FarmContextValue = {
   isOffline: boolean;
   loadError: string | null;
   retryLoad: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (targetFarmId?: string) => Promise<void>;
   addCostEntry: typeof addCost;
   removeCost: typeof deleteCost;
   addInventory: typeof addInventoryItem;
@@ -117,69 +224,104 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const refreshGeneration = useRef(0);
 
-  const applyData = useCallback((allFarms: any[], farm: any, allSeasons: SeasonRecord[], active: SeasonRecord | null, c: any[], inv: InventoryItem[], logs: ActivityLog[], obs: ObservationRecord[], harvest: HarvestRecord[], expenses: PersonalExpense[]) => {
-    const farmId = farm?.id || allFarms[0]?.id || "";
+  const applyData = useCallback((allFarms: Awaited<ReturnType<typeof getFarms>>, farm: Awaited<ReturnType<typeof getActiveFarmRecord>>, allSeasons: SeasonRecord[], active: SeasonRecord | null, c: Awaited<ReturnType<typeof getCosts>>, inv: InventoryItem[], logs: ActivityLog[], obs: ObservationRecord[], harvest: HarvestRecord[], expenses: PersonalExpense[]) => {
+    const farmId = farm?.id || "";
     setFarms(allFarms);
     setActiveFarm(farm);
-    setSeasons(allSeasons.filter((item) => item.farm_id === farmId));
-    setActiveSeason(active && active.farm_id === farmId ? active : allSeasons.find((item) => item.farm_id === farmId && item.status !== "closed") || null);
-    setCosts(c.filter((item) => item.farm_id === farmId));
-    setInventory(inv.filter((item) => item.farm_id === farmId));
-    setActivityLogs(logs.filter((item) => item.farm_id === farmId));
-    setObservations(obs.filter((item) => item.farm_id === farmId));
-    setHarvestRecords(harvest.filter((item) => item.farm_id === farmId));
-    setPersonalExpenses(expenses.filter((item) => item.farm_id === farmId));
+    const farmSeasons = recordsForFarm(allSeasons, farmId);
+    setSeasons(farmSeasons);
+    setActiveSeason(active && active.farm_id === farmId ? active : farmSeasons.find((item) => item.status !== "closed") || null);
+    setCosts(recordsForFarm(c, farmId));
+    setInventory(recordsForFarm(inv, farmId));
+    setActivityLogs(recordsForFarm(logs, farmId));
+    setObservations(recordsForFarm(obs, farmId));
+    setHarvestRecords(recordsForFarm(harvest, farmId));
+    setPersonalExpenses(recordsForFarm(expenses, farmId));
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (targetFarmId?: string) => {
+    const requestId = ++refreshGeneration.current;
+    let usedOfflineCache = false;
+    const onOfflineFallback = () => { usedOfflineCache = true; };
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses] = await Promise.all([
-        getFarms(),
-        getActiveFarmRecord(),
-        getSeasons(),
-        getActiveSeason(),
-        getCosts(),
-        getInventory(),
-        getActivityLogs(),
-        getObservations(),
-        getHarvestRecords(),
-        getPersonalExpenses(),
+      const [allFarms, storedFarm] = await Promise.all([
+        getFarms(onOfflineFallback),
+        getActiveFarmRecord(onOfflineFallback),
       ]);
+      const farm = targetFarmId
+        ? allFarms.find((candidate) => candidate.id === targetFarmId) || null
+        : storedFarm || allFarms[0] || null;
 
-      applyData(allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses);
-      setIsOffline(false);
-      if (allFarms.length === 0) {
-        setLoadError("No farm is assigned to this account. Contact your farm manager.");
-      }
-
-      try {
-        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses }));
-      } catch { /* ignore cache write errors */ }
-
-    } catch (err) {
-      console.warn("[FarmContext] Supabase unavailable, loading offline cache:", err);
-      try {
-        const raw = await AsyncStorage.getItem(CACHE_KEY);
-        if (raw) {
-          const { allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses = [] } = JSON.parse(raw);
-          applyData(allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses);
-          setIsOffline(true);
-          setLoadError("Showing saved farm data offline. Reconnect and retry to sync.");
-        } else {
-          setLoadError("Unable to load farm data. Check your connection and try again.");
+      if (!farm) {
+        if (usedOfflineCache && user?.id) {
+          const legacySnapshot = await migrateLegacyOfflineCache(user.id, targetFarmId);
+          if (legacySnapshot) {
+            if (requestId !== refreshGeneration.current) return;
+            applyData(
+              legacySnapshot.allFarms,
+              legacySnapshot.farm,
+              legacySnapshot.allSeasons,
+              legacySnapshot.active,
+              legacySnapshot.costs,
+              legacySnapshot.inventory,
+              legacySnapshot.activityLogs,
+              legacySnapshot.observations,
+              legacySnapshot.harvestRecords,
+              legacySnapshot.personalExpenses,
+            );
+            setIsOffline(true);
+            setLoadError("Showing saved farm data offline. Reconnect and retry to sync.");
+            return;
+          }
         }
-      } catch (cacheErr) {
-        console.error("[FarmContext] cache load failed:", cacheErr);
+        if (targetFarmId) throw new Error("This farm is not available on this account.");
+        if (requestId !== refreshGeneration.current) return;
+        applyData(allFarms, null, [], null, [], [], [], [], [], []);
+        setIsOffline(usedOfflineCache);
+        setLoadError(
+          usedOfflineCache
+            ? "No saved farm is available offline. Reconnect and retry."
+            : "No farm is assigned to this account. Contact your farm manager."
+        );
+        return;
       }
+
+      const storedFarmId = await AsyncStorage.getItem(ACTIVE_FARM_KEY);
+      if (storedFarmId !== farm.id) await setActiveFarmId(farm.id);
+      const storedSeasonId = await AsyncStorage.getItem(ACTIVE_SEASON_KEY);
+      const [allSeasons, c, inv, logs, obs, harvest, expenses] = await Promise.all([
+        getSeasons(farm.id, onOfflineFallback),
+        getCosts(farm.id, onOfflineFallback),
+        getInventory(farm.id, onOfflineFallback),
+        getActivityLogs(farm.id, onOfflineFallback),
+        getObservations(farm.id, onOfflineFallback),
+        getHarvestRecords(farm.id, onOfflineFallback),
+        getPersonalExpenses(farm.id, onOfflineFallback),
+      ]);
+      const active = allSeasons.find((season) => season.id === storedSeasonId)
+        || allSeasons.find((season) => season.status !== "closed")
+        || null;
+
+      if (requestId !== refreshGeneration.current) return;
+      applyData(allFarms, farm, allSeasons, active, c, inv, logs, obs, harvest, expenses);
+      setIsOffline(usedOfflineCache);
+      setLoadError(usedOfflineCache ? "Showing saved farm data offline. Reconnect and retry to sync." : null);
+    } catch (err) {
+      if (requestId !== refreshGeneration.current) return;
+      console.warn("[FarmContext] Farm data refresh failed:", err);
+      setIsOffline(usedOfflineCache);
+      setLoadError(err instanceof Error ? err.message : "Unable to load farm data. Check your connection and retry.");
     } finally {
-      setIsLoading(false);
+      if (requestId === refreshGeneration.current) setIsLoading(false);
     }
-  }, [applyData]);
+  }, [applyData, user?.id]);
 
   const clearFarmData = useCallback(() => {
+    refreshGeneration.current += 1;
     setCosts([]);
     setInventory([]);
     setActivityLogs([]);
@@ -288,7 +430,9 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
         const updated = await updateInventoryItem(item.id, {
           quantity_used: item.quantity_used + quantity,
         });
-        setInventory((prev) => prev.map((current) => current.id === updated.id ? updated : current));
+        setInventory((prev) => prev.map((current) =>
+          current.id === updated.id ? { ...current, ...updated } : current
+        ));
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Inventory could not be updated.";
@@ -322,7 +466,35 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     setActivityLogs((prev) => prev.map((l) => l.id === updated.id ? updated : l));
   }, []);
   const createFarm = useCallback(async (farm: Omit<any, "id" | "created_at">) => { const newFarm = await addFarmRecord(farm); setFarms((prev) => [...prev, newFarm]); return newFarm; }, []);
-  const switchFarm = useCallback(async (targetFarmId: string) => { await setActiveFarmId(targetFarmId); await refresh(); }, [refresh]);
+  const switchFarm = useCallback(async (targetFarmId: string) => {
+    const targetFarm = farms.find((farm) => farm.id === targetFarmId);
+    if (!targetFarm) throw new Error("This farm is not available on this account.");
+    if (targetFarm.id === activeFarm?.id) return;
+    const previousFarmId = activeFarm?.id;
+
+    refreshGeneration.current += 1;
+    setActiveFarm(targetFarm);
+    setCosts([]);
+    setInventory([]);
+    setActivityLogs([]);
+    setObservations([]);
+    setHarvestRecords([]);
+    setPersonalExpenses([]);
+    setSeasons([]);
+    setActiveSeason(null);
+    setIsLoading(true);
+    try {
+      await setActiveFarmId(targetFarmId);
+      await refresh(targetFarmId);
+    } catch (error) {
+      if (previousFarmId) await refresh(previousFarmId);
+      else {
+        setIsLoading(false);
+        setLoadError(error instanceof Error ? error.message : "Could not switch farms.");
+      }
+      throw error;
+    }
+  }, [activeFarm?.id, farms, refresh]);
   const updateActiveFarm = useCallback(async (updates: Partial<any>) => { if (!activeFarm) return; const updated = await updateFarmRecord(activeFarm.id, updates); setFarms((prev) => prev.map((f) => f.id === updated.id ? updated : f)); setActiveFarm(updated); }, [activeFarm]);
   const addPersonalExpenseEntry = useCallback(async (expense: Omit<PersonalExpense, "id" | "created_at">) => {
     const newExpense = await addPersonalExpense(expense);

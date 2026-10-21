@@ -16,7 +16,8 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { CROP_TEMPLATES, generatePlannedSchedule, getTemplate } from "@/constants/farmData";
 import { getCropMeta } from "@/constants/cropTemplates";
-import { CropBlock, formatDate, formatKES, addCost } from "@/lib/storage";
+import { CropBlock, formatDate, formatKES } from "@/lib/storage";
+import { addCost } from "@/lib/supabase-storage";
 import * as Haptics from "expo-haptics";
 
 const SEASON_TYPES = ["Long Rains", "Short Rains", "Irrigation Season"];
