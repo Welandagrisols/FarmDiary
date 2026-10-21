@@ -1,8 +1,19 @@
 -- Add farm-scoped roles and append-only sales, inventory control, and approvals.
--- Apply in the Supabase SQL editor after the main schema. This is additive.
+-- Apply after supabase-schema.sql and scripts/supabase-patch-fixed.sql.
+-- If used, apply scripts/rls-hardening.sql before or after this file. This is additive.
 
 ALTER TABLE public.farms
   ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+ALTER TABLE public.activity_logs
+  ADD COLUMN IF NOT EXISTS recorded_by UUID,
+  ADD COLUMN IF NOT EXISTS recorded_by_email TEXT;
+ALTER TABLE public.harvest_records
+  ADD COLUMN IF NOT EXISTS recorded_by UUID,
+  ADD COLUMN IF NOT EXISTS recorded_by_email TEXT;
+ALTER TABLE public.observations
+  ADD COLUMN IF NOT EXISTS recorded_by UUID,
+  ADD COLUMN IF NOT EXISTS recorded_by_email TEXT;
 
 CREATE TABLE IF NOT EXISTS public.farm_memberships (
   id TEXT PRIMARY KEY,
@@ -18,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.sales (
   receipt_number TEXT NOT NULL UNIQUE,
   farm_id TEXT NOT NULL REFERENCES public.farms(id),
   season_id TEXT NOT NULL REFERENCES public.seasons(id),
+  block_id TEXT,
   seller_id UUID NOT NULL REFERENCES auth.users(id),
   seller_email TEXT NOT NULL,
   product_name TEXT NOT NULL,
@@ -30,15 +42,18 @@ CREATE TABLE IF NOT EXISTS public.sales (
   payment_reference TEXT,
   status TEXT NOT NULL DEFAULT 'pending_check'
     CHECK (status IN ('pending_check', 'discount_pending', 'recorded', 'void_requested', 'voided')),
+  check_note TEXT,
   checked_by UUID REFERENCES auth.users(id),
   checked_by_email TEXT,
   checked_at TIMESTAMPTZ,
   discount_approved_by UUID REFERENCES auth.users(id),
   discount_approved_by_email TEXT,
   discount_approved_at TIMESTAMPTZ,
+  discount_approval_reason TEXT,
   void_requested_by UUID REFERENCES auth.users(id),
   void_requested_by_email TEXT,
   void_requested_at TIMESTAMPTZ,
+  void_request_reason TEXT,
   voided_by UUID REFERENCES auth.users(id),
   voided_by_email TEXT,
   voided_at TIMESTAMPTZ,
@@ -120,12 +135,15 @@ BEGIN
     NEW.checked_by := NULL;
     NEW.checked_by_email := NULL;
     NEW.checked_at := NULL;
+    NEW.check_note := NULL;
     NEW.discount_approved_by := NULL;
     NEW.discount_approved_by_email := NULL;
     NEW.discount_approved_at := NULL;
+    NEW.discount_approval_reason := NULL;
     NEW.void_requested_by := NULL;
     NEW.void_requested_by_email := NULL;
     NEW.void_requested_at := NULL;
+    NEW.void_request_reason := NULL;
     NEW.voided_by := NULL;
     NEW.voided_by_email := NULL;
     NEW.voided_at := NULL;
@@ -134,6 +152,34 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION public.bind_farm_record_to_signed_in_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    NEW.recorded_by := auth.uid();
+    NEW.recorded_by_email := COALESCE(auth.jwt() ->> 'email', 'Farm staff');
+    NEW.created_at := NOW();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS bind_activity_log_owner_trg ON public.activity_logs;
+CREATE TRIGGER bind_activity_log_owner_trg
+  BEFORE INSERT ON public.activity_logs
+  FOR EACH ROW EXECUTE FUNCTION public.bind_farm_record_to_signed_in_user();
+DROP TRIGGER IF EXISTS bind_harvest_record_owner_trg ON public.harvest_records;
+CREATE TRIGGER bind_harvest_record_owner_trg
+  BEFORE INSERT ON public.harvest_records
+  FOR EACH ROW EXECUTE FUNCTION public.bind_farm_record_to_signed_in_user();
+DROP TRIGGER IF EXISTS bind_observation_owner_trg ON public.observations;
+CREATE TRIGGER bind_observation_owner_trg
+  BEFORE INSERT ON public.observations
+  FOR EACH ROW EXECUTE FUNCTION public.bind_farm_record_to_signed_in_user();
 
 DROP TRIGGER IF EXISTS bind_sale_to_seller_trg ON public.sales;
 CREATE TRIGGER bind_sale_to_seller_trg
@@ -183,6 +229,7 @@ BEGIN
   IF public.get_farm_role(sale_row.farm_id) NOT IN ('admin', 'owner', 'manager') THEN
     RAISE EXCEPTION 'Manager approval required';
   END IF;
+  IF sale_row.seller_id = auth.uid() THEN RAISE EXCEPTION 'A different person must approve the discount'; END IF;
   IF sale_row.status NOT IN ('discount_pending', 'pending_check') OR sale_row.discount_kes <= 0
     OR sale_row.discount_approved_at IS NOT NULL THEN
     RAISE EXCEPTION 'Sale is not awaiting discount approval';
@@ -191,7 +238,7 @@ BEGIN
   UPDATE public.sales SET status = CASE WHEN checked_by IS NULL THEN 'pending_check' ELSE 'recorded' END,
     discount_approved_by = auth.uid(),
     discount_approved_by_email = COALESCE(auth.jwt() ->> 'email', 'Farm staff'),
-    discount_approved_at = NOW() WHERE id = p_sale_id;
+    discount_approved_at = NOW(), discount_approval_reason = BTRIM(p_reason) WHERE id = p_sale_id;
   INSERT INTO public.sales_audit (sale_id, farm_id, actor_id, action, reason, previous_status, new_status)
     VALUES (p_sale_id, sale_row.farm_id, auth.uid(), 'discount_approved', BTRIM(p_reason), sale_row.status,
       CASE WHEN sale_row.checked_by IS NULL THEN 'pending_check' ELSE 'recorded' END);
@@ -204,8 +251,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE sale_row public.sales%ROWTYPE;
-DECLARE next_status TEXT;
+DECLARE
+  sale_row public.sales%ROWTYPE;
+  next_status TEXT;
 BEGIN
   SELECT * INTO sale_row FROM public.sales WHERE id = p_sale_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Sale not found'; END IF;
@@ -220,7 +268,8 @@ BEGIN
   next_status := CASE WHEN sale_row.discount_kes = 0 OR sale_row.discount_approved_at IS NOT NULL
     THEN 'recorded' ELSE 'discount_pending' END;
   UPDATE public.sales SET status = next_status, checked_by = auth.uid(),
-    checked_by_email = COALESCE(auth.jwt() ->> 'email', 'Farm staff'), checked_at = NOW()
+    checked_by_email = COALESCE(auth.jwt() ->> 'email', 'Farm staff'), checked_at = NOW(),
+    check_note = BTRIM(p_reason)
     WHERE id = p_sale_id;
   INSERT INTO public.sales_audit (sale_id, farm_id, actor_id, action, reason, previous_status, new_status)
     VALUES (p_sale_id, sale_row.farm_id, auth.uid(), 'sale_checked', BTRIM(p_reason), sale_row.status, next_status);
@@ -242,7 +291,7 @@ BEGIN
   IF NULLIF(BTRIM(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Void reason is required'; END IF;
   UPDATE public.sales SET status = 'void_requested', void_requested_by = auth.uid(),
     void_requested_by_email = COALESCE(auth.jwt() ->> 'email', 'Farm staff'),
-    void_requested_at = NOW(), void_reason = BTRIM(p_reason) WHERE id = p_sale_id;
+    void_requested_at = NOW(), void_request_reason = BTRIM(p_reason) WHERE id = p_sale_id;
   INSERT INTO public.sales_audit (sale_id, farm_id, actor_id, action, reason, previous_status, new_status)
     VALUES (p_sale_id, sale_row.farm_id, auth.uid(), 'void_requested', BTRIM(p_reason), sale_row.status, 'void_requested');
 END;
@@ -261,6 +310,7 @@ BEGIN
   IF public.get_farm_role(sale_row.farm_id) NOT IN ('admin', 'owner') THEN
     RAISE EXCEPTION 'Owner approval required';
   END IF;
+  IF sale_row.seller_id = auth.uid() THEN RAISE EXCEPTION 'A different person must approve the void'; END IF;
   IF sale_row.status <> 'void_requested' THEN RAISE EXCEPTION 'Sale is not awaiting void approval'; END IF;
   IF NULLIF(BTRIM(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Approval reason is required'; END IF;
   UPDATE public.sales SET status = 'voided', voided_by = auth.uid(),
@@ -304,6 +354,7 @@ BEGIN
     RAISE EXCEPTION 'Manager approval required';
   END IF;
   IF issue_row.status <> 'pending_approval' THEN RAISE EXCEPTION 'Issue is not pending approval'; END IF;
+  IF issue_row.requested_by = auth.uid() THEN RAISE EXCEPTION 'A different manager must approve the issue'; END IF;
   UPDATE public.stock_issues SET status = 'approved', approved_by = auth.uid() WHERE id = p_issue_id;
 END;
 $$;
@@ -347,6 +398,56 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.get_season_stock_totals(
+  p_farm_id TEXT,
+  p_season_id TEXT,
+  p_today DATE
+)
+RETURNS TABLE (
+  harvested_kg NUMERIC,
+  sold_kg NUMERIC,
+  lost_kg NUMERIC,
+  issued_kg NUMERIC,
+  today_harvested_kg NUMERIC,
+  today_sold_kg NUMERIC,
+  today_lost_kg NUMERIC,
+  today_sales_count BIGINT,
+  today_sales_kes NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF public.get_farm_role(p_farm_id) NOT IN ('admin', 'owner', 'manager', 'storekeeper') THEN
+    RAISE EXCEPTION 'Stock totals access required';
+  END IF;
+  RETURN QUERY
+  SELECT
+    COALESCE((SELECT SUM(h.total_kg) FROM public.harvest_records h
+      WHERE h.farm_id = p_farm_id AND h.season_id = p_season_id), 0),
+    COALESCE((SELECT SUM(s.quantity_kg) FROM public.sales s
+      WHERE s.farm_id = p_farm_id AND s.season_id = p_season_id AND s.status <> 'voided'), 0),
+    COALESCE((SELECT SUM(l.quantity_kg) FROM public.stock_losses l
+      WHERE l.farm_id = p_farm_id AND l.season_id = p_season_id), 0),
+    COALESCE((SELECT SUM(i.quantity_kg) FROM public.stock_issues i
+      WHERE i.farm_id = p_farm_id AND i.season_id = p_season_id AND i.status IN ('issued', 'confirmed')), 0),
+    COALESCE((SELECT SUM(h.total_kg) FROM public.harvest_records h
+      WHERE h.farm_id = p_farm_id AND h.season_id = p_season_id AND h.harvest_date = p_today), 0),
+    COALESCE((SELECT SUM(s.quantity_kg) FROM public.sales s
+      WHERE s.farm_id = p_farm_id AND s.season_id = p_season_id AND s.status <> 'voided'
+        AND (s.created_at AT TIME ZONE 'Africa/Nairobi')::date = p_today), 0),
+    COALESCE((SELECT SUM(l.quantity_kg) FROM public.stock_losses l
+      WHERE l.farm_id = p_farm_id AND l.season_id = p_season_id AND l.loss_date = p_today), 0),
+    COALESCE((SELECT COUNT(*) FROM public.sales s
+      WHERE s.farm_id = p_farm_id AND s.season_id = p_season_id AND s.status <> 'voided'
+        AND (s.created_at AT TIME ZONE 'Africa/Nairobi')::date = p_today), 0),
+    COALESCE((SELECT SUM(s.total_kes) FROM public.sales s
+      WHERE s.farm_id = p_farm_id AND s.season_id = p_season_id AND s.status <> 'voided'
+        AND (s.created_at AT TIME ZONE 'Africa/Nairobi')::date = p_today), 0);
+END;
+$$;
+
 ALTER TABLE public.farm_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_audit ENABLE ROW LEVEL SECURITY;
@@ -363,6 +464,112 @@ CREATE POLICY farms_select ON public.farms FOR SELECT
   USING (user_id = auth.uid()::text OR public.is_admin()
     OR EXISTS (SELECT 1 FROM public.farm_memberships m WHERE m.farm_id = farms.id AND m.user_id = auth.uid()));
 
+-- Workers can read season plans but cannot alter crop setup or planting blocks.
+DROP POLICY IF EXISTS "seasons_select" ON public.seasons;
+CREATE POLICY seasons_select ON public.seasons FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager', 'seller', 'storekeeper'));
+DROP POLICY IF EXISTS "seasons_insert" ON public.seasons;
+CREATE POLICY seasons_insert ON public.seasons FOR INSERT
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "seasons_update" ON public.seasons;
+CREATE POLICY seasons_update ON public.seasons FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "seasons_delete" ON public.seasons;
+CREATE POLICY seasons_delete ON public.seasons FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+-- Workers can see only their own activity, harvest, and scouting entries.
+DROP POLICY IF EXISTS "costs_select" ON public.costs;
+CREATE POLICY costs_select ON public.costs FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "costs_insert" ON public.costs;
+CREATE POLICY costs_insert ON public.costs FOR INSERT
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "costs_update" ON public.costs;
+CREATE POLICY costs_update ON public.costs FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "costs_delete" ON public.costs;
+CREATE POLICY costs_delete ON public.costs FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+DROP POLICY IF EXISTS "inventory_select" ON public.inventory;
+CREATE POLICY inventory_select ON public.inventory FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "inventory_insert" ON public.inventory;
+CREATE POLICY inventory_insert ON public.inventory FOR INSERT
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "inventory_update" ON public.inventory;
+CREATE POLICY inventory_update ON public.inventory FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "inventory_delete" ON public.inventory;
+CREATE POLICY inventory_delete ON public.inventory FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+DROP POLICY IF EXISTS "activity_logs_select" ON public.activity_logs;
+CREATE POLICY activity_logs_select ON public.activity_logs FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager')
+    OR (public.get_farm_role(farm_id) IN ('seller', 'storekeeper') AND recorded_by = auth.uid()));
+DROP POLICY IF EXISTS "activity_logs_insert" ON public.activity_logs;
+CREATE POLICY activity_logs_insert ON public.activity_logs FOR INSERT
+  WITH CHECK (recorded_by = auth.uid()
+    AND public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager', 'seller', 'storekeeper'));
+DROP POLICY IF EXISTS "activity_logs_update" ON public.activity_logs;
+CREATE POLICY activity_logs_update ON public.activity_logs FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "activity_logs_delete" ON public.activity_logs;
+CREATE POLICY activity_logs_delete ON public.activity_logs FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+DROP POLICY IF EXISTS "harvest_select" ON public.harvest_records;
+CREATE POLICY harvest_select ON public.harvest_records FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager')
+    OR (public.get_farm_role(farm_id) = 'seller' AND recorded_by = auth.uid()));
+DROP POLICY IF EXISTS "harvest_insert" ON public.harvest_records;
+CREATE POLICY harvest_insert ON public.harvest_records FOR INSERT
+  WITH CHECK (recorded_by = auth.uid()
+    AND public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager', 'seller'));
+DROP POLICY IF EXISTS "harvest_update" ON public.harvest_records;
+CREATE POLICY harvest_update ON public.harvest_records FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "harvest_delete" ON public.harvest_records;
+CREATE POLICY harvest_delete ON public.harvest_records FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+DROP POLICY IF EXISTS "observations_select" ON public.observations;
+CREATE POLICY observations_select ON public.observations FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager')
+    OR (public.get_farm_role(farm_id) IN ('seller', 'storekeeper') AND recorded_by = auth.uid()));
+DROP POLICY IF EXISTS "observations_insert" ON public.observations;
+CREATE POLICY observations_insert ON public.observations FOR INSERT
+  WITH CHECK (recorded_by = auth.uid()
+    AND public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager', 'seller', 'storekeeper'));
+DROP POLICY IF EXISTS "observations_update" ON public.observations;
+CREATE POLICY observations_update ON public.observations FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "observations_delete" ON public.observations;
+CREATE POLICY observations_delete ON public.observations FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
+DROP POLICY IF EXISTS "personal_expenses_select" ON public.personal_expenses;
+CREATE POLICY personal_expenses_select ON public.personal_expenses FOR SELECT
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "personal_expenses_insert" ON public.personal_expenses;
+CREATE POLICY personal_expenses_insert ON public.personal_expenses FOR INSERT
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "personal_expenses_update" ON public.personal_expenses;
+CREATE POLICY personal_expenses_update ON public.personal_expenses FOR UPDATE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'))
+  WITH CHECK (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+DROP POLICY IF EXISTS "personal_expenses_delete" ON public.personal_expenses;
+CREATE POLICY personal_expenses_delete ON public.personal_expenses FOR DELETE
+  USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager'));
+
 DROP POLICY IF EXISTS sales_select ON public.sales;
 CREATE POLICY sales_select ON public.sales FOR SELECT
   USING (public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager')
@@ -375,10 +582,12 @@ CREATE POLICY sales_insert ON public.sales FOR INSERT
     AND public.get_farm_role(farm_id) IN ('admin', 'owner', 'manager', 'seller')
     AND ((discount_kes = 0 AND status = 'pending_check') OR (discount_kes > 0 AND status = 'discount_pending'))
     AND checked_by IS NULL AND checked_at IS NULL
+    AND check_note IS NULL
     AND discount_kes <= quantity_kg * unit_price_kes
     AND total_kes = GREATEST(0, quantity_kg * unit_price_kes - discount_kes)
-    AND discount_approved_by IS NULL AND discount_approved_at IS NULL
+    AND discount_approved_by IS NULL AND discount_approved_at IS NULL AND discount_approval_reason IS NULL
     AND void_requested_by IS NULL AND void_requested_at IS NULL
+    AND void_request_reason IS NULL
     AND voided_by IS NULL AND voided_at IS NULL AND void_reason IS NULL
     AND (payment_method = 'cash' OR NULLIF(BTRIM(payment_reference), '') IS NOT NULL)
   );
@@ -417,17 +626,21 @@ CREATE POLICY stock_issues_insert ON public.stock_issues FOR INSERT
 
 REVOKE ALL ON FUNCTION public.approve_sale_discount(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.check_sale(TEXT, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_farm_role(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.request_sale_void(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.approve_sale_void(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.confirm_stock_count(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.approve_stock_issue(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.mark_stock_issue_issued(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.confirm_stock_issue(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_season_stock_totals(TEXT, TEXT, DATE) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.approve_sale_discount(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.check_sale(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_farm_role(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.request_sale_void(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_sale_void(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.confirm_stock_count(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_stock_issue(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mark_stock_issue_issued(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.confirm_stock_issue(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_season_stock_totals(TEXT, TEXT, DATE) TO authenticated;

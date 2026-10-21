@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { ObservationRecord, formatDate } from "@/lib/storage";
+import { getSeasonBlockName, getSeasonBlocks, ObservationRecord, formatDate } from "@/lib/storage";
+import { getFarmRole } from "@/lib/sales-storage";
 import { SEASON_SEED } from "@/constants/farmData";
 import * as Haptics from "expo-haptics";
 
@@ -32,7 +33,8 @@ function getSeverityColor(severity: string) {
   }
 }
 
-function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: () => void }) {
+function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete?: () => void }) {
+  const { activeSeason } = useFarm();
   const [expanded, setExpanded] = useState(false);
   const sevColor = getSeverityColor(obs.severity);
   const isAlert = obs.severity === "High" || obs.severity === "Critical";
@@ -48,7 +50,7 @@ function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: 
   return (
     <Pressable
       onPress={() => setExpanded(!expanded)}
-      onLongPress={handleLongPress}
+      onLongPress={onDelete ? handleLongPress : undefined}
       style={[styles.obsCard, isAlert && styles.obsCardAlert]}
     >
       <View style={styles.obsCardHeader}>
@@ -61,7 +63,7 @@ function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: 
             {obs.section_id && (
               <View style={styles.obsSectionPill}>
                 <Text style={styles.obsSectionText}>
-                  {obs.section_id === "section-a" ? "Sec A" : "Sec B"}
+            {getSeasonBlockName(activeSeason, obs.section_id)}
                 </Text>
               </View>
             )}
@@ -79,6 +81,9 @@ function ObservationCard({ obs, onDelete }: { obs: ObservationRecord; onDelete: 
           <Text style={styles.actionTakenText}>{obs.action_taken}</Text>
         </View>
       )}
+      {expanded && obs.recorded_by_email ? (
+        <Text style={styles.obsReporter}>Recorded by {obs.recorded_by_email}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -89,6 +94,8 @@ function AddObservationModal({ onClose, onSubmit, seasonId, farmId }: {
   seasonId: string;
   farmId: string;
 }) {
+  const { activeSeason } = useFarm();
+  const blocks = getSeasonBlocks(activeSeason);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [type, setType] = useState("Disease");
@@ -126,16 +133,16 @@ function AddObservationModal({ onClose, onSubmit, seasonId, farmId }: {
         </View>
 
         <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Text style={styles.fieldLabel}>Section</Text>
+          <Text style={styles.fieldLabel}>Planting block</Text>
           <View style={styles.row}>
-            {([null, "section-a", "section-b"] as (string | null)[]).map((opt) => (
+            {([null, ...blocks.map((block) => block.id)] as (string | null)[]).map((opt) => (
               <Pressable
                 key={opt ?? "farm"}
                 style={[styles.chip, sectionId === opt && styles.chipActive]}
                 onPress={() => setSectionId(opt)}
               >
                 <Text style={[styles.chipText, sectionId === opt && styles.chipTextActive]}>
-                  {opt === null ? "Farm" : opt === "section-a" ? "Sec A" : "Sec B"}
+                  {opt === null ? "All blocks" : getSeasonBlockName(activeSeason, opt)}
                 </Text>
               </Pressable>
             ))}
@@ -216,11 +223,21 @@ function AddObservationModal({ onClose, onSubmit, seasonId, farmId }: {
 
 export default function ObservationsScreen() {
   const insets = useSafeAreaInsets();
-  const { observations, addFieldObservation, removeObservation, activeSeason, farmId } = useFarm();
+  const { observations, addFieldObservation, removeObservation, activeSeason, activeFarm, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
   const [showAdd, setShowAdd] = useState(false);
+  const [canManageObservations, setCanManageObservations] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+
+  useEffect(() => {
+    let current = true;
+    if (!activeFarm?.id) return () => { current = false; };
+    getFarmRole(activeFarm.id)
+      .then((role) => current && setCanManageObservations(["admin", "owner", "manager"].includes(role)))
+      .catch(() => current && setCanManageObservations(false));
+    return () => { current = false; };
+  }, [activeFarm?.id]);
 
   const sorted = [...observations].sort(
     (a, b) => new Date(b.observation_date).getTime() - new Date(a.observation_date).getTime()
@@ -257,7 +274,10 @@ export default function ObservationsScreen() {
         data={sorted}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ObservationCard obs={item} onDelete={() => removeObservation(item.id)} />
+          <ObservationCard
+            obs={item}
+            onDelete={canManageObservations ? () => removeObservation(item.id) : undefined}
+          />
         )}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
@@ -309,6 +329,7 @@ const styles = StyleSheet.create({
   obsCardLeft: { flex: 1, gap: 6 },
   obsMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   obsDate: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.textMuted },
+  obsReporter: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textMuted, marginTop: 6 },
   obsTypePill: { backgroundColor: COLORS.blueLight, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   obsTypeText: { fontFamily: "DMSans_600SemiBold", fontSize: 10, color: COLORS.blue },
   obsSectionPill: { backgroundColor: COLORS.primarySurface, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },

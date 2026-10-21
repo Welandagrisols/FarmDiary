@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   Alert, Platform, KeyboardAvoidingView,
@@ -8,7 +8,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES } from "@/lib/storage";
+import { getSeasonBlocks } from "@/lib/storage";
 import { SEASON_SEED, getTemplate } from "@/constants/farmData";
 import { getCropMeta } from "@/constants/cropTemplates";
 
@@ -60,45 +60,43 @@ export default function AddHarvestScreen() {
   const { addHarvestEntry, activeSeason, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
   const cropMeta = getCropMeta(activeSeason?.template_id);
-  const hasSectionB = Number(activeSeason?.section_b?.acres) > 0;
-  const sections = [
-    { id: "section-a", label: "Section A", sublabel: activeSeason?.section_a.variety || "Section A crop" },
-    ...(hasSectionB
-      ? [{ id: "section-b", label: "Section B", sublabel: activeSeason?.section_b?.variety || "Section B crop" }]
-      : []),
-  ];
+  const sections = getSeasonBlocks(activeSeason).map((block) => ({
+    id: block.id,
+    label: block.name,
+    sublabel: block.variety || "Crop planting",
+  }));
   const [saving, setSaving] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const [sectionId, setSectionId] = useState("section-a");
+  const [sectionId, setSectionId] = useState(sections[0]?.id || "section-a");
   const [harvestDate, setHarvestDate] = useState(new Date().toISOString().split("T")[0]);
   const [quantity, setQuantity] = useState("");
   const [unitKey, setUnitKey] = useState(cropMeta.harvestUnits[0]?.key || "bag");
   const initialUnit = cropMeta.harvestUnits[0];
   const [kgPerUnit, setKgPerUnit] = useState(initialUnit?.defaultKg ? String(initialUnit.defaultKg) : "");
-  const [pricePerUnit, setPricePerUnit] = useState("");
-  const [buyer, setBuyer] = useState("");
   const [grade, setGrade] = useState("");
   const [notes, setNotes] = useState("");
 
+  useEffect(() => {
+    if (sections.length > 0 && !sections.some((section) => section.id === sectionId)) {
+      setSectionId(sections[0].id);
+    }
+  }, [sections, sectionId]);
+
   const quantityRef = useRef<TextInput>(null);
   const kgRef = useRef<TextInput>(null);
-  const priceRef = useRef<TextInput>(null);
-  const buyerRef = useRef<TextInput>(null);
   const gradeRef = useRef<TextInput>(null);
   const notesRef = useRef<TextInput>(null);
 
   const selectedUnit = cropMeta.harvestUnits.find((unit) => unit.key === unitKey) || cropMeta.harvestUnits[0];
   const numQuantity = parseFloat(quantity) || 0;
   const numKgPerUnit = selectedUnit?.key === "kg" ? 1 : parseFloat(kgPerUnit) || 0;
-  const numPrice = parseFloat(pricePerUnit) || 0;
   const weightRequired = Boolean(selectedUnit && selectedUnit.key !== "kg" && selectedUnit.defaultKg > 0);
   const totalKg = numKgPerUnit > 0 ? numQuantity * numKgPerUnit : 0;
-  const totalRevenue = numQuantity * numPrice;
 
-  const isValid = numQuantity > 0 && numPrice > 0 && (!weightRequired || numKgPerUnit > 0) && harvestDate.length === 10;
+  const isValid = numQuantity > 0 && (!weightRequired || numKgPerUnit > 0) && harvestDate.length === 10;
 
   const handleUnitChange = (key: string) => {
     const nextUnit = cropMeta.harvestUnits.find((unit) => unit.key === key);
@@ -108,7 +106,7 @@ export default function AddHarvestScreen() {
 
   const handleSave = async () => {
     if (!isValid) {
-      Alert.alert("Missing fields", `Please enter a quantity, price per ${selectedUnit?.label.toLowerCase() || "unit"} and valid date${weightRequired ? " and weight per unit" : ""}.`);
+      Alert.alert("Missing fields", `Please enter a harvest quantity and valid date${weightRequired ? " and weight per unit" : ""}.`);
       return;
     }
     setSaving(true);
@@ -122,11 +120,11 @@ export default function AddHarvestScreen() {
         bags: numQuantity,
         kg_per_bag: numKgPerUnit,
         total_kg: totalKg,
-        price_per_bag_kes: numPrice,
-        total_revenue_kes: totalRevenue,
+        price_per_bag_kes: 0,
+        total_revenue_kes: 0,
         ...(selectedUnit?.key && selectedUnit.key !== "bag" ? { unit: selectedUnit.key } : {}),
         ...(grade.trim() ? { grade: grade.trim() } : {}),
-        buyer: buyer.trim() || null,
+        buyer: null,
         notes: notes.trim() || null,
       });
       router.back();
@@ -162,13 +160,12 @@ export default function AddHarvestScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {totalRevenue > 0 && (
+          {totalKg > 0 && (
             <View style={styles.previewCard}>
-              <Text style={styles.previewLabel}>Revenue Preview</Text>
-              <Text style={styles.previewRevenue}>{formatKES(totalRevenue)}</Text>
+              <Text style={styles.previewLabel}>Harvest weight</Text>
+              <Text style={styles.previewRevenue}>{totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg</Text>
               <Text style={styles.previewMeta}>
-                {numQuantity} {selectedUnit?.plural.toLowerCase() || "units"} × {formatKES(numPrice)} per unit
-                {totalKg > 0 ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg total` : ""}
+                {numQuantity} {selectedUnit?.plural.toLowerCase() || "units"} recorded for this planting block
               </Text>
             </View>
           )}
@@ -233,7 +230,7 @@ export default function AddHarvestScreen() {
                 placeholder="e.g. 12"
                 suffix={selectedUnit?.plural.toLowerCase() || "units"}
                 inputRef={quantityRef}
-                onSubmitEditing={() => (selectedUnit?.key === "kg" ? priceRef.current?.focus() : kgRef.current?.focus())}
+                onSubmitEditing={() => (selectedUnit?.key === "kg" ? gradeRef.current?.focus() : kgRef.current?.focus())}
               />
             </View>
 
@@ -246,7 +243,7 @@ export default function AddHarvestScreen() {
                   placeholder={selectedUnit?.defaultKg ? String(selectedUnit.defaultKg) : "Optional"}
                   suffix="kg / unit"
                   inputRef={kgRef}
-                  onSubmitEditing={() => priceRef.current?.focus()}
+                  onSubmitEditing={() => gradeRef.current?.focus()}
                 />
                 {!weightRequired && <Text style={styles.fieldHint}>Leave blank if the weight is unknown.</Text>}
               </View>
@@ -259,28 +256,10 @@ export default function AddHarvestScreen() {
               </View>
             )}
 
-            <View style={styles.field}>
-              <FieldLabel label={`Price per ${selectedUnit?.label.toLowerCase() || "unit"} (KES)`} required />
-              <NumericInput
-                value={pricePerUnit}
-                onChangeText={setPricePerUnit}
-                placeholder="e.g. 3500"
-                suffix="KES"
-                inputRef={priceRef}
-                onSubmitEditing={() => gradeRef.current?.focus()}
-              />
-            </View>
-
-            {totalRevenue > 0 && (
-              <View style={styles.calcRow}>
-                <Ionicons name="cash-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.calcText}>Revenue: {formatKES(totalRevenue)}</Text>
-              </View>
-            )}
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Grade, Buyer & Notes (optional)</Text>
+            <Text style={styles.sectionTitle}>Grade & Notes (optional)</Text>
 
             <View style={styles.field}>
               <FieldLabel label="Grade / Quality" />
@@ -290,20 +269,6 @@ export default function AddHarvestScreen() {
                 value={grade}
                 onChangeText={setGrade}
                 placeholder="e.g. Grade 1"
-                placeholderTextColor={COLORS.textMuted}
-                returnKeyType="next"
-                onSubmitEditing={() => buyerRef.current?.focus()}
-              />
-            </View>
-
-            <View style={styles.field}>
-              <FieldLabel label="Buyer Name" />
-              <TextInput
-                ref={buyerRef}
-                style={styles.input}
-                value={buyer}
-                onChangeText={setBuyer}
-                placeholder="e.g. Nakuru Traders Ltd"
                 placeholderTextColor={COLORS.textMuted}
                 returnKeyType="next"
                 onSubmitEditing={() => notesRef.current?.focus()}

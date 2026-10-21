@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CATEGORY_COLORS } from "@/constants/colors";
-import { formatDate, formatKES } from "@/lib/storage";
+import { formatDate, formatKES, getSeasonBlocks } from "@/lib/storage";
+import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
 import { getTemplate } from "@/constants/farmData";
 import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit } from "@/constants/cropTemplates";
 
@@ -34,9 +35,41 @@ export default function SeasonReportScreen() {
     plannedBudget,
     getCompletedActivityIds,
   } = useFarm();
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [salesLoadError, setSalesLoadError] = useState("");
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    let current = true;
+    const loadSales = async () => {
+      if (!activeFarm?.id || !activeSeason?.id) {
+        setSalesLoading(false);
+        return;
+      }
+      try {
+        const role = await getFarmRole(activeFarm.id);
+        if (!current) return;
+        setFarmRole(role);
+        if (["admin", "owner", "manager"].includes(role)) {
+          setSales(await getSales(activeFarm.id, activeSeason.id));
+        } else {
+          setSales([]);
+        }
+      } catch (error: any) {
+        if (current) setSalesLoadError(error?.message || "Sales ledger could not be loaded.");
+      } finally {
+        if (current) setSalesLoading(false);
+      }
+    };
+    setSalesLoading(true);
+    setSalesLoadError("");
+    loadSales();
+    return () => { current = false; };
+  }, [activeFarm?.id, activeSeason?.id]);
 
   if (!activeSeason) {
     return (
@@ -53,11 +86,44 @@ export default function SeasonReportScreen() {
     );
   }
 
+  if (salesLoading) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center" }]}>
+        <Text style={rpt.emptyText}>Loading sales and report data…</Text>
+      </View>
+    );
+  }
+
+  if (salesLoadError) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }]}>
+        <Text style={rpt.headerTitle}>Season Report</Text>
+        <Text style={rpt.emptyText}>Sales data could not be loaded: {salesLoadError}</Text>
+      </View>
+    );
+  }
+
+  if (!["admin", "owner", "manager"].includes(farmRole)) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }]}>
+        <Text style={rpt.headerTitle}>Season Report</Text>
+        <Text style={rpt.emptyText}>Financial reports are available to the farm owner and manager.</Text>
+      </View>
+    );
+  }
+
   const seasonCosts = costs.filter((c) => c.season_id === activeSeason.id);
   const seasonHarvest = harvestRecords.filter((r) => r.season_id === activeSeason.id);
   const seasonLogs = activityLogs.filter((l) => l.season_id === activeSeason.id);
 
-  const totalRevenue = seasonHarvest.reduce((s, r) => s + r.total_revenue_kes, 0);
+  const legacyHarvestRevenue = seasonHarvest
+    .filter((record) => !record.recorded_by)
+    .reduce((sum, record) => sum + (Number(record.total_revenue_kes) || 0), 0);
+  const recordedSales = sales.filter((sale) => sale.status === "recorded" || sale.status === "void_requested");
+  const pendingSales = sales.filter((sale) => sale.status === "pending_check" || sale.status === "discount_pending");
+  const pendingSalesValue = pendingSales.reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
+  const salesRevenue = recordedSales.reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
+  const totalRevenue = legacyHarvestRevenue + salesRevenue;
   const totalCosts = seasonCosts.reduce((s, c) => s + c.amount_kes, 0);
   const netPL = totalRevenue - totalCosts;
   const marginPct = totalRevenue > 0 ? (netPL / totalRevenue) * 100 : null;
@@ -68,17 +134,22 @@ export default function SeasonReportScreen() {
   const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
   const totalKg = seasonHarvest.reduce((s, r) => s + r.total_kg, 0);
   const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
-  const totalAcres = activeSeason.section_a.acres + activeSeason.section_b.acres;
+  const blocks = getSeasonBlocks(activeSeason);
+  const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
   const quantityPerAcre = unitTotals.length === 1 && totalAcres > 0
     ? `${(unitTotals[0].quantity / totalAcres).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unitTotals[0].plural.toLowerCase()}/acre`
     : unitTotals.length > 1 ? "Mixed units" : "—";
   const allWeightsKnown = seasonHarvest.length > 0 && seasonHarvest.every((record) => record.total_kg > 0);
   const kesPerKg = allWeightsKnown && totalKg > 0 ? formatKES(Math.round(totalRevenue / totalKg)) : "—";
 
-  const harvestA = seasonHarvest.filter((r) => r.section_id === "section-a");
-  const harvestB = seasonHarvest.filter((r) => r.section_id === "section-b");
-  const revenueA = harvestA.reduce((s, r) => s + r.total_revenue_kes, 0);
-  const revenueB = harvestB.reduce((s, r) => s + r.total_revenue_kes, 0);
+  const blockBreakdown = blocks.map((block) => {
+    const records = seasonHarvest.filter((record) => record.section_id === block.id);
+    const legacyRevenue = records.filter((record) => !record.recorded_by)
+      .reduce((sum, record) => sum + (Number(record.total_revenue_kes) || 0), 0);
+    const blockSales = recordedSales.filter((sale) => sale.block_id === block.id)
+      .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
+    return { block, records, revenue: legacyRevenue + blockSales };
+  });
 
   const completedIds = getCompletedActivityIds();
   const completedCount = completedIds.length;
@@ -133,6 +204,7 @@ export default function SeasonReportScreen() {
           </View>
           <View style={rpt.divider} />
           <StatRow label="Revenue" value={formatKES(totalRevenue)} />
+          <StatRow label="Sales awaiting review" value={`${pendingSales.length} · ${formatKES(pendingSalesValue)}`} />
           <StatRow label="Total Costs" value={formatKES(totalCosts)} />
           <StatRow label="Net P&L" value={formatKES(netPL)} valueColor={netPL >= 0 ? COLORS.primary : COLORS.red} />
         </View>
@@ -189,7 +261,7 @@ export default function SeasonReportScreen() {
 
         {/* Harvest Results */}
         <SectionHeader title="Harvest Results" />
-        {seasonHarvest.length === 0 ? (
+        {seasonHarvest.length === 0 && sales.length === 0 ? (
           <View style={rpt.emptyCard}><Ionicons name="basket-outline" size={28} color={COLORS.border} /><Text style={rpt.emptyText}>No harvest recorded yet</Text></View>
         ) : (
           <View style={rpt.card}>
@@ -205,17 +277,23 @@ export default function SeasonReportScreen() {
             <StatRow label="Revenue per kg" value={kesPerKg} />
             <View style={rpt.divider} />
             <View style={rpt.sectionSplit}>
-              <View style={rpt.splitItem}>
-                <Text style={rpt.splitLabel}>Sec A — {activeSeason.section_a.variety}</Text>
-                <Text style={rpt.splitBags}>{formatHarvestTotals(harvestA, cropMeta)}</Text>
-                <Text style={rpt.splitRevenue}>{formatKES(revenueA)}</Text>
-              </View>
-              <View style={rpt.splitDivider} />
-              <View style={rpt.splitItem}>
-                <Text style={rpt.splitLabel}>Sec B — {activeSeason.section_b.variety}</Text>
-                <Text style={rpt.splitBags}>{formatHarvestTotals(harvestB, cropMeta)}</Text>
-                <Text style={rpt.splitRevenue}>{formatKES(revenueB)}</Text>
-              </View>
+              {blockBreakdown.map(({ block, records, revenue }) => (
+                <View key={block.id} style={rpt.splitItem}>
+                  <Text style={rpt.splitLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
+                  <Text style={rpt.splitBags}>{formatHarvestTotals(records, cropMeta)}</Text>
+                  <Text style={rpt.splitRevenue}>{formatKES(revenue)}</Text>
+                </View>
+              ))}
+              {recordedSales.some((sale) => !sale.block_id) ? (
+                <View style={rpt.splitItem}>
+                  <Text style={rpt.splitLabel}>All blocks / unassigned</Text>
+                  <Text style={rpt.splitBags}>Sales</Text>
+                  <Text style={rpt.splitRevenue}>
+                    {formatKES(recordedSales.filter((sale) => !sale.block_id)
+                      .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0))}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         )}
@@ -238,22 +316,19 @@ export default function SeasonReportScreen() {
           <StatRow label="Logs Recorded" value={String(seasonLogs.length)} />
         </View>
 
-        {/* Sections */}
-        <SectionHeader title="Section Details" />
+        {/* Planting blocks */}
+        <SectionHeader title="Planting Block Details" />
         <View style={rpt.card}>
-          {[
-            { label: "Section A", data: activeSeason.section_a },
-            { label: "Section B", data: activeSeason.section_b },
-          ].map(({ label, data }, i) => (
-            <View key={label}>
-              {i > 0 && activeSeason.section_b.acres > 0 && <View style={rpt.divider} />}
-              <Text style={rpt.sectionLabel}>{label} — {data.variety}</Text>
-               <StatRow label={`${cropMeta.plantingVerb} Date`} value={formatDate(data.planting_date)} />
-              <StatRow label="Area" value={`${data.acres} acres`} />
+          {blocks.map((block, i) => (
+            <View key={block.id}>
+              {i > 0 && <View style={rpt.divider} />}
+              <Text style={rpt.sectionLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
+              <StatRow label={`${cropMeta.plantingVerb} Date`} value={formatDate(block.planting_date)} />
+              <StatRow label="Area" value={`${block.acres} acres`} />
               <StatRow
-                 label={cropMeta.riskLabel}
-                value={data.blight_risk}
-                valueColor={data.blight_risk === "HIGH" ? COLORS.red : data.blight_risk === "MEDIUM" ? COLORS.amber : COLORS.primary}
+                label={cropMeta.riskLabel}
+                value={block.blight_risk || "LOW"}
+                valueColor={block.blight_risk === "HIGH" ? COLORS.red : block.blight_risk === "MEDIUM" ? COLORS.amber : COLORS.primary}
               />
             </View>
           ))}

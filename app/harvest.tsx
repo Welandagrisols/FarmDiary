@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, RefreshControl,
 } from "react-native";
@@ -7,15 +7,18 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatKES, formatDate } from "@/lib/storage";
+import { formatDate, getSeasonBlockName, getSeasonBlocks, SeasonRecord } from "@/lib/storage";
+import { getFarmRole } from "@/lib/sales-storage";
 import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit, unitFor } from "@/constants/cropTemplates";
 import * as Haptics from "expo-haptics";
 
-function SectionBadge({ sectionId }: { sectionId: string }) {
-  const isA = sectionId === "section-a";
+function SectionBadge({ sectionId, season }: { sectionId: string; season: SeasonRecord | null }) {
+  const blockIndex = getSeasonBlocks(season).findIndex((block) => block.id === sectionId);
+  const isPrimary = blockIndex < 0 || blockIndex % 2 === 0;
   return (
-    <View style={[styles.badge, { backgroundColor: isA ? COLORS.primarySurface : COLORS.amberLight }]}>
-      <Text style={[styles.badgeText, { color: isA ? COLORS.primary : COLORS.amberDark }]}>        {isA ? "Section A" : "Section B"}
+    <View style={[styles.badge, { backgroundColor: isPrimary ? COLORS.primarySurface : COLORS.amberLight }]}>
+      <Text style={[styles.badgeText, { color: isPrimary ? COLORS.primary : COLORS.amberDark }]}>
+        {getSeasonBlockName(season, sectionId)}
       </Text>
     </View>
   );
@@ -23,12 +26,22 @@ function SectionBadge({ sectionId }: { sectionId: string }) {
 
 export default function HarvestScreen() {
   const insets = useSafeAreaInsets();
-  const { harvestRecords, removeHarvestRecord, refresh, activeSeason } = useFarm();
+  const { harvestRecords, removeHarvestRecord, refresh, activeSeason, activeFarm } = useFarm();
   const [refreshing, setRefreshing] = useState(false);
+  const [canManageHarvest, setCanManageHarvest] = useState(false);
   const cropMeta = getCropMeta(activeSeason?.template_id);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    let current = true;
+    if (!activeFarm?.id) return () => { current = false; };
+    getFarmRole(activeFarm.id)
+      .then((role) => current && setCanManageHarvest(["admin", "owner", "manager"].includes(role)))
+      .catch(() => current && setCanManageHarvest(false));
+    return () => { current = false; };
+  }, [activeFarm?.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -50,16 +63,18 @@ export default function HarvestScreen() {
   const sorted = (activeSeason ? harvestRecords.filter((record) => record.season_id === activeSeason.id) : [])
     .sort((a, b) => new Date(b.harvest_date).getTime() - new Date(a.harvest_date).getTime());
   const totalKg = sorted.reduce((s, r) => s + r.total_kg, 0);
-  const totalRevenue = sorted.reduce((s, r) => s + r.total_revenue_kes, 0);
-  const totalAcres = activeSeason ? activeSeason.section_a.acres + activeSeason.section_b.acres : 0;
+  const blocks = getSeasonBlocks(activeSeason);
+  const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
   const unitTotals = harvestTotalsByUnit(sorted, cropMeta);
   const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
   const allWeightsKnown = sorted.length > 0 && sorted.every((record) => record.total_kg > 0);
-  const kesPerKg = allWeightsKnown && totalKg > 0 ? Math.round(totalRevenue / totalKg) : null;
-  const sectionA = sorted.filter((r) => r.section_id === "section-a");
-  const sectionB = sorted.filter((r) => r.section_id === "section-b");
-  const revenueA = sectionA.reduce((s, r) => s + r.total_revenue_kes, 0);
-  const revenueB = sectionB.reduce((s, r) => s + r.total_revenue_kes, 0);
+  const blockBreakdown = blocks.map((block) => {
+    const records = sorted.filter((record) => record.section_id === block.id);
+    return {
+      block,
+      records,
+    };
+  }).filter((item) => item.records.length > 0);
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -82,8 +97,10 @@ export default function HarvestScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryTop}>
             <View style={styles.summaryMain}>
-              <Text style={styles.summaryLabel}>{activeSeason?.season_name || "Season"} · Total Revenue</Text>
-              <Text style={styles.summaryRevenue}>{formatKES(totalRevenue)}</Text>
+              <Text style={styles.summaryLabel}>{activeSeason?.season_name || "Season"} · Total Harvest</Text>
+              <Text style={styles.summaryRevenue}>
+                {totalKg > 0 ? `${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : formatHarvestTotals(sorted, cropMeta)}
+              </Text>
               <Text style={styles.summaryMeta}>
                 {formatHarvestTotals(sorted, cropMeta)}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
               </Text>
@@ -103,8 +120,8 @@ export default function HarvestScreen() {
               </View>
               <View style={styles.yieldDivider} />
               <View style={styles.yieldMetric}>
-                <Text style={styles.yieldValue}>{kesPerKg != null ? `${kesPerKg.toLocaleString()}` : "—"}</Text>
-                <Text style={styles.yieldLabel}>{allWeightsKnown ? "KES/kg" : "KES/kg*"}</Text>
+                <Text style={styles.yieldValue}>{totalKg > 0 ? totalKg.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}</Text>
+                <Text style={styles.yieldLabel}>Total kg</Text>
               </View>
               <View style={styles.yieldDivider} />
               <View style={styles.yieldMetric}>
@@ -115,19 +132,19 @@ export default function HarvestScreen() {
           )}
           {sorted.length > 0 && !allWeightsKnown && <Text style={styles.summaryMeta}>*Requires weight for every harvest record</Text>}
 
-          {(sectionA.length > 0 || sectionB.length > 0) && (
+          {blockBreakdown.length > 0 && (
             <View style={styles.sectionSplit}>
-              <View style={styles.sectionSplitItem}>
-                <Text style={styles.sectionSplitLabel}>Section A{activeSeason?.section_a.variety ? ` (${activeSeason.section_a.variety})` : ""}</Text>
-                <Text style={styles.sectionSplitValue}>{formatHarvestTotals(sectionA, cropMeta)}</Text>
-                <Text style={styles.sectionSplitRevenue}>{formatKES(revenueA)}</Text>
-              </View>
-              <View style={styles.splitDivider} />
-              <View style={styles.sectionSplitItem}>
-                <Text style={styles.sectionSplitLabel}>Section B{activeSeason?.section_b.variety ? ` (${activeSeason.section_b.variety})` : ""}</Text>
-                <Text style={styles.sectionSplitValue}>{formatHarvestTotals(sectionB, cropMeta)}</Text>
-                <Text style={styles.sectionSplitRevenue}>{formatKES(revenueB)}</Text>
-              </View>
+              {blockBreakdown.map(({ block, records }) => (
+                <View key={block.id} style={styles.sectionSplitItem}>
+                  <Text style={styles.sectionSplitLabel}>
+                    {block.name}{block.variety ? ` (${block.variety})` : ""}
+                  </Text>
+                  <Text style={styles.sectionSplitValue}>{formatHarvestTotals(records, cropMeta)}</Text>
+                  <Text style={styles.sectionSplitRevenue}>
+                    {records.reduce((sum, record) => sum + (Number(record.total_kg) || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg
+                  </Text>
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -151,15 +168,19 @@ export default function HarvestScreen() {
               <Pressable
                 key={record.id}
                 style={({ pressed }) => [styles.recordCard, pressed && { opacity: 0.88 }]}
-                onLongPress={() => handleDelete(record.id, `${record.bags} ${unit.plural.toLowerCase()} on ${formatDate(record.harvest_date)}`)}
+                onLongPress={canManageHarvest
+                  ? () => handleDelete(record.id, `${record.bags} ${unit.plural.toLowerCase()} on ${formatDate(record.harvest_date)}`)
+                  : undefined}
               >
                 <View style={styles.recordTop}>
                   <View style={styles.recordLeft}>
                     <Text style={styles.recordDate}>{formatDate(record.harvest_date)}</Text>
-                    <SectionBadge sectionId={record.section_id} />
+                    <SectionBadge sectionId={record.section_id} season={activeSeason} />
                   </View>
                   <View style={styles.recordRight}>
-                    <Text style={styles.recordRevenue}>{formatKES(record.total_revenue_kes)}</Text>
+                    <Text style={styles.recordRevenue}>
+                      {record.total_kg > 0 ? `${record.total_kg.toLocaleString()} kg` : `${record.bags} ${unit.plural.toLowerCase()}`}
+                    </Text>
                   </View>
                 </View>
 
@@ -176,15 +197,17 @@ export default function HarvestScreen() {
                   ) : null}
                   <View style={styles.recordStat}>
                     <Ionicons name="pricetag-outline" size={13} color={COLORS.textMuted} />
-                    <Text style={styles.recordStatText}>{formatKES(record.price_per_bag_kes)} / {unit.label.toLowerCase()}</Text>
                   </View>
                   {record.grade ? <Text style={styles.recordStatText}>Grade: {record.grade}</Text> : null}
                   {record.buyer && (
                     <View style={styles.recordStat}>
                       <Ionicons name="person-outline" size={13} color={COLORS.textMuted} />
-                      <Text style={styles.recordStatText}>{record.buyer}</Text>
+                      <Text style={styles.recordStatText}>Legacy buyer: {record.buyer}</Text>
                     </View>
                   )}
+                  {record.recorded_by_email ? (
+                    <Text style={styles.recordStatText}>Recorded by {record.recorded_by_email}</Text>
+                  ) : null}
                   {record.notes && (<Text style={styles.recordNotes}>{record.notes}</Text>)}
                 </View>
 
@@ -224,8 +247,8 @@ const styles = StyleSheet.create({
   yieldDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)" },
   yieldValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.white },
   yieldLabel: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.white, opacity: 0.7 },
-  sectionSplit: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" },
-  sectionSplitItem: { flex: 1, padding: 12, gap: 2 },
+  sectionSplit: { flexDirection: "row", flexWrap: "wrap", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" },
+  sectionSplitItem: { flexGrow: 1, flexBasis: "45%", padding: 12, gap: 2 },
   splitDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)" },
   sectionSplitLabel: { fontFamily: "DMSans_400Regular", fontSize: 11, color: COLORS.white, opacity: 0.75 },
   sectionSplitValue: { fontFamily: "DMSans_700Bold", fontSize: 16, color: COLORS.white },

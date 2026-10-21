@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, Modal, ScrollView, Pressable,
 } from "react-native";
@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "@/constants/colors";
 import { ActivityLog, formatDate, formatKES, getSeasonBlockName } from "@/lib/storage";
+import { getFarmRole } from "@/lib/sales-storage";
 import { useFarm } from "@/context/FarmContext";
 
 interface Props {
@@ -24,13 +25,26 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props) {
-  const { activeSeason } = useFarm();
+  const { activeFarm, activeSeason } = useFarm();
+  const [canManageActivity, setCanManageActivity] = useState(false);
   const sectionLabel = getSeasonBlockName(activeSeason, log.section_id);
   const sectionColor = COLORS.primary;
   const workerDays = (Number(log.num_workers) || 0) * (Number(log.days_worked) || 0);
   const quantityPerWorkerDay = workerDays > 0 && Number(log.work_quantity) > 0
     ? Number(log.work_quantity) / workerDays
     : null;
+
+  useEffect(() => {
+    let current = true;
+    if (!activeFarm?.id) {
+      setCanManageActivity(false);
+      return () => { current = false; };
+    }
+    getFarmRole(activeFarm.id)
+      .then((role) => current && setCanManageActivity(["admin", "owner", "manager"].includes(role)))
+      .catch(() => current && setCanManageActivity(false));
+    return () => { current = false; };
+  }, [activeFarm?.id]);
 
   const isQuickComplete =
     log.total_cost_kes === 0 &&
@@ -130,6 +144,15 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
                 </View>
               ) : null}
 
+              {log.recorded_by_email ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Entry accountability</Text>
+                  <View style={styles.detailCard}>
+                    <InfoRow label="Entered by" value={log.recorded_by_email} />
+                  </View>
+                </View>
+              ) : null}
+
               {(log.products_used ?? []).length > 0 && (
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Products Used</Text>
@@ -188,12 +211,12 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
         </ScrollView>
 
         <View style={styles.footer}>
-          {onDelete && (
+          {canManageActivity && onDelete && (
             <Pressable style={styles.deleteBtn} onPress={onDelete}>
               <Ionicons name="trash-outline" size={18} color={COLORS.red} />
             </Pressable>
           )}
-          <Pressable
+          {canManageActivity && <Pressable
             style={styles.editBtn}
             onPress={() => {
               onClose();
@@ -202,7 +225,7 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
           >
             <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
             <Text style={styles.editBtnText}>Edit Record</Text>
-          </Pressable>
+          </Pressable>}
           <Pressable
             style={styles.logAgainBtn}
             onPress={() => {

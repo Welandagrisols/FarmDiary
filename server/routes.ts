@@ -169,6 +169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           role,
         });
     if (membershipError) {
+      await supabaseAdmin.from("user_profiles").delete().eq("id", data.user.id);
       await supabaseAdmin.auth.admin.deleteUser(data.user.id);
       res.status(400).json({ message: membershipError.message });
       return;
@@ -182,6 +183,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userIdParam = req.params.userId;
     const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
     if (!userId) { res.status(400).json({ message: "User ID required" }); return; }
+    if (userId === (req as any).farmUser?.id) {
+      res.status(400).json({ message: "You cannot remove your own farm access" });
+      return;
+    }
 
     const { data: member, error: lookupError } = await supabaseAdmin
       .from("farm_memberships")

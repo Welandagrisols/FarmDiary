@@ -104,6 +104,7 @@ export interface ActivityLog {
   is_historical: boolean;
   notes: string | null;
   recorded_by?: string | null;
+  recorded_by_email?: string | null;
   created_at: string;
 }
 
@@ -170,6 +171,8 @@ export interface ObservationRecord {
   severity: string;
   action_taken: string | null;
   is_historical: boolean;
+  recorded_by?: string | null;
+  recorded_by_email?: string | null;
   created_at: string;
 }
 
@@ -188,6 +191,8 @@ export interface HarvestRecord {
   grade?: string | null;
   buyer: string | null;
   notes: string | null;
+  recorded_by?: string | null;
+  recorded_by_email?: string | null;
   created_at: string;
 }
 
@@ -722,6 +727,7 @@ export async function addActivityLog(
     work_quantity: entry.work_quantity ?? null,
     work_unit: entry.work_unit ?? null,
     recorded_by: entry.recorded_by ?? session?.user?.id ?? null,
+    recorded_by_email: entry.recorded_by_email ?? session?.user?.email ?? null,
     id: genId(),
     created_at: new Date().toISOString(),
   };
@@ -737,7 +743,14 @@ export async function addActivityLog(
 export async function addFieldObservation(
   entry: Omit<ObservationRecord, "id" | "created_at">
 ): Promise<ObservationRecord> {
-  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data: { session } } = await supabase.auth.getSession();
+  const record = {
+    ...entry,
+    recorded_by: entry.recorded_by ?? session?.user?.id ?? null,
+    recorded_by_email: entry.recorded_by_email ?? session?.user?.email ?? null,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
     .from("observations")
     .insert(record)
@@ -750,7 +763,14 @@ export async function addFieldObservation(
 export async function addHarvestRecord(
   entry: Omit<HarvestRecord, "id" | "created_at">
 ): Promise<HarvestRecord> {
-  const record = { ...entry, id: genId(), created_at: new Date().toISOString() };
+  const { data: { session } } = await supabase.auth.getSession();
+  const record = {
+    ...entry,
+    recorded_by: entry.recorded_by ?? session?.user?.id ?? null,
+    recorded_by_email: entry.recorded_by_email ?? session?.user?.email ?? null,
+    id: genId(),
+    created_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
     .from("harvest_records")
     .insert(record)

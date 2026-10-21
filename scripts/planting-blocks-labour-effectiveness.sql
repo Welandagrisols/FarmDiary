@@ -10,7 +10,8 @@ ALTER TABLE public.activity_logs
   ADD COLUMN IF NOT EXISTS days_worked NUMERIC NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS work_quantity NUMERIC,
   ADD COLUMN IF NOT EXISTS work_unit TEXT,
-  ADD COLUMN IF NOT EXISTS recorded_by UUID;
+  ADD COLUMN IF NOT EXISTS recorded_by UUID,
+  ADD COLUMN IF NOT EXISTS recorded_by_email TEXT;
 
 CREATE INDEX IF NOT EXISTS activity_logs_recorded_by_idx
   ON public.activity_logs (recorded_by);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -21,7 +21,9 @@ import {
   getDaysUntil,
   formatKES,
   formatDate,
+  getSeasonBlocks,
 } from "@/lib/storage";
+import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
 
 function getUrgencyColor(daysUntil: number) {
   if (daysUntil <= 0) return COLORS.red;
@@ -66,10 +68,43 @@ export default function DashboardScreen() {
   } = useFarm();
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
+  const [salesLoadError, setSalesLoadError] = useState("");
+  const [salesRefreshToken, setSalesRefreshToken] = useState(0);
+
+  useEffect(() => {
+    let current = true;
+    const loadSales = async () => {
+      if (!activeFarm?.id || !activeSeason?.id) {
+        setSales([]);
+        setFarmRole("none");
+        return;
+      }
+      try {
+        const role = await getFarmRole(activeFarm.id);
+        if (!current) return;
+        setFarmRole(role);
+        if (["admin", "owner", "manager", "seller"].includes(role)) {
+          setSales(await getSales(activeFarm.id, activeSeason.id));
+        } else {
+          setSales([]);
+        }
+        setSalesLoadError("");
+      } catch (error: any) {
+        if (!current) return;
+        setSales([]);
+        setSalesLoadError(error?.message || "Sales data could not be loaded.");
+      }
+    };
+    loadSales();
+    return () => { current = false; };
+  }, [activeFarm?.id, activeSeason?.id, salesRefreshToken]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
+    setSalesRefreshToken((value) => value + 1);
     setRefreshing(false);
   }, [refresh]);
 
@@ -81,8 +116,15 @@ export default function DashboardScreen() {
   const cropMeta = getCropMeta(activeSeason?.template_id);
   const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
   const budgetPercent = plannedBudget > 0 ? Math.min((totalSpent / plannedBudget) * 100, 100) : null;
-  const totalAcres = activeSeason ? activeSeason.section_a.acres + (activeSeason.section_b.acres || 0) : 0;
-  const totalRevenue = seasonHarvest.reduce((sum, r) => sum + r.total_revenue_kes, 0);
+  const blocks = getSeasonBlocks(activeSeason);
+  const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
+  const legacyHarvestRevenue = seasonHarvest.filter((record) => !record.recorded_by)
+    .reduce((sum, record) => sum + (Number(record.total_revenue_kes) || 0), 0);
+  const salesRevenue = sales
+    .filter((sale) => sale.status === "recorded" || sale.status === "void_requested")
+    .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
+  const canViewFinancials = ["admin", "owner", "manager"].includes(farmRole);
+  const totalRevenue = canViewFinancials ? legacyHarvestRevenue + salesRevenue : salesRevenue;
   const netProfit = totalRevenue - totalSpent;
 
   const lowStockItems = inventory.filter((item) => {
@@ -93,37 +135,21 @@ export default function DashboardScreen() {
 
   const hasOverdue = currentSchedule.some((activity) => {
     if (completedIds.includes(activity.id)) return false;
-    const daysUntilA = getDaysUntil(activity.plannedDateA);
-    return daysUntilA < -3;
+    const plannedDate = activity.plannedDate || activity.plannedDateA || activity.plannedDateB;
+    return plannedDate ? getDaysUntil(plannedDate) < -3 : false;
   });
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const sections = activeSeason
-    ? [
-        {
-          id: "section-a",
-          label: "Section A",
-          variety: activeSeason.section_a.variety,
-          acres: activeSeason.section_a.acres,
-          planting_date: activeSeason.section_a.planting_date,
-          blight_risk: activeSeason.section_a.blight_risk,
-        },
-        ...(activeSeason.section_b.acres > 0
-          ? [
-              {
-                id: "section-b",
-                label: "Section B",
-                variety: activeSeason.section_b.variety,
-                acres: activeSeason.section_b.acres,
-                planting_date: activeSeason.section_b.planting_date,
-                blight_risk: activeSeason.section_b.blight_risk,
-              },
-            ]
-          : []),
-      ]
-    : [];
+  const sections = blocks.map((block) => ({
+    id: block.id,
+    label: block.name,
+    variety: block.variety,
+    acres: block.acres,
+    planting_date: block.planting_date,
+    blight_risk: block.blight_risk,
+  }));
 
   const seasonStatusLabel = activeSeason?.status === "closed"
     ? "Closed"
@@ -190,12 +216,14 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.summaryGrid}>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
-                {formatKES(netProfit)}
-              </Text>
-              <Text style={styles.summaryText}>Net profit</Text>
-            </View>
+            {canViewFinancials ? (
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                  {formatKES(netProfit)}
+                </Text>
+                <Text style={styles.summaryText}>Net profit</Text>
+              </View>
+            ) : null}
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>{totalAcres}</Text>
               <Text style={styles.summaryText}>Planted acres</Text>
@@ -248,16 +276,27 @@ export default function DashboardScreen() {
               <Text style={styles.harvestText}>Harvest quantity</Text>
             </View>
             <View style={styles.harvestItem}>
-              <Text style={styles.harvestValue}>{formatKES(totalRevenue)}</Text>
-              <Text style={styles.harvestText}>Revenue</Text>
-            </View>
-            <View style={styles.harvestItem}>
-              <Text style={[styles.harvestValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
-                {formatKES(netProfit)}
+              <Text style={styles.harvestValue}>
+                {canViewFinancials || farmRole === "seller" ? formatKES(totalRevenue) : "—"}
               </Text>
-              <Text style={styles.harvestText}>Net</Text>
+              <Text style={styles.harvestText}>
+                {canViewFinancials ? "Sales revenue" : farmRole === "seller" ? "My checked sales" : "Sales restricted"}
+              </Text>
             </View>
+            {canViewFinancials ? (
+              <View style={styles.harvestItem}>
+                <Text style={[styles.harvestValue, netProfit >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                  {formatKES(netProfit)}
+                </Text>
+                <Text style={styles.harvestText}>Net</Text>
+              </View>
+            ) : null}
           </View>
+          {salesLoadError ? (
+            <Text style={{ color: COLORS.red, fontFamily: "DMSans_400Regular", fontSize: 11, marginTop: 8 }}>
+              Sales ledger unavailable: {salesLoadError}
+            </Text>
+          ) : null}
         </Pressable>
       )}
 

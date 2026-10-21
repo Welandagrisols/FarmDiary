@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   is_historical BOOLEAN NOT NULL DEFAULT false,
   notes TEXT,
   recorded_by UUID,
+  recorded_by_email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -120,6 +121,8 @@ CREATE TABLE IF NOT EXISTS observations (
   severity TEXT NOT NULL,
   action_taken TEXT,
   is_historical BOOLEAN NOT NULL DEFAULT false,
+  recorded_by UUID,
+  recorded_by_email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -138,6 +141,8 @@ CREATE TABLE IF NOT EXISTS harvest_records (
   grade TEXT,
   buyer TEXT,
   notes TEXT,
+  recorded_by UUID,
+  recorded_by_email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -155,6 +160,7 @@ CREATE TABLE IF NOT EXISTS sales (
   receipt_number TEXT NOT NULL UNIQUE,
   farm_id TEXT NOT NULL REFERENCES farms(id),
   season_id TEXT NOT NULL REFERENCES seasons(id),
+  block_id TEXT,
   seller_id UUID NOT NULL REFERENCES auth.users(id),
   seller_email TEXT NOT NULL,
   product_name TEXT NOT NULL,
@@ -167,15 +173,18 @@ CREATE TABLE IF NOT EXISTS sales (
   payment_reference TEXT,
   status TEXT NOT NULL DEFAULT 'pending_check'
     CHECK (status IN ('pending_check', 'discount_pending', 'recorded', 'void_requested', 'voided')),
+  check_note TEXT,
   checked_by UUID REFERENCES auth.users(id),
   checked_by_email TEXT,
   checked_at TIMESTAMPTZ,
   discount_approved_by UUID REFERENCES auth.users(id),
   discount_approved_by_email TEXT,
   discount_approved_at TIMESTAMPTZ,
+  discount_approval_reason TEXT,
   void_requested_by UUID REFERENCES auth.users(id),
   void_requested_by_email TEXT,
   void_requested_at TIMESTAMPTZ,
+  void_request_reason TEXT,
   voided_by UUID REFERENCES auth.users(id),
   voided_by_email TEXT,
   voided_at TIMESTAMPTZ,

@@ -8,6 +8,7 @@ export interface SaleRecord {
   receipt_number: string;
   farm_id: string;
   season_id: string;
+  block_id: string | null;
   seller_id: string;
   seller_email: string;
   product_name: string;
@@ -19,13 +20,16 @@ export interface SaleRecord {
   payment_method: "mpesa" | "cash" | "bank";
   payment_reference: string | null;
   status: SaleStatus;
+  check_note: string | null;
   checked_by: string | null;
   checked_by_email: string | null;
   checked_at: string | null;
   discount_approved_by: string | null;
   discount_approved_by_email: string | null;
   discount_approved_at: string | null;
+  discount_approval_reason: string | null;
   void_requested_by_email: string | null;
+  void_request_reason: string | null;
   voided_by_email: string | null;
   void_reason: string | null;
   created_at: string;
@@ -41,6 +45,18 @@ export interface StockLossRecord {
   reason: string;
   recorded_by: string;
   created_at: string;
+}
+
+export interface SeasonStockTotals {
+  harvested_kg: number;
+  sold_kg: number;
+  lost_kg: number;
+  issued_kg: number;
+  today_harvested_kg: number;
+  today_sold_kg: number;
+  today_lost_kg: number;
+  today_sales_count: number;
+  today_sales_kes: number;
 }
 
 export interface StockCountRecord {
@@ -75,6 +91,13 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 async function getSignedInUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) throw error;
@@ -102,6 +125,7 @@ export async function getSales(farmId: string, seasonId: string): Promise<SaleRe
 export async function createSale(input: {
   farmId: string;
   seasonId: string;
+  blockId: string | null;
   productName: string;
   buyerName: string;
   quantityKg: number;
@@ -115,9 +139,10 @@ export async function createSale(input: {
   const status: SaleStatus = input.discountKes > 0 ? "discount_pending" : "pending_check";
   const { data, error } = await supabase.from("sales").insert({
     id: makeId("sale"),
-    receipt_number: `FD-${Date.now().toString(36).toUpperCase()}`,
+    receipt_number: `FD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     farm_id: input.farmId,
     season_id: input.seasonId,
+    block_id: input.blockId,
     seller_id: user.id,
     seller_email: user.email || "Farm staff",
     product_name: input.productName,
@@ -174,6 +199,32 @@ export async function getStockLosses(farmId: string, seasonId: string): Promise<
   return (data || []) as StockLossRecord[];
 }
 
+export async function getSeasonStockTotals(
+  farmId: string,
+  seasonId: string,
+  today: string,
+): Promise<SeasonStockTotals> {
+  const { data, error } = await supabase.rpc("get_season_stock_totals", {
+    p_farm_id: farmId,
+    p_season_id: seasonId,
+    p_today: today,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error("Stock totals were not returned.");
+  return {
+    harvested_kg: Number(row.harvested_kg) || 0,
+    sold_kg: Number(row.sold_kg) || 0,
+    lost_kg: Number(row.lost_kg) || 0,
+    issued_kg: Number(row.issued_kg) || 0,
+    today_harvested_kg: Number(row.today_harvested_kg) || 0,
+    today_sold_kg: Number(row.today_sold_kg) || 0,
+    today_lost_kg: Number(row.today_lost_kg) || 0,
+    today_sales_count: Number(row.today_sales_count) || 0,
+    today_sales_kes: Number(row.today_sales_kes) || 0,
+  };
+}
+
 export async function recordStockLoss(input: {
   farmId: string;
   seasonId: string;
@@ -187,6 +238,7 @@ export async function recordStockLoss(input: {
     farm_id: input.farmId,
     season_id: input.seasonId,
     product_name: input.productName,
+    loss_date: localDateKey(),
     quantity_kg: input.quantityKg,
     reason: input.reason.trim(),
     recorded_by: user.id,
@@ -214,6 +266,7 @@ export async function recordStockCount(input: {
     farm_id: input.farmId,
     season_id: input.seasonId,
     product_name: input.productName,
+    count_date: localDateKey(),
     quantity_kg: input.quantityKg,
     counted_by: user.id,
   });

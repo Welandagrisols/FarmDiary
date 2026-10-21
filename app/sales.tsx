@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import COLORS from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
-import { formatKES } from "@/lib/storage";
+import { formatKES, getSeasonBlockName, getSeasonBlocks } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import {
   approveSaleDiscount,
@@ -56,7 +56,13 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "bank", label: "Bank" },
 ];
 
-const todayKey = () => new Intl.DateTimeFormat("en-CA").format(new Date());
+const localDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const todayKey = () => localDateKey(new Date());
 
 function roleLabel(role: FarmRole) {
   return role === "none" ? "No access" : role === "admin" ? "Admin" : role[0].toUpperCase() + role.slice(1);
@@ -93,6 +99,7 @@ export default function SalesScreen() {
   const [discount, setDiscount] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mpesa");
   const [paymentReference, setPaymentReference] = useState("");
+  const [saleBlockId, setSaleBlockId] = useState<string | null>(null);
 
   const [lossQuantity, setLossQuantity] = useState("");
   const [lossReason, setLossReason] = useState("");
@@ -152,12 +159,19 @@ export default function SalesScreen() {
   const total = subtotal - discountValue;
 
   const todaySales = useMemo(
-    () => sales.filter((sale) => sale.created_at.slice(0, 10) === todayKey()),
+    () => sales.filter((sale) => localDateKey(new Date(sale.created_at)) === todayKey()),
     [sales],
   );
   const seasonHarvestKg = useMemo(
     () => harvestRecords
       .filter((record) => record.farm_id === activeFarm?.id && record.season_id === seasonId)
+      .reduce((sum, record) => sum + (Number(record.total_kg) || 0), 0),
+    [harvestRecords, activeFarm?.id, seasonId],
+  );
+  const todayHarvestKg = useMemo(
+    () => harvestRecords
+      .filter((record) => record.farm_id === activeFarm?.id && record.season_id === seasonId
+        && localDateKey(new Date(record.harvest_date)) === todayKey())
       .reduce((sum, record) => sum + (Number(record.total_kg) || 0), 0),
     [harvestRecords, activeFarm?.id, seasonId],
   );
@@ -168,6 +182,11 @@ export default function SalesScreen() {
   );
   const lostKg = useMemo(
     () => losses.reduce((sum, loss) => sum + (Number(loss.quantity_kg) || 0), 0),
+    [losses],
+  );
+  const todayLostKg = useMemo(
+    () => losses.filter((loss) => loss.loss_date === todayKey())
+      .reduce((sum, loss) => sum + (Number(loss.quantity_kg) || 0), 0),
     [losses],
   );
   const issuedKg = useMemo(
@@ -204,6 +223,7 @@ export default function SalesScreen() {
       const sale = await createSale({
         farmId: activeFarm.id,
         seasonId,
+        blockId: saleBlockId,
         productName,
         buyerName,
         quantityKg: qty,
@@ -250,14 +270,16 @@ export default function SalesScreen() {
     }
   };
 
-  const runStockAction = async (action: () => Promise<void>, successMessage: string) => {
+  const runStockAction = async (action: () => Promise<void>, successMessage: string): Promise<boolean> => {
     setSaving(true);
     try {
       await action();
       await load();
       Alert.alert("Saved", successMessage);
+      return true;
     } catch (error: any) {
       Alert.alert("Could not save stock record", error?.message || "Try again.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -270,11 +292,13 @@ export default function SalesScreen() {
       Alert.alert("Complete loss details", "Enter a positive quantity and explain the loss.");
       return;
     }
-    await runStockAction(() => recordStockLoss({
+    const saved = await runStockAction(() => recordStockLoss({
       farmId: activeFarm.id!, seasonId, productName, quantityKg: qty, reason: lossReason,
     }), "Loss added to the stock ledger.");
-    setLossQuantity("");
-    setLossReason("");
+    if (saved) {
+      setLossQuantity("");
+      setLossReason("");
+    }
   };
 
   const handleRecordCount = async () => {
@@ -284,10 +308,10 @@ export default function SalesScreen() {
       Alert.alert("Check stock count", "Enter the physical quantity in kg.");
       return;
     }
-    await runStockAction(() => recordStockCount({
+    const saved = await runStockAction(() => recordStockCount({
       farmId: activeFarm.id!, seasonId, productName, quantityKg: qty,
     }), "Count saved. A different team member must confirm it.");
-    setCountQuantity("");
+    if (saved) setCountQuantity("");
   };
 
   const handleRequestIssue = async () => {
@@ -297,11 +321,13 @@ export default function SalesScreen() {
       Alert.alert("Complete issue details", "Enter a positive quantity and the reason for issuing stock.");
       return;
     }
-    await runStockAction(() => requestStockIssue({
+    const saved = await runStockAction(() => requestStockIssue({
       farmId: activeFarm.id!, seasonId, productName, quantityKg: qty, purpose: issuePurpose,
     }), "Issue request sent for manager approval.");
-    setIssueQuantity("");
-    setIssuePurpose("");
+    if (saved) {
+      setIssueQuantity("");
+      setIssuePurpose("");
+    }
   };
 
   if (loading) {
@@ -376,6 +402,24 @@ export default function SalesScreen() {
               <Text style={styles.helperTextLeft}>
                 Each entry is linked to the signed-in seller. Discounts wait for manager approval; every sale needs a separate checker.
               </Text>
+              <Text style={styles.fieldLabel}>Source planting block</Text>
+              <View style={styles.chipRow}>
+                <Pressable
+                  style={[styles.chip, saleBlockId === null && styles.chipActive]}
+                  onPress={() => setSaleBlockId(null)}
+                >
+                  <Text style={[styles.chipText, saleBlockId === null && styles.chipTextActive]}>All blocks</Text>
+                </Pressable>
+                {getSeasonBlocks(activeSeason).map((block) => (
+                  <Pressable
+                    key={block.id}
+                    style={[styles.chip, saleBlockId === block.id && styles.chipActive]}
+                    onPress={() => setSaleBlockId(block.id)}
+                  >
+                    <Text style={[styles.chipText, saleBlockId === block.id && styles.chipTextActive]}>{block.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <Text style={styles.fieldLabel}>Buyer</Text>
               <TextInput style={styles.input} value={buyerName} onChangeText={setBuyerName} placeholder="Buyer name" placeholderTextColor={COLORS.textMuted} />
               <View style={styles.row}>
@@ -428,7 +472,7 @@ export default function SalesScreen() {
             </View>
             {sales.length ? sales.map((sale) => {
               const isOwnSale = sale.seller_id === currentUserId;
-              const hasDiscountApproval = Boolean((sale as any).discount_approved_at);
+              const hasDiscountApproval = Boolean(sale.discount_approved_at);
               const checkedAt = sale.checked_at;
               return (
                 <View key={sale.id} style={styles.saleCard}>
@@ -436,6 +480,7 @@ export default function SalesScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.saleBuyer}>{sale.buyer_name}</Text>
                       <Text style={styles.saleMeta}>{sale.receipt_number} · {new Date(sale.created_at).toLocaleString()}</Text>
+                  <Text style={styles.saleMeta}>{getSeasonBlockName(activeSeason, sale.block_id)}</Text>
                     </View>
                     <View style={[styles.statusPill, sale.status === "recorded" ? styles.statusGood : sale.status === "voided" ? styles.statusMuted : styles.statusPending]}>
                       <Text style={styles.statusText}>{statusLabel(sale.status)}</Text>
@@ -450,9 +495,13 @@ export default function SalesScreen() {
                     {sale.payment_reference ? ` · Ref: ${sale.payment_reference}` : ` · ${sale.payment_method.toUpperCase()}`}
                   </Text>
                   {checkedAt ? <Text style={styles.saleMeta}>Checked by {sale.checked_by_email || "another team member"} · {new Date(checkedAt).toLocaleString()}</Text> : null}
-                  {sale.discount_approved_by_email ? <Text style={styles.saleMeta}>Discount approved by {sale.discount_approved_by_email}</Text> : null}
+                  {sale.check_note ? <Text style={styles.saleMeta}>Checker note: {sale.check_note}</Text> : null}
+                  {sale.discount_kes > 0 ? <Text style={styles.saleMeta}>Discount: {formatKES(sale.discount_kes)}{sale.discount_approved_by_email ? ` · approved by ${sale.discount_approved_by_email}` : " · awaiting approval"}</Text> : null}
+                  {sale.discount_approval_reason ? <Text style={styles.saleMeta}>Discount note: {sale.discount_approval_reason}</Text> : null}
+                  {sale.void_requested_by_email ? <Text style={styles.saleMeta}>Void requested by {sale.void_requested_by_email}</Text> : null}
                   {sale.voided_by_email ? <Text style={styles.saleMeta}>Void approved by {sale.voided_by_email}</Text> : null}
-                  {sale.void_reason ? <Text style={styles.saleReason}>Note: {sale.void_reason}</Text> : null}
+                  {sale.void_request_reason ? <Text style={styles.saleReason}>Void request: {sale.void_request_reason}</Text> : null}
+                  {sale.void_reason ? <Text style={styles.saleReason}>Void approved: {sale.void_reason}</Text> : null}
                   <View style={styles.actionRow}>
                     {canReviewSales && !checkedAt && sale.status !== "voided" && sale.status !== "void_requested" && sale.seller_id !== currentUserId ? (
                       <Pressable style={styles.outlineAction} onPress={() => { setReason(""); setReview({ action: "check", sale }); }}>
@@ -503,15 +552,18 @@ export default function SalesScreen() {
               <MetricRow label="Expected stock" value={`${expectedStockKg.toFixed(1)} kg`} strong />
               <MetricRow
                 label="Latest confirmed physical count"
-                value={latestConfirmedCount ? `${Number(latestConfirmedCount.quantity_kg).toFixed(1)} kg` : "Not counted"}
+                value={latestConfirmedCount ? `${Number(latestConfirmedCount.quantity_kg).toFixed(1)} kg · ${latestConfirmedCount.count_date}` : "Not counted"}
               />
               <View style={[styles.varianceRow, stockVariance !== null && Math.abs(stockVariance) > 0.01 ? styles.varianceAlert : null]}>
                 <Text style={styles.varianceLabel}>Unreconciled difference</Text>
                 <Text style={styles.varianceValue}>{stockVariance === null ? "Count required" : `${stockVariance.toFixed(1)} kg`}</Text>
               </View>
-              <Text style={styles.smallNote}>
-                Today: {todaySales.length} sale{todaySales.length === 1 ? "" : "s"} · {formatKES(todayRevenue)}
-              </Text>
+              <View style={styles.dailySummary}>
+                <Text style={styles.dailySummaryTitle}>Today’s movement</Text>
+                <Text style={styles.smallNote}>
+                  Harvested {todayHarvestKg.toFixed(1)} kg · sold {todaySales.filter((sale) => sale.status !== "voided").reduce((sum, sale) => sum + Number(sale.quantity_kg || 0), 0).toFixed(1)} kg · loss {todayLostKg.toFixed(1)} kg · {todaySales.length} sale{todaySales.length === 1 ? "" : "s"} · {formatKES(todayRevenue)}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.card}>
@@ -674,6 +726,8 @@ const styles = StyleSheet.create({
   primaryButtonText: { fontFamily: "DMSans_700Bold", fontSize: 13, color: COLORS.white },
   buttonDisabled: { opacity: 0.65 },
   smallNote: { fontFamily: "DMSans_400Regular", fontSize: 10, color: COLORS.textMuted, lineHeight: 15 },
+  dailySummary: { borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 8, gap: 3 },
+  dailySummaryTitle: { fontFamily: "DMSans_700Bold", fontSize: 10, color: COLORS.text },
   sectionHeader: { marginHorizontal: 18, marginTop: 4, marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   saleCard: { marginHorizontal: 16, marginBottom: 9, padding: 13, backgroundColor: COLORS.cardBg, borderRadius: 13, gap: 8 },
   saleTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
