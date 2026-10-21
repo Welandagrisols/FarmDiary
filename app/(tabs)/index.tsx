@@ -345,12 +345,16 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
-      {sections.map((section) => {
-        const isA = section.id === "section-a";
+      {sections.map((section, index) => {
+        const sectionColor = index === 0
+          ? COLORS.primary
+          : index % 2 === 1
+          ? COLORS.teal
+          : COLORS.amber;
         const daysSincePlanting = getDaysSincePlanting(section.planting_date);
         const growthStage = getGrowthStage(section.planting_date);
         const nextActivity = getNextActivity(section.id);
-        const nextDate = nextActivity ? (isA ? nextActivity.plannedDateA : nextActivity.plannedDateB) : null;
+        const nextDate = nextActivity?.plannedDate || null;
         const daysUntilNext = nextDate ? getDaysUntil(nextDate) : 999;
         const urgencyColor = getUrgencyColor(daysUntilNext);
         const urgencyBg = getUrgencyBg(daysUntilNext);
@@ -370,7 +374,7 @@ export default function DashboardScreen() {
           <View key={section.id} style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionLabelRow}>
-                <View style={[styles.sectionBadge, { backgroundColor: isA ? COLORS.primary : COLORS.teal }]}>
+                <View style={[styles.sectionBadge, { backgroundColor: sectionColor }]}>
                   <Text style={styles.sectionBadgeText}>{section.label}</Text>
                 </View>
                 <Text style={styles.sectionVariety}>{section.variety}</Text>

@@ -63,7 +63,7 @@ function getQuickDates(): { label: string; value: string }[] {
 export default function EditActivityScreen() {
   const insets = useSafeAreaInsets();
   const { logId } = useLocalSearchParams<{ logId: string }>();
-  const { activityLogs, activeSeason, editActivityLog, removeActivityLog } = useFarm();
+  const { activityLogs, activeSeason, seasons, editActivityLog, removeActivityLog } = useFarm();
 
   const log = activityLogs.find((l) => l.id === logId);
 
@@ -135,7 +135,8 @@ export default function EditActivityScreen() {
   const laborNum = parseFloat(laborCost) || 0;
   const computedTotal = laborNum + productTotal;
 
-  const sectionLabel = getSeasonBlockName(activeSeason, log.section_id);
+  const logSeason = seasons.find((season) => season.id === log.season_id) ?? activeSeason;
+  const sectionLabel = getSeasonBlockName(logSeason, log.section_id);
 
   const handleSave = async () => {
     if (!date) {

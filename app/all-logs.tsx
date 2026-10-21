@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert, Platform,
 } from "react-native";
@@ -7,25 +7,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
-import { formatDate, formatKES, ActivityLog } from "@/lib/storage";
+import { formatDate, formatKES, ActivityLog, getSeasonBlockName, getSeasonBlocks } from "@/lib/storage";
 import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
-
-const SECTION_FILTERS = ["All", "Sec A", "Sec B"];
 
 function ActivityRow({
   log,
+  blockLabel,
   onTap,
 }: {
   log: ActivityLog;
+  blockLabel: string;
   onTap: (log: ActivityLog) => void;
 }) {
-  const sectionLabel =
-    log.section_id === "section-a" ? "A" :
-    log.section_id === "section-b" ? "B" : "A+B";
-
-  const sectionColor =
-    log.section_id === "section-a" ? COLORS.primary :
-    log.section_id === "section-b" ? COLORS.teal : COLORS.amber;
+  const sectionLabel = log.section_id ? "Blk" : "All";
+  const sectionColor = log.section_id ? COLORS.primary : COLORS.amber;
 
   const hasDeviations = (log.products_used ?? []).some((p) => p.is_deviation);
 
@@ -47,7 +42,7 @@ function ActivityRow({
               </View>
             )}
           </View>
-          <Text style={styles.rowDate}>{formatDate(log.actual_date)}</Text>
+          <Text style={styles.rowDate}>{formatDate(log.actual_date)} · {blockLabel}</Text>
         </View>
         <View style={styles.rowRight}>
           {log.total_cost_kes > 0 && (
@@ -62,19 +57,28 @@ function ActivityRow({
 
 export default function AllLogsScreen() {
   const insets = useSafeAreaInsets();
-  const { activityLogs, removeActivityLog } = useFarm();
+  const { activityLogs, removeActivityLog, activeSeason, seasons } = useFarm();
   const [search, setSearch] = useState("");
-  const [sectionFilter, setSectionFilter] = useState("All");
+  const [sectionFilter, setSectionFilter] = useState("all");
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const blockFilters = [
+    { id: "all", label: "All" },
+    { id: "all-blocks", label: "All blocks" },
+    ...getSeasonBlocks(activeSeason).map((block) => ({ id: block.id, label: block.name })),
+  ];
+
+  useEffect(() => {
+    setSectionFilter("all");
+  }, [activeSeason?.id]);
 
   const filtered = [...activityLogs]
     .filter((l) => {
-      const matchSection =
-        sectionFilter === "All" ||
-        (sectionFilter === "Sec A" && (l.section_id === "section-a" || l.section_id === null)) ||
-        (sectionFilter === "Sec B" && (l.section_id === "section-b" || l.section_id === null));
+      const matchSection = sectionFilter === "all" ||
+        (sectionFilter === "all-blocks"
+          ? l.season_id === activeSeason?.id && l.section_id === null
+          : l.season_id === activeSeason?.id && l.section_id === sectionFilter);
       const matchSearch = !search || l.activity_name.toLowerCase().includes(search.toLowerCase());
       return matchSection && matchSearch;
     })
@@ -110,13 +114,13 @@ export default function AllLogsScreen() {
       </View>
 
       <View style={styles.filterRow}>
-        {SECTION_FILTERS.map((f) => (
+        {blockFilters.map((filter) => (
           <Pressable
-            key={f}
-            style={[styles.filterChip, sectionFilter === f && styles.filterChipActive]}
-            onPress={() => setSectionFilter(f)}
+            key={filter.id}
+            style={[styles.filterChip, sectionFilter === filter.id && styles.filterChipActive]}
+            onPress={() => setSectionFilter(filter.id)}
           >
-            <Text style={[styles.filterChipText, sectionFilter === f && styles.filterChipTextActive]}>{f}</Text>
+            <Text style={[styles.filterChipText, sectionFilter === filter.id && styles.filterChipTextActive]}>{filter.label}</Text>
           </Pressable>
         ))}
         <Text style={styles.filterCount}>{filtered.length} shown</Text>
@@ -125,7 +129,13 @@ export default function AllLogsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ActivityRow log={item} onTap={setSelectedLog} />}
+        renderItem={({ item }) => (
+          <ActivityRow
+            log={item}
+            blockLabel={getSeasonBlockName(seasons.find((season) => season.id === item.season_id) ?? activeSeason, item.section_id)}
+            onTap={setSelectedLog}
+          />
+        )}
         contentContainerStyle={[styles.list, { paddingBottom: (Platform.OS === "web" ? 34 : 0) + 40 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={

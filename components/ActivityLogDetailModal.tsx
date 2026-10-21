@@ -25,9 +25,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props) {
-  const { activeFarm, activeSeason } = useFarm();
+  const { activeFarm, activeSeason, seasons } = useFarm();
   const [canManageActivity, setCanManageActivity] = useState(false);
-  const sectionLabel = getSeasonBlockName(activeSeason, log.section_id);
+  const logSeason = seasons.find((season) => season.id === log.season_id) ?? activeSeason;
+  const sectionLabel = getSeasonBlockName(logSeason, log.section_id);
   const sectionColor = COLORS.primary;
   const workerDays = (Number(log.num_workers) || 0) * (Number(log.days_worked) || 0);
   const quantityPerWorkerDay = workerDays > 0 && Number(log.work_quantity) > 0

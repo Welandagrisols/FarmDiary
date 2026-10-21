@@ -47,7 +47,7 @@ export default function LogScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Upcoming Activities</Text>
         {upcoming.map((activity) => {
-          const daysUntil = getDaysUntil(activity.plannedDateA);
+          const daysUntil = getDaysUntil(activity.plannedDate);
           const isOverdue = daysUntil < 0;
           const isDueSoon = daysUntil <= 3 && daysUntil >= 0;
 
@@ -61,7 +61,9 @@ export default function LogScreen() {
             >
               <View style={styles.upcomingLeft}>
                 <Text style={styles.upcomingName} numberOfLines={1}>{activity.name}</Text>
-                <Text style={styles.upcomingDate}>{formatDate(activity.plannedDateA)}</Text>
+                <Text style={styles.upcomingDate}>
+                  {activity.blockName} · {formatDate(activity.plannedDate)}
+                </Text>
               </View>
               <View style={styles.upcomingRight}>
                 <View

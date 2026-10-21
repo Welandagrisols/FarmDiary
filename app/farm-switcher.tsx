@@ -184,7 +184,7 @@ export default function FarmSwitcherScreen() {
         <View style={styles.infoCard}>
           <Ionicons name="information-circle-outline" size={16} color={COLORS.primary} />
           <Text style={styles.infoText}>
-            Each farm has its own seasons, costs, harvest records, and activity logs. Switching farms instantly updates all screens to show that farm's data.
+            Each farm has its own seasons, costs, harvest records, and activity logs. Switching farms instantly updates all screens to show that farm&apos;s data.
           </Text>
         </View>
       </ScrollView>
