@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  Alert,
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -107,6 +106,7 @@ export default function SeasonSetupScreen() {
   );
   const [seasonNotes, setSeasonNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Pre-planting cost planner state
   const [plannerRows, setPlannerRows] = useState<PlannerRow[]>(() => makePlannerRows(meta.prePlanting));
@@ -204,17 +204,17 @@ export default function SeasonSetupScreen() {
   };
 
   const handleSubmit = async () => {
+    setSubmitError(null);
     if (!farmId) {
-      Alert.alert("Select a farm", "Choose a farm before creating a season.");
+      setSubmitError("Choose a farm before creating a season.");
       return;
     }
     if (!canProceedStep1 || !canProceedStep2) {
-      Alert.alert("Incomplete season", "Review the season name, varieties, planting dates, and block sizes.");
+      setSubmitError("Review the season name, varieties, planting dates, and block sizes.");
       return;
     }
     setSubmitting(true);
     try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const newSeason = await createSeason({
         farm_id: farmId,
         season_number: nextSeasonNumber,
@@ -234,53 +234,68 @@ export default function SeasonSetupScreen() {
               notes: null,
             },
         pre_planting_start_date: prePlantingDate || null,
-        budget_kes: null,
         total_revenue_kes: null,
         total_cost_kes: null,
         notes: seasonNotes || null,
         closed_at: null,
       });
 
-      // Save enabled planner cost rows
+      // A failed optional cost row should not leave a successfully-created season
+      // stranded on this screen or invite the user to create it a second time.
       const today = prePlantingDate || new Date().toISOString().split("T")[0];
+      let failedPlannerCosts = 0;
       for (const row of enabledPlannerRows) {
         if (!row.description.trim()) continue;
         const amount = parseFloat(row.amount) || 0;
         if (amount <= 0) continue;
-        await addCost({
-          farm_id: farmId,
-          season_id: newSeason.id,
-          section_id: null,
-          cost_category: row.category,
-          cost_subcategory: row.subcategory,
-          description: row.description.trim(),
-          cost_date: today,
-          is_pre_planting: true,
-          is_historical: true,
-          amount_kes: amount,
-          quantity: null,
-          unit: null,
-          unit_price_kes: null,
-          product_name: null,
-          supplier: null,
-          receipt_reference: null,
-          num_workers: null,
-          days_worked: null,
-          rate_per_worker_per_day: null,
-          facilitator_name: null,
-          trip_from: null,
-          trip_to: null,
-          is_deviation: false,
-          planned_product: null,
-          deviation_reason: null,
-          notes: "Auto-entered from season setup planner",
-          weather_conditions: null,
-        });
+        try {
+          await addCost({
+            farm_id: farmId,
+            season_id: newSeason.id,
+            section_id: null,
+            cost_category: row.category,
+            cost_subcategory: row.subcategory,
+            description: row.description.trim(),
+            cost_date: today,
+            is_pre_planting: true,
+            is_historical: true,
+            amount_kes: amount,
+            quantity: null,
+            unit: null,
+            unit_price_kes: null,
+            product_name: null,
+            supplier: null,
+            receipt_reference: null,
+            num_workers: null,
+            days_worked: null,
+            rate_per_worker_per_day: null,
+            facilitator_name: null,
+            trip_from: null,
+            trip_to: null,
+            is_deviation: false,
+            planned_product: null,
+            deviation_reason: null,
+            notes: "Auto-entered from season setup planner",
+            weather_conditions: null,
+          });
+        } catch (costError) {
+          failedPlannerCosts += 1;
+          console.warn("[season-setup] Could not save a planned pre-planting cost:", costError);
+        }
       }
 
-      router.replace("/(tabs)");
-    } catch {
-      Alert.alert("Error", "Failed to create season. Please try again.");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      router.replace(failedPlannerCosts > 0
+        ? {
+            pathname: "/(tabs)",
+            params: {
+              seasonSetupNotice: `${failedPlannerCosts} planned cost ${failedPlannerCosts === 1 ? "entry was" : "entries were"} not saved. Add ${failedPlannerCosts === 1 ? "it" : "them"} from Costs.`,
+            },
+          }
+        : "/(tabs)");
+    } catch (error) {
+      console.error("[season-setup] Failed to create season:", error);
+      setSubmitError(error instanceof Error ? error.message : "Could not create the season. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -716,6 +731,12 @@ export default function SeasonSetupScreen() {
         )}
 
         {/* ── Navigation ── */}
+        {submitError ? (
+          <View style={styles.submitError}>
+            <Ionicons name="alert-circle-outline" size={18} color={COLORS.red} />
+            <Text style={styles.submitErrorText}>{submitError}</Text>
+          </View>
+        ) : null}
         <View style={styles.navRow}>
           {step > 1 && (
             <Pressable
@@ -744,6 +765,7 @@ export default function SeasonSetupScreen() {
               style={[styles.nextBtn, { backgroundColor: COLORS.primaryLight }, submitting && { opacity: 0.6 }]}
               disabled={submitting}
               onPress={handleSubmit}
+              testID="season-start"
             >
               <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.white} />
               <Text style={styles.nextBtnText}>{submitting ? "Starting..." : "Start Season"}</Text>
@@ -962,6 +984,11 @@ const styles = StyleSheet.create({
   confirmNoteText: {
     flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.primaryLight, lineHeight: 19,
   },
+  submitError: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    backgroundColor: COLORS.redLight, borderRadius: 10, padding: 12, marginTop: 18,
+  },
+  submitErrorText: { flex: 1, fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.red, lineHeight: 18 },
   navRow: { flexDirection: "row", alignItems: "center", marginTop: 24, gap: 12 },
   backBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,

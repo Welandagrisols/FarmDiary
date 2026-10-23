@@ -83,6 +83,8 @@ export default function MoreScreen() {
         <View style={styles.menuCard}>
           <MenuRow icon={<Ionicons name="flask-outline" size={22} color={COLORS.teal} />} label="Inventory" subtitle="Track stock levels and usage" color={COLORS.teal} onPress={() => router.push("/inventory")} badge={lowStockCount > 0 ? `${lowStockCount} low` : undefined} />
           <View style={styles.separator} />
+          <MenuRow icon={<Ionicons name="analytics-outline" size={22} color={COLORS.primary} />} label="Soil Tests" subtitle="Record lab results by farm or plot" color={COLORS.primary} onPress={() => router.push("/soil")} />
+          <View style={styles.separator} />
           <MenuRow icon={<Ionicons name="eye-outline" size={22} color={COLORS.amber} />} label="Observations" subtitle="Daily scouting notes" color={COLORS.amber} onPress={() => router.push("/observations")} badge={criticalObservations > 0 ? `${criticalObservations} alert` : undefined} />
         </View>
       </View>

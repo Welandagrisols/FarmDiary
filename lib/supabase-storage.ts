@@ -12,6 +12,7 @@ import {
   PersonalExpense,
   UserProfile,
 } from "./storage";
+import type { PlotRecord, SoilTestEditable, SoilTestRecord } from "./soil";
 
 const ACTIVE_FARM_KEY = "farm_active_farm_id";
 const ACTIVE_SEASON_KEY = "farm_active_season_id";
@@ -435,4 +436,124 @@ export async function upsertPersonalExpenses(records: PersonalExpense[]): Promis
   if (!records.length) return;
   const { error } = await supabase.from("personal_expenses").upsert(records, { onConflict: "id" });
   if (error) throw new Error("upsertPersonalExpenses: " + error.message);
+}
+
+// ─── Soil tests and plots ────────────────────────────────────
+
+export async function listPlots(farmId: string, onOfflineFallback?: () => void): Promise<PlotRecord[]> {
+  if (!farmId) return [];
+  return withCache(
+    `plots_${farmId}`,
+    async () => {
+      const { data, error } = await supabase.from("plots").select("*").eq("farm_id", farmId).order("name");
+      if (error) throw new Error(error.message);
+      return data as PlotRecord[];
+    },
+    "plots",
+    { field: "farm_id", id: farmId },
+    onOfflineFallback,
+  );
+}
+
+export async function createPlot(input: Omit<PlotRecord, "id" | "created_by" | "created_at">): Promise<PlotRecord> {
+  if (!input.farm_id) throw new Error("Choose a farm before adding a plot.");
+  const userId = await getAuthUserId();
+  const record: PlotRecord = {
+    ...input,
+    id: genId(),
+    created_by: userId,
+    created_at: new Date().toISOString(),
+  };
+  return withWrite("plots", "insert", record, async () => {
+    const { error } = await supabase.from("plots").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
+}
+
+export async function updatePlot(
+  farmId: string,
+  id: string,
+  updates: Partial<Pick<PlotRecord, "name" | "area_acres" | "description" | "is_archived">>,
+): Promise<PlotRecord> {
+  return withWrite("plots", "update", { id, farm_id: farmId, ...updates }, async () => {
+    const { data, error } = await supabase.from("plots").update(updates)
+      .eq("id", id).eq("farm_id", farmId).select().single();
+    if (error) throw new Error(error.message);
+    return data as PlotRecord;
+  });
+}
+
+export async function listSoilTests(farmId: string, onOfflineFallback?: () => void): Promise<SoilTestRecord[]> {
+  if (!farmId) return [];
+  return withCache(
+    `soil_tests_${farmId}`,
+    async () => {
+      const { data, error } = await supabase.from("soil_tests").select("*")
+        .eq("farm_id", farmId).order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return data as SoilTestRecord[];
+    },
+    "soil_tests",
+    { field: "farm_id", id: farmId },
+    onOfflineFallback,
+  );
+}
+
+export async function getSoilTest(farmId: string, id: string): Promise<SoilTestRecord | null> {
+  const tests = await listSoilTests(farmId);
+  return tests.find((test) => test.id === id) ?? null;
+}
+
+export async function createSoilTest(
+  input: Omit<SoilTestRecord, "id" | "created_by" | "confirmed_by" | "confirmed_at" | "created_at" | "updated_at">,
+): Promise<SoilTestRecord> {
+  if (!input.farm_id) throw new Error("Choose a farm before saving this soil test.");
+  const userId = await getAuthUserId();
+  if (!userId) throw new Error("Sign in again before saving this soil test.");
+  const now = new Date().toISOString();
+  const record: SoilTestRecord = {
+    ...input,
+    id: genId(),
+    created_by: userId,
+    confirmed_by: null,
+    confirmed_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+  return withWrite("soil_tests", "insert", record, async () => {
+    const { error } = await supabase.from("soil_tests").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
+}
+
+export async function updateSoilTest(
+  farmId: string,
+  id: string,
+  updates: SoilTestEditable,
+): Promise<SoilTestRecord> {
+  return withWrite("soil_tests", "update", { id, farm_id: farmId, ...updates }, async () => {
+    const { data, error } = await supabase.from("soil_tests").update(updates)
+      .eq("id", id).eq("farm_id", farmId).select().single();
+    if (error) throw new Error(error.message);
+    return data as SoilTestRecord;
+  });
+}
+
+export async function confirmSoilTest(farmId: string, id: string): Promise<SoilTestRecord> {
+  const userId = await getAuthUserId();
+  if (!userId) throw new Error("Sign in again before confirming this soil test.");
+  return updateSoilTest(farmId, id, {
+    status: "confirmed",
+    confirmed_by: userId,
+    confirmed_at: new Date().toISOString(),
+  });
+}
+
+export async function deleteSoilTest(farmId: string, id: string): Promise<void> {
+  await withWrite("soil_tests", "delete", { id, farm_id: farmId }, async () => {
+    const { error } = await supabase.from("soil_tests").delete().eq("id", id).eq("farm_id", farmId);
+    if (error) throw new Error(error.message);
+  });
 }

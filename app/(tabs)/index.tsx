@@ -9,7 +9,7 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
@@ -52,6 +52,8 @@ function getActivityTypeIcon(type: string) {
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ seasonSetupNotice?: string }>();
+  const [dismissSeasonNotice, setDismissSeasonNotice] = useState(false);
   const {
     costs,
     refresh,
@@ -156,6 +158,9 @@ export default function DashboardScreen() {
     : activeSeason?.status === "planning"
     ? "Planning"
     : "Active";
+  const seasonSetupNotice = typeof params.seasonSetupNotice === "string"
+    ? params.seasonSetupNotice
+    : "";
 
   return (
     <ScrollView
@@ -173,6 +178,15 @@ export default function DashboardScreen() {
           <Text style={styles.errorBannerText}>{loadError}</Text>
           <Pressable onPress={retryLoad} style={styles.retryBtn}>
             <Text style={styles.retryBtnText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {seasonSetupNotice && !dismissSeasonNotice ? (
+        <View style={styles.seasonNotice}>
+          <Ionicons name="information-circle-outline" size={18} color={COLORS.amberDark} />
+          <Text style={styles.seasonNoticeText}>{seasonSetupNotice}</Text>
+          <Pressable onPress={() => setDismissSeasonNotice(true)} hitSlop={8} accessibilityLabel="Dismiss notice">
+            <Ionicons name="close" size={18} color={COLORS.amberDark} />
           </Pressable>
         </View>
       ) : null}
@@ -454,6 +468,8 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, gap: 14 },
   errorBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.redLight, borderRadius: 12, padding: 12 },
   errorBannerText: { flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: COLORS.red, lineHeight: 18 },
+  seasonNotice: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: COLORS.amberLight, borderRadius: 12, padding: 12, marginBottom: 12 },
+  seasonNoticeText: { flex: 1, fontFamily: "DMSans_500Medium", fontSize: 13, color: COLORS.amberDark, lineHeight: 18 },
   retryBtn: { backgroundColor: COLORS.red, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   retryBtnText: { fontFamily: "DMSans_600SemiBold", fontSize: 12, color: COLORS.white },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
