@@ -1,0 +1,496 @@
+import React, { useEffect, useState } from "react";
+import { COUNTED_SALE_STATUSES, PENDING_SALE_STATUSES, seasonFinance } from "@/lib/season-finance";
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useFarm } from "@/context/FarmContext";
+import COLORS, { CATEGORY_COLORS, CARD_SHADOW } from "@/constants/colors";
+import { formatDate, formatKES, getSeasonBlocks } from "@/lib/storage";
+import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
+import { getTemplate } from "@/constants/farmData";
+import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit } from "@/constants/cropTemplates";
+
+function SectionHeader({ title }: { title: string }) {
+  return <Text style={rpt.sectionHeader}>{title}</Text>;
+}
+
+function StatRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <View style={rpt.statRow}>
+      <Text style={rpt.statLabel}>{label}</Text>
+      <Text style={[rpt.statValue, valueColor ? { color: valueColor } : {}]}>{value}</Text>
+    </View>
+  );
+}
+
+export default function SeasonReportScreen() {
+  const insets = useSafeAreaInsets();
+  const {
+    activeSeason,
+    activeFarm,
+    costs,
+    harvestRecords,
+    activityLogs,
+    currentSchedule,
+    plannedBudget,
+    getCompletedActivityIds,
+  } = useFarm();
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [salesLoadError, setSalesLoadError] = useState("");
+
+  const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    let current = true;
+    const loadSales = async () => {
+      if (!activeFarm?.id || !activeSeason?.id) {
+        setSalesLoading(false);
+        return;
+      }
+      try {
+        const role = await getFarmRole(activeFarm.id);
+        if (!current) return;
+        setFarmRole(role);
+        if (["admin", "owner", "manager"].includes(role)) {
+          setSales(await getSales(activeFarm.id, activeSeason.id));
+        } else {
+          setSales([]);
+        }
+      } catch (error: any) {
+        if (current) setSalesLoadError(error?.message || "Sales ledger could not be loaded.");
+      } finally {
+        if (current) setSalesLoading(false);
+      }
+    };
+    setSalesLoading(true);
+    setSalesLoadError("");
+    loadSales();
+    return () => { current = false; };
+  }, [activeFarm?.id, activeSeason?.id]);
+
+  if (!activeSeason) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding }]}>
+        <View style={rpt.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12}><Ionicons name="arrow-back" size={24} color={COLORS.text} /></Pressable>
+          <Text style={rpt.headerTitle}>Season Report</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontFamily: "Manrope_400Regular", color: COLORS.textSecondary }}>No active season</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (salesLoading) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center" }]}>
+        <Text style={rpt.emptyText}>Loading sales and report data…</Text>
+      </View>
+    );
+  }
+
+  if (salesLoadError) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }]}>
+        <Text style={rpt.headerTitle}>Season Report</Text>
+        <Text style={rpt.emptyText}>Sales data could not be loaded: {salesLoadError}</Text>
+      </View>
+    );
+  }
+
+  if (!["admin", "owner", "manager"].includes(farmRole)) {
+    return (
+      <View style={[rpt.container, { paddingTop: topPadding, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }]}>
+        <Text style={rpt.headerTitle}>Season Report</Text>
+        <Text style={rpt.emptyText}>Financial reports are available to the farm owner and manager.</Text>
+      </View>
+    );
+  }
+
+  const seasonCosts = costs.filter((c) => c.season_id === activeSeason.id);
+  const seasonHarvest = harvestRecords.filter((r) => r.season_id === activeSeason.id);
+  const seasonLogs = activityLogs.filter((l) => l.season_id === activeSeason.id);
+
+  const recordedSales = sales.filter((sale) => COUNTED_SALE_STATUSES.includes(sale.status));
+  const pendingSales = sales.filter((sale) => PENDING_SALE_STATUSES.includes(sale.status));
+  const finance = seasonFinance({ seasonId: activeSeason.id, costs, harvest: harvestRecords, sales, includeHarvestRevenue: true });
+  const { salesRevenue, pendingSalesValue, costs: totalCosts, revenue: totalRevenue, net: netPL, marginPct } = finance;
+
+  const cropTemplate = getTemplate(activeSeason.template_id);
+  const cropMeta = getCropMeta(activeSeason.template_id);
+  const unitTotals = harvestTotalsByUnit(seasonHarvest, cropMeta);
+  const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
+  const totalKg = seasonHarvest.reduce((s, r) => s + r.total_kg, 0);
+  const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
+  const blocks = getSeasonBlocks(activeSeason);
+  const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
+  const quantityPerAcre = unitTotals.length === 1 && totalAcres > 0
+    ? `${(unitTotals[0].quantity / totalAcres).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unitTotals[0].plural.toLowerCase()}/acre`
+    : unitTotals.length > 1 ? "Mixed units" : "—";
+  const allWeightsKnown = seasonHarvest.length > 0 && seasonHarvest.every((record) => record.total_kg > 0);
+  const kesPerKg = allWeightsKnown && totalKg > 0 ? formatKES(Math.round(totalRevenue / totalKg)) : "—";
+
+  const blockBreakdown = blocks.map((block) => {
+    const records = seasonHarvest.filter((record) => record.section_id === block.id);
+    const legacyRevenue = records.filter((record) => !record.recorded_by)
+      .reduce((sum, record) => sum + (Number(record.total_revenue_kes) || 0), 0);
+    const blockSales = recordedSales.filter((sale) => sale.block_id === block.id)
+      .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
+    return { block, records, revenue: legacyRevenue + blockSales };
+  });
+
+  const completedIds = getCompletedActivityIds();
+  const completedCount = completedIds.length;
+  const totalActivities = currentSchedule.length;
+  const completionPct = totalActivities > 0 ? Math.round((completedCount / totalActivities) * 100) : 0;
+
+  const budgetUsedPct = plannedBudget > 0 ? Math.min((totalCosts / plannedBudget) * 100, 100) : null;
+
+  const categorySums: Record<string, number> = {};
+  for (const c of seasonCosts) {
+    categorySums[c.cost_category] = (categorySums[c.cost_category] || 0) + c.amount_kes;
+  }
+  const sortedCategories = Object.entries(categorySums).sort((a, b) => b[1] - a[1]);
+  const maxCategoryAmount = sortedCategories[0]?.[1] || 1;
+
+  return (
+    <View style={[rpt.container, { paddingTop: topPadding }]}>
+      <View style={rpt.header}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+        </Pressable>
+        <Text style={rpt.headerTitle}>Season Report</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[rpt.scroll, { paddingBottom: bottomPadding + 60 }]} showsVerticalScrollIndicator={false}>
+
+        {/* Hero */}
+        <View style={rpt.hero}>
+          <Text style={rpt.heroSeason}>{activeSeason.season_name}</Text>
+          <Text style={rpt.heroFarm}>{activeFarm?.name} · {activeSeason.season_type} · {cropTemplate.cropType}</Text>
+          <View style={rpt.heroMeta}>
+            <View style={rpt.heroPill}><Ionicons name="calendar-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>Planted {formatDate(activeSeason.section_a.planting_date)}</Text></View>
+            <View style={rpt.heroPill}><Ionicons name="grid-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>{totalAcres} acres</Text></View>
+            <View style={rpt.heroPill}><Ionicons name="leaf-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>{activeSeason.status}</Text></View>
+          </View>
+        </View>
+
+        {/* P&L Summary */}
+        <SectionHeader title="Financial Summary" />
+        <View style={rpt.card}>
+          <View style={rpt.plBanner}>
+            <View>
+              <Text style={rpt.plLabel}>Net {netPL >= 0 ? "Profit" : "Loss"}</Text>
+              <Text style={[rpt.plValue, { color: netPL >= 0 ? COLORS.primary : COLORS.red }]}>{formatKES(Math.abs(netPL))}</Text>
+            </View>
+            {marginPct !== null && (
+              <View style={[rpt.marginBadge, { backgroundColor: netPL >= 0 ? COLORS.primarySurface : COLORS.redLight }]}>
+                <Text style={[rpt.marginText, { color: netPL >= 0 ? COLORS.primary : COLORS.red }]}>{marginPct.toFixed(1)}% margin</Text>
+              </View>
+            )}
+          </View>
+          <View style={rpt.divider} />
+          <StatRow label="Revenue" value={formatKES(totalRevenue)} />
+          <StatRow label="Sales awaiting review" value={`${pendingSales.length} · ${formatKES(pendingSalesValue)}`} />
+          <StatRow label="Total Costs" value={formatKES(totalCosts)} />
+          <StatRow label="Net P&L" value={formatKES(netPL)} valueColor={netPL >= 0 ? COLORS.primary : COLORS.red} />
+        </View>
+
+        {/* Budget vs Actual */}
+        {plannedBudget > 0 && (
+          <>
+            <SectionHeader title="Budget vs Actual" />
+            <View style={rpt.card}>
+              <StatRow label="Planned Budget" value={formatKES(plannedBudget)} />
+              <StatRow label="Actual Spend" value={formatKES(totalCosts)} />
+              {budgetUsedPct !== null && (
+                <>
+                  <View style={rpt.track}>
+                    <View style={[rpt.fill, { width: `${budgetUsedPct}%`, backgroundColor: totalCosts > plannedBudget ? COLORS.red : COLORS.primary }]} />
+                  </View>
+                  <Text style={rpt.budgetNote}>
+                    {totalCosts > plannedBudget
+                      ? `${formatKES(totalCosts - plannedBudget)} over planned budget`
+                      : `${formatKES(plannedBudget - totalCosts)} under budget · ${budgetUsedPct.toFixed(0)}% used`}
+                  </Text>
+                </>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Costs by Category */}
+        {sortedCategories.length > 0 && (
+          <>
+            <SectionHeader title="Costs by Category" />
+            <View style={rpt.card}>
+              {sortedCategories.map(([cat, amount]) => {
+                const colors = CATEGORY_COLORS[cat] || { bg: COLORS.borderLight, text: COLORS.textSecondary };
+                const pct = (amount / maxCategoryAmount) * 100;
+                const pctOfTotal = totalCosts > 0 ? ((amount / totalCosts) * 100).toFixed(0) : "0";
+                return (
+                  <View key={cat} style={rpt.catRow}>
+                    <View style={rpt.catLabelRow}>
+                      <View style={[rpt.catDot, { backgroundColor: colors.text }]} />
+                      <Text style={rpt.catLabel}>{cat}</Text>
+                      <Text style={rpt.catPct}>{pctOfTotal}%</Text>
+                    </View>
+                    <View style={rpt.catBarBg}>
+                      <View style={[rpt.catBarFill, { width: `${pct}%`, backgroundColor: colors.text }]} />
+                    </View>
+                    <Text style={rpt.catAmount}>{formatKES(amount)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {/* Harvest Results */}
+        <SectionHeader title="Harvest Results" />
+        {seasonHarvest.length === 0 && sales.length === 0 ? (
+          <View style={rpt.emptyCard}><Ionicons name="basket-outline" size={28} color={COLORS.border} /><Text style={rpt.emptyText}>No harvest recorded yet</Text></View>
+        ) : (
+          <View style={rpt.card}>
+            <View style={rpt.harvestHero}>
+              <Text style={rpt.harvestRevLabel}>Total Revenue</Text>
+              <Text style={rpt.harvestRevValue}>{formatKES(totalRevenue)}</Text>
+              <Text style={rpt.harvestMeta}>
+                {harvestQuantitySummary}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
+              </Text>
+            </View>
+            <View style={rpt.divider} />
+            <StatRow label="Quantity per Acre" value={quantityPerAcre} />
+            <StatRow label="Revenue per kg" value={kesPerKg} />
+            <View style={rpt.divider} />
+            <View style={rpt.sectionSplit}>
+              {blockBreakdown.map(({ block, records, revenue }) => (
+                <View key={block.id} style={rpt.splitItem}>
+                  <Text style={rpt.splitLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
+                  <Text style={rpt.splitBags}>{formatHarvestTotals(records, cropMeta)}</Text>
+                  <Text style={rpt.splitRevenue}>{formatKES(revenue)}</Text>
+                </View>
+              ))}
+              {recordedSales.some((sale) => !sale.block_id) ? (
+                <View style={rpt.splitItem}>
+                  <Text style={rpt.splitLabel}>All blocks / unassigned</Text>
+                  <Text style={rpt.splitBags}>Sales</Text>
+                  <Text style={rpt.splitRevenue}>
+                    {formatKES(recordedSales.filter((sale) => !sale.block_id)
+                      .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0))}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        )}
+
+        {/* Activity Completion */}
+        <SectionHeader title="Activity Completion" />
+        <View style={rpt.card}>
+          <View style={rpt.completionRow}>
+            <Text style={rpt.completionPct}>{completionPct}%</Text>
+            <View style={{ flex: 1, gap: 6 }}>
+              <View style={rpt.track}>
+                <View style={[rpt.fill, { width: `${completionPct}%`, backgroundColor: COLORS.primary }]} />
+              </View>
+              <Text style={rpt.completionNote}>{completedCount} of {totalActivities} activities completed</Text>
+            </View>
+          </View>
+          <View style={rpt.divider} />
+          <StatRow label="Scheduled Activities" value={String(totalActivities)} />
+          <StatRow label="Completed" value={String(completedCount)} />
+          <StatRow label="Logs Recorded" value={String(seasonLogs.length)} />
+        </View>
+
+        {/* Planting blocks */}
+        <SectionHeader title="Planting Block Details" />
+        <View style={rpt.card}>
+          {blocks.map((block, i) => (
+            <View key={block.id}>
+              {i > 0 && <View style={rpt.divider} />}
+              <Text style={rpt.sectionLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
+              <StatRow label={`${cropMeta.plantingVerb} Date`} value={formatDate(block.planting_date)} />
+              <StatRow label="Area" value={`${block.acres} acres`} />
+              <StatRow
+                label={cropMeta.riskLabel}
+                value={block.blight_risk || "LOW"}
+                valueColor={block.blight_risk === "HIGH" ? COLORS.red : block.blight_risk === "MEDIUM" ? COLORS.amber : COLORS.primary}
+              />
+            </View>
+          ))}
+        </View>
+
+      </ScrollView>
+    </View>
+  );
+}
+
+const rpt = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.cardBg },
+  headerTitle: { fontFamily: "Manrope_700Bold", fontSize: 18, color: COLORS.text },
+  scroll: { padding: 16, gap: 6 },
+  hero: {
+    backgroundColor: COLORS.ink,
+    borderRadius: 24,
+    padding: 22,
+    gap: 8,
+    marginBottom: 8,
+    ...CARD_SHADOW,
+  },
+  heroSeason: { fontFamily: "Manrope_700Bold", fontSize: 22, color: COLORS.white },
+  heroFarm: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.75)",
+  },
+  heroMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  heroPill: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  heroPillText: {
+    fontFamily: "Manrope_600SemiBold",
+    fontSize: 13,
+    color: COLORS.white,
+  },
+  sectionHeader: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 14,
+    marginBottom: 6,
+    paddingHorizontal: 2,
+  },
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+    ...CARD_SHADOW,
+  },
+  divider: { height: 1, backgroundColor: COLORS.borderLight },
+  statRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  statLabel: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  statValue: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  plBanner: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  plLabel: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  plValue: { fontFamily: "Manrope_700Bold", fontSize: 28, letterSpacing: -0.5 },
+  marginBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  marginText: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 14,
+  },
+  track: { height: 8, backgroundColor: COLORS.borderLight, borderRadius: 4, overflow: "hidden" },
+  fill: { height: "100%", borderRadius: 4 },
+  budgetNote: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  catRow: { gap: 4 },
+  catLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  catDot: { width: 8, height: 8, borderRadius: 4 },
+  catLabel: {
+    flex: 1,
+    fontFamily: "Manrope_500Medium",
+    fontSize: 14,
+    color: COLORS.text,
+  },
+  catPct: {
+    fontFamily: "Manrope_600SemiBold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  catBarBg: { height: 6, backgroundColor: COLORS.borderLight, borderRadius: 3, overflow: "hidden" },
+  catBarFill: { height: "100%", borderRadius: 3 },
+  catAmount: {
+    fontFamily: "Manrope_600SemiBold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  harvestHero: { alignItems: "center", gap: 2 },
+  harvestRevLabel: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  harvestRevValue: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 28,
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    fontVariant: ["tabular-nums"],
+  },
+  harvestMeta: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  sectionSplit: { flexDirection: "row" },
+  splitItem: { flex: 1, gap: 3 },
+  splitDivider: { width: 1, backgroundColor: COLORS.borderLight, marginHorizontal: 12 },
+  splitLabel: {
+    fontFamily: "Manrope_600SemiBold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  splitBags: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 17,
+    color: COLORS.text,
+  },
+  splitRevenue: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 13,
+    color: COLORS.primary,
+  },
+  completionRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  completionPct: { fontFamily: "Manrope_700Bold", fontSize: 32, color: COLORS.primary, minWidth: 68 },
+  completionNote: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  sectionLabel: {
+    fontFamily: "Manrope_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  emptyCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: "center",
+    gap: 8,
+    ...CARD_SHADOW,
+  },
+  emptyText: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 14,
+    color: COLORS.textMuted,
+  }});

@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "Farm Diary"
+description = "An Expo mobile farm diary app for recording farm activities and managing field data. This artifact runs the uploaded application so its screens can be previewed and tested."
+version = "1.0.0"
+id = "artifacts/farm-diary"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 22838
+
+[services.development]
+run = "pnpm --filter @workspace/farm-diary run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/farm-diary", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/farm-diary", "run", "serve" ]
+
+[services.env]
+PORT = "22838"
+BASE_PATH = "/"
