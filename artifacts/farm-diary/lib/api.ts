@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 
 function getApiBase(): string {
   const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
-  const domain = extra.apiDomain || "";
+  const domain = extra.apiDomain || process.env.EXPO_PUBLIC_DOMAIN || "";
   if (!domain) return "";
   return `https://${domain}`;
 }

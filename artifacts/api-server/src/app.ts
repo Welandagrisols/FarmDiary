@@ -26,7 +26,13 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  const isLargeRequest =
+    req.method === "POST" &&
+    (/^\/api\/farms\/[^/]+\/soil\/parse$/.test(req.path) ||
+      req.path === "/api/migrate");
+  express.json({ limit: isLargeRequest ? "32mb" : "1mb" })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
