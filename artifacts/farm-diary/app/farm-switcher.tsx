@@ -52,10 +52,18 @@ export default function FarmSwitcherScreen() {
           text: "Switch",
           onPress: async () => {
             setSwitching(farmId);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            await switchFarm(farmId);
-            setSwitching(null);
-            router.replace("/(tabs)");
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+            try {
+              await switchFarm(farmId);
+              router.replace("/(tabs)");
+            } catch (error) {
+              Alert.alert(
+                "Could not switch farm",
+                error instanceof Error ? error.message : "Check your connection and try again.",
+              );
+            } finally {
+              setSwitching(null);
+            }
           },
         },
       ]

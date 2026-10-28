@@ -215,7 +215,7 @@ export default function HarvestScreen() {
                   {record.notes && (<Text style={styles.recordNotes}>{record.notes}</Text>)}
                 </View>
 
-                <Text style={styles.longPressHint}>Hold to delete</Text>
+                {canManageHarvest ? <Text style={styles.longPressHint}>Hold to delete</Text> : null}
               </Pressable>
               );
             })}

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, ActivityIndicator } from "react-native";
+import { Alert, View, Text, StyleSheet, Pressable, ScrollView, Platform, ActivityIndicator } from "react-native";
+import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,12 +11,24 @@ import { formatDate } from "@/lib/storage";
 export default function FarmPickerScreen() {
   const insets = useSafeAreaInsets();
   const { farms, activeFarm, switchFarm, isLoading } = useFarm();
+  const [openingFarmId, setOpeningFarmId] = useState<string | null>(null);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const handleOpen = async (farmId: string) => {
-    await switchFarm(farmId);
-    router.replace("/(tabs)");
+    if (openingFarmId) return;
+    setOpeningFarmId(farmId);
+    try {
+      await switchFarm(farmId);
+      router.replace("/(tabs)");
+    } catch (error) {
+      Alert.alert(
+        "Could not open farm",
+        error instanceof Error ? error.message : "Check your connection and try again.",
+      );
+    } finally {
+      setOpeningFarmId(null);
+    }
   };
 
   return (
@@ -35,7 +48,12 @@ export default function FarmPickerScreen() {
         {farms.map((farm) => {
           const isActive = farm.id === activeFarm?.id;
           return (
-            <Pressable key={farm.id} style={[styles.card, isActive && styles.cardActive]} onPress={() => handleOpen(farm.id)}>
+            <Pressable
+              key={farm.id}
+              style={[styles.card, isActive && styles.cardActive, openingFarmId && openingFarmId !== farm.id && { opacity: 0.65 }]}
+              onPress={() => handleOpen(farm.id)}
+              disabled={!!openingFarmId}
+            >
               <View style={styles.cardTop}>
                 <View style={styles.iconWrap}>
                   <Ionicons name="leaf" size={20} color={isActive ? COLORS.white : COLORS.primary} />
@@ -44,7 +62,9 @@ export default function FarmPickerScreen() {
                   <Text style={styles.farmName}>{farm.name}</Text>
                   <Text style={styles.farmMeta} numberOfLines={1}>{farm.location}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                {openingFarmId === farm.id
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />}
               </View>
               <View style={styles.cardBottom}>
                 <Text style={styles.detail}>{farm.total_acres ? `${farm.total_acres} acres` : "—"}</Text>

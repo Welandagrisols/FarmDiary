@@ -37,12 +37,17 @@ export default function FarmSetupScreen() {
       Alert.alert("Required", "Please enter a location.");
       return;
     }
-    const acres = parseFloat(totalAcres) || 0;
+    const acres = totalAcres.trim() ? Number(totalAcres.replace(",", ".")) : 0;
+    if (!Number.isFinite(acres) || acres < 0) {
+      Alert.alert("Check the farm size", "Enter a valid number of acres, or leave it empty.");
+      return;
+    }
 
     setSaving(true);
     try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       if (isEdit) {
+        if (!activeFarm) throw new Error("Select a farm before editing its details.");
         await updateActiveFarm({
           name: name.trim(),
           location: location.trim(),
@@ -69,13 +74,25 @@ export default function FarmSetupScreen() {
             {
               text: "Switch to Farm",
               onPress: async () => {
-                await switchFarm(newFarm.id);
-                router.replace("/(tabs)");
+                try {
+                  await switchFarm(newFarm.id, newFarm);
+                  router.replace("/(tabs)");
+                } catch (error) {
+                  Alert.alert(
+                    "Farm created, but could not switch",
+                    error instanceof Error ? error.message : "Select the farm from the farm list and try again.",
+                  );
+                }
               },
             },
           ]
         );
       }
+    } catch (error) {
+      Alert.alert(
+        isEdit ? "Could not save farm" : "Could not create farm",
+        error instanceof Error ? error.message : "Check your connection and try again.",
+      );
     } finally {
       setSaving(false);
     }

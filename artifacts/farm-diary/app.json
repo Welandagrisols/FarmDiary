@@ -18,14 +18,17 @@
       "bundleIdentifier": "com.farmdiary"
     },
     "android": {
-      "package": "com.farmdiary",
+      "package": "com.farmdiary.test",
       "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#1B5E20",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -51,6 +54,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5f77fef5-6810-4371-9600-4d41d42ec265"
+      }
+    },
+    "owner": "wesley12404"
   }
 }

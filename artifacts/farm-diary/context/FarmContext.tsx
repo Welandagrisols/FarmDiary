@@ -8,6 +8,7 @@ import type {
   InventoryItem,
   ObservationRecord,
   PersonalExpense,
+  FarmRecord,
   SeasonRecord,
 } from "@/lib/storage";
 import {
@@ -202,7 +203,7 @@ type FarmContextValue = {
   reopenActiveSeason: () => Promise<void>;
   updateActiveSeason: (updates: Partial<SeasonRecord>) => Promise<void>;
   createFarm: typeof addFarmRecord;
-  switchFarm: (targetFarmId: string) => Promise<void>;
+  switchFarm: (targetFarmId: string, knownFarm?: FarmRecord) => Promise<void>;
   updateActiveFarm: (updates: Partial<any>) => Promise<void>;
   personalExpenses: PersonalExpense[];
   addPersonalExpenseEntry: typeof addPersonalExpense;
@@ -491,14 +492,21 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     const updated = await updateActivityLog(id, updates);
     setActivityLogs((prev) => prev.map((l) => l.id === updated.id ? updated : l));
   }, [seasons, activityLogs]);
-  const createFarm = useCallback(async (farm: Omit<any, "id" | "created_at">) => { const newFarm = await addFarmRecord(farm); setFarms((prev) => [...prev, newFarm]); return newFarm; }, []);
-  const switchFarm = useCallback(async (targetFarmId: string) => {
-    const targetFarm = farms.find((farm) => farm.id === targetFarmId);
+  const createFarm = useCallback(async (farm: Omit<FarmRecord, "id" | "created_at">) => {
+    const newFarm = await addFarmRecord(farm);
+    setFarms((prev) => prev.some((existing) => existing.id === newFarm.id) ? prev : [...prev, newFarm]);
+    return newFarm;
+  }, []);
+  const switchFarm = useCallback(async (targetFarmId: string, knownFarm?: FarmRecord) => {
+    const targetFarm = knownFarm?.id === targetFarmId
+      ? knownFarm
+      : farms.find((farm) => farm.id === targetFarmId);
     if (!targetFarm) throw new Error("This farm is not available on this account.");
     if (targetFarm.id === activeFarm?.id) return;
     const previousFarmId = activeFarm?.id;
 
     refreshGeneration.current += 1;
+    setFarms((prev) => prev.some((farm) => farm.id === targetFarmId) ? prev : [...prev, targetFarm]);
     setActiveFarm(targetFarm);
     setCosts([]);
     setInventory([]);

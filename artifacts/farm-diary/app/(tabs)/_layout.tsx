@@ -1,9 +1,10 @@
 import { Tabs } from "expo-router";
 import React from "react";
+import type { ColorValue } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FloatingTabBar } from "@/components/FloatingTabBar";
 
-function TabIcon({ name, color }: { name: string; color: string }) {
+function TabIcon({ name, color }: { name: string; color: ColorValue }) {
   return <Ionicons name={name as any} size={22} color={color} />;
 }
 

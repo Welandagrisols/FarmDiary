@@ -14,7 +14,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: Math.max(insets.bottom, 0) + 14 }]}>
       <View style={styles.bar}>
-        {state.routes.map((route, index) => {
+        {state.routes.map((route: BottomTabBarProps["state"]["routes"][number], index: number) => {
           const { options } = descriptors[route.key];
           const label = options.title ?? route.name;
           const focused = state.index === index;

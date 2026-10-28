@@ -85,7 +85,7 @@ function createPlantingDraft(variety: string): PlantingDraft {
 
 export default function SeasonSetupScreen() {
   const insets = useSafeAreaInsets();
-  const { createSeason, seasons, farmId } = useFarm();
+  const { createSeason, seasons, farmId, refresh } = useFarm();
 
   const nextSeasonNumber = (seasons.length || 0) + 1;
   const TOTAL_STEPS = 4;
@@ -241,46 +241,72 @@ export default function SeasonSetupScreen() {
         closed_at: null,
       });
 
-      // Save enabled planner cost rows
+      // Save enabled planner cost rows independently so one failed write does
+      // not make an already-created season look as though it failed.
       const today = prePlantingDate || new Date().toISOString().split("T")[0];
+      const plannerFailures: string[] = [];
+      let firstPlannerError = "";
       for (const row of enabledPlannerRows) {
         if (!row.description.trim()) continue;
-        const amount = parseFloat(row.amount) || 0;
+        const amount = Number(row.amount.replace(",", "."));
         if (amount <= 0) continue;
-        await addCost({
-          farm_id: farmId,
-          season_id: newSeason.id,
-          section_id: null,
-          cost_category: row.category,
-          cost_subcategory: row.subcategory,
-          description: row.description.trim(),
-          cost_date: today,
-          is_pre_planting: true,
-          is_historical: true,
-          amount_kes: amount,
-          quantity: null,
-          unit: null,
-          unit_price_kes: null,
-          product_name: null,
-          supplier: null,
-          receipt_reference: null,
-          num_workers: null,
-          days_worked: null,
-          rate_per_worker_per_day: null,
-          facilitator_name: null,
-          trip_from: null,
-          trip_to: null,
-          is_deviation: false,
-          planned_product: null,
-          deviation_reason: null,
-          notes: "Auto-entered from season setup planner",
-          weather_conditions: null,
-        });
+        if (!Number.isFinite(amount)) {
+          plannerFailures.push(row.description.trim());
+          continue;
+        }
+        try {
+          await addCost({
+            farm_id: farmId,
+            season_id: newSeason.id,
+            section_id: null,
+            cost_category: row.category,
+            cost_subcategory: row.subcategory,
+            description: row.description.trim(),
+            cost_date: today,
+            is_pre_planting: true,
+            is_historical: true,
+            amount_kes: amount,
+            quantity: null,
+            unit: null,
+            unit_price_kes: null,
+            product_name: null,
+            supplier: null,
+            receipt_reference: null,
+            num_workers: null,
+            days_worked: null,
+            rate_per_worker_per_day: null,
+            facilitator_name: null,
+            trip_from: null,
+            trip_to: null,
+            is_deviation: false,
+            planned_product: null,
+            deviation_reason: null,
+            notes: "Auto-entered from season setup planner",
+            weather_conditions: null,
+          });
+        } catch (error) {
+          plannerFailures.push(row.description.trim());
+          if (!firstPlannerError) {
+            firstPlannerError = error instanceof Error ? error.message : "Unknown error";
+          }
+        }
       }
 
-      router.replace("/(tabs)");
-    } catch {
-      Alert.alert("Error", "Failed to create season. Please try again.");
+      await refresh();
+      if (plannerFailures.length) {
+        Alert.alert(
+          "Season created",
+          `${plannerFailures.length} planned cost ${plannerFailures.length === 1 ? "entry could" : "entries could"} not be saved. You can add ${plannerFailures.length === 1 ? "it" : "them"} from Costs.${firstPlannerError ? `\n\nFirst error: ${firstPlannerError}` : ""}`,
+          [{ text: "Continue", onPress: () => router.replace("/(tabs)") }],
+        );
+      } else {
+        router.replace("/(tabs)");
+      }
+    } catch (error) {
+      Alert.alert(
+        "Could not create season",
+        error instanceof Error ? error.message : "Check your connection and try again.",
+      );
     } finally {
       setSubmitting(false);
     }
