@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { activityLinksAvailable } from "@/lib/activity-links";
 import { buildInputCost, buildLabourCost, laborSubcategory, type CostContext } from "@/lib/activity-costs";
+import { savePendingRecords } from "@/lib/save-pending-records";
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
   Pressable,
   TextInput,
   Alert,
+  BackHandler,
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +21,7 @@ import COLORS from "@/constants/colors";
 import { INVENTORY_MASTER, SEASON_SEED } from "@/constants/farmData";
 import { resolveInputSubcategory } from "@/lib/cost-subcategory";
 import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@/lib/storage";
+import type { CostEntry } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
@@ -119,6 +122,11 @@ export default function LogActivityScreen() {
   const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [partialSavePending, setPartialSavePending] = useState(false);
+  const pendingActivityIdRef = useRef<string | null>(null);
+  const pendingCostEntriesRef = useRef<Omit<CostEntry, "id" | "created_at">[] | null>(null);
+  const completedCostIndexesRef = useRef(new Set<number>());
+  const pendingInventoryWarningRef = useRef<string | null>(null);
 
   const selectedActivity = selectedActivityId
     ? currentSchedule.find((a) => a.id === selectedActivityId)
@@ -225,6 +233,30 @@ export default function LogActivityScreen() {
     );
   };
 
+  const handleClose = useCallback(() => {
+    if (!partialSavePending) {
+      router.back();
+      return;
+    }
+    Alert.alert(
+      "Cost records still need saving",
+      "The activity is already recorded, but some linked costs are not. Retry the remaining saves or leave without saving those costs.",
+      [
+        { text: "Stay", style: "cancel" },
+        { text: "Leave", style: "destructive", onPress: () => router.back() },
+      ],
+    );
+  }, [partialSavePending]);
+
+  useEffect(() => {
+    if (!partialSavePending) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [handleClose, partialSavePending]);
+
   const handleSubmit = async () => {
     if (!activityName.trim()) {
       Alert.alert("Error", "Please select or enter an activity name.");
@@ -285,8 +317,9 @@ export default function LogActivityScreen() {
           qty: parseFloat(p.qty) || 0,
         }));
 
-      const newLog = await logActivity(
-        {
+      if (!pendingActivityIdRef.current) {
+        const linksOn = await activityLinksAvailable();
+        const result = await logActivity({
           farm_id: farmId,
           season_id: activeSeasonId,
           section_id: sectionId,
@@ -313,80 +346,115 @@ export default function LogActivityScreen() {
           weather_conditions: weather,
           is_historical: isHist,
           notes,
-        },
-        inventoryUpdates
+        }, inventoryUpdates);
+
+        pendingActivityIdRef.current = result.record.id;
+        pendingInventoryWarningRef.current = result.inventoryError;
+
+        // Build this list once so a retry can save only entries that did not finish.
+        const costEntries: Omit<CostEntry, "id" | "created_at">[] = [];
+        pendingCostEntriesRef.current = costEntries;
+        const costCtx: CostContext = {
+          activityLogId: linksOn ? result.record.id : null,
+          farmId,
+          seasonId: activeSeasonId,
+          sectionId,
+          activityName,
+          date,
+          isPrePlanting: isPrePlanting(date, plantingDate),
+          isHistorical: isHist,
+          notes,
+          weather,
+        };
+
+        if (laborCost > 0) {
+          costEntries.push(buildLabourCost(costCtx, {
+            amount: laborCost,
+            numWorkers: parseInt(numWorkers) || 0,
+            daysWorked: parseFloat(daysWorked) || 0,
+            dailyRate: parseFloat(dailyRate) || null,
+            subcategory: laborSubcategory(activityType === "planned" ? selectedActivityId : customActivityName.toLowerCase()),
+          }));
+        }
+
+        for (const product of productsUsed) {
+          if (product.total > 0) {
+            costEntries.push(buildInputCost(costCtx, product, resolveInputSubcategory(product.name, inventory, INVENTORY_MASTER)));
+          }
+        }
+
+        for (const cost of otherCosts) {
+          const costAmount = getOtherCostAmount(cost);
+          if (costAmount > 0) {
+            costEntries.push({
+              farm_id: farmId,
+              season_id: activeSeasonId,
+              section_id: sectionId,
+              ...(linksOn ? { activity_log_id: result.record.id } : {}),
+              cost_category: cost.category,
+              cost_subcategory: cost.subcategory,
+              description: cost.description || cost.subcategory,
+              cost_date: date,
+              is_pre_planting: isPrePlanting(date, plantingDate),
+              is_historical: isHist,
+              amount_kes: costAmount,
+              quantity: null,
+              unit: null,
+              unit_price_kes: null,
+              product_name: null,
+              supplier: null,
+              receipt_reference: null,
+              num_workers: null,
+              days_worked: null,
+              rate_per_worker_per_day: null,
+              facilitator_name: null,
+              trip_from: null,
+              trip_to: null,
+              is_deviation: false,
+              planned_product: null,
+              deviation_reason: null,
+              notes: null,
+              weather_conditions: weather,
+            });
+          }
+        }
+      }
+
+      await savePendingRecords(
+        pendingCostEntriesRef.current ?? [],
+        completedCostIndexesRef.current,
+        (cost) => addCostEntry(cost),
       );
 
-      // Costs created by this activity carry its id (once the database has the column), so they can be kept in step later.
-      const linksOn = await activityLinksAvailable();
-      const costCtx: CostContext = {
-        activityLogId: linksOn ? newLog.id : null,
-        farmId,
-        seasonId: activeSeasonId,
-        sectionId,
-        activityName,
-        date,
-        isPrePlanting: isPrePlanting(date, plantingDate),
-        isHistorical: isHist,
-        notes,
-        weather,
-      };
+      const inventoryWarning = pendingInventoryWarningRef.current;
+      pendingActivityIdRef.current = null;
+      pendingCostEntriesRef.current = null;
+      completedCostIndexesRef.current.clear();
+      pendingInventoryWarningRef.current = null;
+      setPartialSavePending(false);
 
-      if (laborCost > 0) {
-        await addCostEntry(buildLabourCost(costCtx, {
-          amount: laborCost,
-          numWorkers: parseInt(numWorkers) || 0,
-          daysWorked: parseFloat(daysWorked) || 0,
-          dailyRate: parseFloat(dailyRate) || null,
-          subcategory: laborSubcategory(activityType === "planned" ? selectedActivityId : customActivityName.toLowerCase()),
-        }));
+      if (inventoryWarning) {
+        Alert.alert(
+          "Activity saved",
+          `The activity and its cost records were saved, but inventory usage could not be updated. Check Inventory before making another change.\n\n${inventoryWarning}`,
+          [{ text: "OK", onPress: () => router.back() }],
+        );
+      } else {
+        router.back();
       }
-
-      for (const product of productsUsed) {
-        if (product.total > 0) {
-          await addCostEntry(buildInputCost(costCtx, product, resolveInputSubcategory(product.name, inventory, INVENTORY_MASTER)));
-        }
-      }
-
-      for (const cost of otherCosts) {
-        const costAmount = getOtherCostAmount(cost);
-        if (costAmount > 0) {
-          await addCostEntry({
-            farm_id: farmId,
-            season_id: activeSeasonId,
-            section_id: sectionId,
-            ...(linksOn ? { activity_log_id: newLog.id } : {}),
-            cost_category: cost.category,
-            cost_subcategory: cost.subcategory,
-            description: cost.description || cost.subcategory,
-            cost_date: date,
-            is_pre_planting: isPrePlanting(date, plantingDate),
-            is_historical: isHist,
-            amount_kes: costAmount,
-            quantity: null,
-            unit: null,
-            unit_price_kes: null,
-            product_name: null,
-            supplier: null,
-            receipt_reference: null,
-            num_workers: null,
-            days_worked: null,
-            rate_per_worker_per_day: null,
-            facilitator_name: null,
-            trip_from: null,
-            trip_to: null,
-            is_deviation: false,
-            planned_product: null,
-            deviation_reason: null,
-            notes: null,
-            weather_conditions: weather,
-          });
-        }
-      }
-
-      router.back();
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to save. Please try again.");
+      if (pendingActivityIdRef.current) {
+        setPartialSavePending(true);
+        const total = pendingCostEntriesRef.current?.length ?? 0;
+        const remaining = total - completedCostIndexesRef.current.size;
+        const detail = e instanceof Error ? `\n\nDetails: ${e.message}` : "";
+        const message = remaining > 0
+          ? `${remaining} cost record${remaining === 1 ? "" : "s"} still need saving. Tap “Retry remaining saves”; the activity and completed costs will not be duplicated.${detail}`
+          : `The activity is already recorded. Tap “Retry remaining saves” to finish the outstanding step without creating another activity.${detail}`;
+        Alert.alert("Activity saved; costs need attention", message);
+      } else {
+        Alert.alert("Could not save activity", e instanceof Error ? e.message : "Your entries are still on this screen. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -425,7 +493,7 @@ export default function LogActivityScreen() {
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={12}>
+        <Pressable onPress={handleClose} style={styles.closeBtn} hitSlop={12}>
           <Ionicons name="close" size={22} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Log Activity</Text>
@@ -443,6 +511,7 @@ export default function LogActivityScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        pointerEvents={partialSavePending ? "none" : "auto"}
       >
         {/* Step 1: What are you logging */}
         {step === 1 && (
@@ -1077,7 +1146,7 @@ export default function LogActivityScreen() {
         ) : (
           <Pressable style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting}>
             <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-            <Text style={styles.submitBtnText}>{submitting ? "Saving..." : "Submit Activity"}</Text>
+            <Text style={styles.submitBtnText}>{submitting ? "Saving..." : partialSavePending ? "Retry remaining saves" : "Submit Activity"}</Text>
           </Pressable>
         )}
       </View>

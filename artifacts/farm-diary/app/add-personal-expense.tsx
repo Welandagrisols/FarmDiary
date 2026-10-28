@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { PERSONAL_EXPENSE_CATEGORIES } from "@/lib/storage";
+import { reportWriteError } from "@/lib/write-errors";
 import * as Haptics from "expo-haptics";
 
 const CATEGORIES = Object.keys(PERSONAL_EXPENSE_CATEGORIES);
@@ -78,8 +79,8 @@ export default function AddPersonalExpenseScreen() {
         notes: notes || null,
       });
       router.back();
-    } catch {
-      Alert.alert("Error", "Failed to save expense. Please try again.");
+    } catch (error) {
+      reportWriteError(error, "Failed to save expense. Please try again.", "Error");
     } finally {
       setSubmitting(false);
     }

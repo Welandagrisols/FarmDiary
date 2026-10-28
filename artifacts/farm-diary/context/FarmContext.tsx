@@ -186,7 +186,10 @@ type FarmContextValue = {
   adjustInventoryUse: (scope: { farm_id: string; season_id: string }, deltas: Record<string, number>) => Promise<void>;
   addInventory: typeof addInventoryItem;
   removeInventory: typeof deleteInventoryItem;
-  logActivity: (entry: Parameters<typeof addActivityLog>[0], inventoryUpdates?: InventoryUse[]) => Promise<ActivityLog>;
+  logActivity: (
+    entry: Parameters<typeof addActivityLog>[0],
+    inventoryUpdates?: InventoryUse[],
+  ) => Promise<{ record: ActivityLog; inventoryError: string | null }>;
   editActivityLog: (id: string, updates: Partial<ActivityLog>) => Promise<void>;
   removeActivityLog: typeof deleteActivityLog;
   addFieldObservation: typeof addFieldObservation;
@@ -441,6 +444,7 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
       totalsByProduct.set(name, (totalsByProduct.get(name) || 0) + quantity);
     }
 
+    let inventoryError: string | null = null;
     try {
       for (const [name, quantity] of totalsByProduct) {
         const item = inventory.find((candidate) =>
@@ -458,11 +462,10 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
         ));
       }
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Inventory could not be updated.";
-      throw new Error(`Activity was saved, but inventory usage could not be updated. ${detail}`);
+      inventoryError = error instanceof Error ? error.message : "Inventory could not be updated.";
     }
 
-    return newRecord;
+    return { record: newRecord, inventoryError };
   }, [inventory, seasons]);
   const removeActivityLog = useCallback(async (id: string) => {
     assertSeasonOpen(seasons, activityLogs.find((l) => l.id === id)?.season_id);
