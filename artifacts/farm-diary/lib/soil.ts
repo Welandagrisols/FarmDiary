@@ -152,6 +152,15 @@ export interface PlotRecord {
   is_archived: boolean;
   created_by: string | null;
   created_at: string;
+  boundary?: [number, number][] | null;
+  boundary_area_m2?: number | null;
+  boundary_perimeter_m?: number | null;
+  boundary_center_lat?: number | null;
+  boundary_center_lng?: number | null;
+  boundary_accuracy_m?: number | null;
+  boundary_method?: "corners" | "walk" | null;
+  boundary_captured_by?: string | null;
+  boundary_captured_at?: string | null;
 }
 
 export interface ParsedSample {

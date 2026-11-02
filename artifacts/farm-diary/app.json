@@ -49,6 +49,12 @@
           "photosPermission": "Agrisols Farm Diary reads soil test report photos you choose from your gallery."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Agrisols Farm Diary uses your location while you walk around a plot to record its boundary."
+        }
+      ],
       "expo-sharing"
     ],
     "experiments": {

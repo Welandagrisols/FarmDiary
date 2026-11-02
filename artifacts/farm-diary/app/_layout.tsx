@@ -57,6 +57,8 @@ function RootLayoutNav() {
       <Stack.Screen name="soil-plan" options={{ headerShown: false }} />
       <Stack.Screen name="plots" options={{ headerShown: false }} />
       <Stack.Screen name="add-plot" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="map-boundary" options={{ headerShown: false }} />
+      <Stack.Screen name="plot-boundary" options={{ headerShown: false }} />
       <Stack.Screen name="all-logs" options={{ headerShown: false }} />
       <Stack.Screen name="cost-breakdown" options={{ headerShown: false }} />
       <Stack.Screen name="edit-activity" options={{ headerShown: false, presentation: "modal" }} />

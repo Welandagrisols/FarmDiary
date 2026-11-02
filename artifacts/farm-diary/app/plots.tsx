@@ -8,6 +8,8 @@ import { useFarm } from "@/context/FarmContext";
 import { listPlots, listSoilTests } from "@/lib/soil-storage";
 import { sortNewestFirst, testDate, testsForTarget, type PlotRecord, type SoilTestRecord } from "@/lib/soil";
 import { formatDate } from "@/lib/storage";
+import { applyPendingBoundaries, flushPendingBoundaries, getPendingPlotIds } from "@/lib/boundary-storage";
+import { formatAcres, M2_PER_ACRE } from "@/lib/geo";
 
 export default function PlotsScreen() {
   const insets = useSafeAreaInsets();
@@ -17,14 +19,17 @@ export default function PlotsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [pendingPlotIds, setPendingPlotIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!activeFarm?.id) { setLoading(false); return; }
     try {
       setError(null);
+      await flushPendingBoundaries();
       const [p, t] = await Promise.all([listPlots(activeFarm.id), listSoilTests(activeFarm.id)]);
-      setPlots(p);
+      setPlots(await applyPendingBoundaries(p));
       setTests(t);
+      setPendingPlotIds(await getPendingPlotIds());
     } catch (e: any) {
       setError(e?.message || "Could not load plots.");
     } finally {
@@ -40,18 +45,41 @@ export default function PlotsScreen() {
 
   const Card = ({ plot }: { plot: PlotRecord }) => {
     const mine = sortNewestFirst(testsForTarget(tests, plot.id));
+    const mappedAcres = plot.boundary_area_m2 != null ? plot.boundary_area_m2 / M2_PER_ACRE : null;
+    const hasBoundary = Array.isArray(plot.boundary) && plot.boundary.length >= 3;
+    const isPending = pendingPlotIds.includes(plot.id);
     return (
-      <Pressable style={styles.card} onPress={() => router.push({ pathname: "/add-plot", params: { id: plot.id } })}>
-        <View style={{ flex: 1 }}>
+      <View style={styles.card}>
+        <Pressable
+          style={styles.cardMain}
+          onPress={() => router.push({ pathname: "/add-plot", params: { id: plot.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${plot.name}`}
+        >
           <Text style={styles.cardTitle}>{plot.name}</Text>
           <Text style={styles.cardSub}>
             {plot.area_acres ? `${plot.area_acres} acres · ` : ""}
             {mine.length === 0 ? "No soil tests yet" : `${mine.length} soil test${mine.length === 1 ? "" : "s"} · latest ${formatDate(testDate(mine[0]))}`}
           </Text>
+          {hasBoundary ? (
+            <Text style={styles.mapStatus}>
+              {mappedAcres == null ? "GPS outline saved" : `${formatAcres(mappedAcres)} acres mapped`}
+              {isPending ? " · saved on this phone" : ""}
+            </Text>
+          ) : null}
           {plot.description ? <Text style={styles.cardNote} numberOfLines={2}>{plot.description}</Text> : null}
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </Pressable>
+        </Pressable>
+        <Pressable
+          style={styles.mapAction}
+          onPress={() => router.push({ pathname: "/plot-boundary", params: { id: plot.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`${hasBoundary ? "View map for" : "Map"} ${plot.name}`}
+          testID={`plot-boundary-${plot.id}`}
+        >
+          <Ionicons name={hasBoundary ? "map" : "map-outline"} size={22} color={COLORS.primary} />
+          <Text style={styles.mapActionText}>{hasBoundary ? "View map" : "Map plot"}</Text>
+        </Pressable>
+      </View>
     );
   };
 
@@ -98,22 +126,23 @@ export default function PlotsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
-  title: { fontFamily: "Manrope_700Bold", fontSize: 20, color: COLORS.text },
+  title: { fontFamily: "Manrope_700Bold", fontSize: 32, color: COLORS.text },
   intro: {
     fontFamily: "Manrope_400Regular",
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.textSecondary,
     lineHeight: 19,
   },
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: COLORS.cardBg,
     borderRadius: 20,
     padding: 14,
     ...CARD_SHADOW,
   },
+  cardMain: { flex: 1, minHeight: 56, justifyContent: "center" },
   cardTitle: {
     fontFamily: "Manrope_700Bold",
     fontSize: 17,
@@ -121,16 +150,19 @@ const styles = StyleSheet.create({
   },
   cardSub: {
     fontFamily: "Manrope_400Regular",
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textSecondary,
     marginTop: 3,
   },
   cardNote: {
     fontFamily: "Manrope_400Regular",
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textMuted,
     marginTop: 4,
   },
+  mapStatus: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.primary, marginTop: 4 },
+  mapAction: { minWidth: 76, minHeight: 56, alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 4 },
+  mapActionText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.primary, textAlign: "center" },
   empty: { alignItems: "center", gap: 8, paddingVertical: 28, paddingHorizontal: 12 },
   emptyTitle: {
     fontFamily: "Manrope_700Bold",
