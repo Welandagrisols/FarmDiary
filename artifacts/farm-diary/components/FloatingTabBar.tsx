@@ -1,20 +1,24 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 import COLORS from "@/constants/colors";
+
+type ExpoTabBarProps = Parameters<
+  NonNullable<ComponentProps<typeof import("expo-router").Tabs>["tabBar"]>
+>[0];
 
 /**
  * Floating pill tab bar: white bar lifted off the screen edge, the current tab is a green pill.
  * Same five tabs and the same navigation as before; only the look changed.
  */
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function FloatingTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   const insets = useSafeAreaInsets();
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: Math.max(insets.bottom, 0) + 14 }]}>
       <View style={styles.bar}>
-        {state.routes.map((route: BottomTabBarProps["state"]["routes"][number], index: number) => {
+        {state.routes.map((route: ExpoTabBarProps["state"]["routes"][number], index: number) => {
           const { options } = descriptors[route.key];
           const label = options.title ?? route.name;
           const focused = state.index === index;
