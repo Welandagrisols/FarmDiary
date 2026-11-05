@@ -23,6 +23,13 @@ function FieldLabel({ label, required }: { label: string; required?: boolean }) 
   );
 }
 
+const localDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 function NumericInput({
   value,
   onChangeText,
@@ -67,12 +74,15 @@ export default function AddHarvestScreen() {
     sublabel: block.variety || "Crop planting",
   }));
   const [saving, setSaving] = useState(false);
+  const [showDateOptions, setShowDateOptions] = useState(false);
+  const [showCustomDateInput, setShowCustomDateInput] = useState(false);
+  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [sectionId, setSectionId] = useState(sections[0]?.id || "section-a");
-  const [harvestDate, setHarvestDate] = useState(new Date().toISOString().split("T")[0]);
+  const [harvestDate, setHarvestDate] = useState(() => localDateKey(new Date()));
   const [quantity, setQuantity] = useState("");
   const [unitKey, setUnitKey] = useState(cropMeta.harvestUnits[0]?.key || "bag");
   const initialUnit = cropMeta.harvestUnits[0];
@@ -97,7 +107,17 @@ export default function AddHarvestScreen() {
   const weightRequired = Boolean(selectedUnit && selectedUnit.key !== "kg" && selectedUnit.defaultKg > 0);
   const totalKg = numKgPerUnit > 0 ? numQuantity * numKgPerUnit : 0;
 
-  const isValid = numQuantity > 0 && (!weightRequired || numKgPerUnit > 0) && harvestDate.length === 10;
+  const dateParts = harvestDate.split("-").map(Number);
+  const parsedHarvestDate = dateParts.length === 3
+    ? new Date(dateParts[0], dateParts[1] - 1, dateParts[2])
+    : null;
+  const isValidDate = Boolean(
+    parsedHarvestDate
+      && parsedHarvestDate.getFullYear() === dateParts[0]
+      && parsedHarvestDate.getMonth() === dateParts[1] - 1
+      && parsedHarvestDate.getDate() === dateParts[2],
+  );
+  const isValid = numQuantity > 0 && (!weightRequired || numKgPerUnit > 0) && isValidDate;
 
   const handleUnitChange = (key: string) => {
     const nextUnit = cropMeta.harvestUnits.find((unit) => unit.key === key);

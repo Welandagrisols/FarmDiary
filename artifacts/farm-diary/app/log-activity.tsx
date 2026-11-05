@@ -22,6 +22,7 @@ import { INVENTORY_MASTER, SEASON_SEED } from "@/constants/farmData";
 import { resolveInputSubcategory } from "@/lib/cost-subcategory";
 import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@/lib/storage";
 import type { CostEntry } from "@/lib/storage";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
@@ -75,6 +76,13 @@ const OTHER_COST_TYPES: { key: string; label: string; category: string; subcateg
   { key: "other", label: "Other", category: "Overhead", subcategory: "Other Overhead" },
 ];
 
+const localDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function LogActivityScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ activityId?: string }>();
@@ -86,14 +94,15 @@ export default function LogActivityScreen() {
     : null;
 
   const [step, setStep] = useState(1);
+  const [showFullDetails, setShowFullDetails] = useState(false);
   const [activityType, setActivityType] = useState<"planned" | "other" | "historical">(preSelected ? "planned" : "planned");
   const [selectedActivityId, setSelectedActivityId] = useState<string>(preSelected?.id ?? "");
   const [customActivityName, setCustomActivityName] = useState("");
   const [operationCategory, setOperationCategory] = useState("other");
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(preSelected?.blockId ?? null);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => localDateKey(new Date()));
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
-  const [weather, setWeather] = useState("Sunny");
+  const [weather, setWeather] = useState("");
   const [products, setProducts] = useState<ProductRow[]>(() => {
     if (preSelected) {
       return preSelected.plannedProducts.map((p) => ({
@@ -108,17 +117,18 @@ export default function LogActivityScreen() {
     }
     return [];
   });
-  const [numWorkers, setNumWorkers] = useState("2");
+  const [numWorkers, setNumWorkers] = useState("");
   const [workerNames, setWorkerNames] = useState("");
-  const [dailyRate, setDailyRate] = useState("500");
-  const [daysWorked, setDaysWorked] = useState("1");
+  const [dailyRate, setDailyRate] = useState("");
+  const [daysWorked, setDaysWorked] = useState("");
   const [workQuantity, setWorkQuantity] = useState("");
   const [workUnit, setWorkUnit] = useState("");
   const [laborMode, setLaborMode] = useState<"per_day" | "per_acre" | "per_pump">("per_day");
-  const [acresWorked, setAcresWorked] = useState("2");
-  const [ratePerAcre, setRatePerAcre] = useState("2400");
-  const [numPumps, setNumPumps] = useState("20");
-  const [ratePerPump, setRatePerPump] = useState("50");
+  const [acresWorked, setAcresWorked] = useState("");
+  const [ratePerAcre, setRatePerAcre] = useState("");
+  const [numPumps, setNumPumps] = useState("");
+  const [ratePerPump, setRatePerPump] = useState("");
+  const [totalLaborCostInput, setTotalLaborCostInput] = useState("");
   const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -137,13 +147,16 @@ export default function LogActivityScreen() {
       ? (selectedActivity?.name ?? "")
       : customActivityName;
 
-  const laborCost = Math.round(
+  const calculatedLaborCost = Math.round(
     laborMode === "per_day"
-      ? (parseFloat(numWorkers) || 0) * (parseFloat(dailyRate) || 500) * (parseFloat(daysWorked) || 1)
+      ? (parseFloat(numWorkers) || 0) * (parseFloat(dailyRate) || 0) * (parseFloat(daysWorked) || 0)
       : laborMode === "per_acre"
-      ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 2400)
-      : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 50)
+      ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 0)
+      : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 0)
   );
+  const laborCost = totalLaborCostInput.trim()
+    ? Math.max(0, Number(totalLaborCostInput) || 0)
+    : calculatedLaborCost;
   const measuredQuantity = workQuantity.trim()
     ? Number(workQuantity)
     : laborMode === "per_acre"
@@ -272,10 +285,6 @@ export default function LogActivityScreen() {
       Alert.alert("Check labour details", "Enter the number of days worked by the crew.");
       return;
     }
-    if (workerCount > 0 && !workerNames.trim()) {
-      Alert.alert("Add the worker names", "Enter the names or IDs of the workers involved so their work can be reviewed.");
-      return;
-    }
     if (
       measuredQuantity !== null &&
       (!Number.isFinite(measuredQuantity) || measuredQuantity <= 0 || !measuredUnit)
@@ -343,7 +352,7 @@ export default function LogActivityScreen() {
           work_unit: measuredUnit,
           labor_cost_kes: laborCost,
           total_cost_kes: totalCost,
-          weather_conditions: weather,
+          weather_conditions: weather || null,
           is_historical: isHist,
           notes,
         }, inventoryUpdates);
@@ -414,7 +423,7 @@ export default function LogActivityScreen() {
               planned_product: null,
               deviation_reason: null,
               notes: null,
-              weather_conditions: weather,
+              weather_conditions: weather || null,
             });
           }
         }
@@ -476,7 +485,7 @@ export default function LogActivityScreen() {
     for (let i = 0; i <= 5; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const val = d.toISOString().split("T")[0];
+      const val = localDateKey(d);
       let label = "";
       if (i === 0) label = "Today";
       else if (i === 1) label = "Yesterday";
@@ -490,6 +499,286 @@ export default function LogActivityScreen() {
   const canProceed =
     step === 1 ? (activityType !== "planned" ? !!customActivityName.trim() : !!selectedActivityId) : true;
 
+  if (!showFullDetails) {
+    const quickDates = getQuickDates();
+    const today = quickDates[0]?.value ?? date;
+    const yesterday = quickDates[1]?.value ?? today;
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.quickHeader}>
+          <Pressable onPress={handleClose} style={styles.closeBtn} hitSlop={12} accessibilityLabel="Close activity form">
+            <Ionicons name="close" size={22} color={COLORS.text} />
+          </Pressable>
+          <View style={styles.quickHeaderCopy}>
+            <Text style={styles.headerTitle}>Record work</Text>
+            <Text style={styles.quickHeaderHint}>A few details, then save</Text>
+          </View>
+          <Pressable
+            onPress={() => { setStep(1); setShowFullDetails(true); }}
+            style={styles.quickDetailsButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.quickDetailsText}>More details</Text>
+          </Pressable>
+        </View>
+
+        <KeyboardAwareScrollViewCompat
+          style={styles.scroll}
+          contentContainerStyle={styles.quickContent}
+          keyboardShouldPersistTaps="handled"
+          pointerEvents={partialSavePending ? "none" : "auto"}
+        >
+          <View style={styles.quickSection}>
+            <Text style={styles.quickSectionTitle}>What work was done?</Text>
+            <View style={styles.quickChipRow}>
+              {[
+                { key: "planned", label: "From today’s plan" },
+                { key: "other", label: "Other work" },
+                { key: "historical", label: "Past work" },
+              ].map((option) => (
+                <Pressable
+                  key={option.key}
+                  style={[styles.quickChoice, activityType === option.key && styles.quickChoiceActive]}
+                  onPress={() => {
+                    setActivityType(option.key as typeof activityType);
+                    Haptics.selectionAsync();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activityType === option.key }}
+                >
+                  <Text style={[styles.quickChoiceText, activityType === option.key && styles.quickChoiceTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {activityType === "planned" ? (
+              <View style={styles.quickOptionList}>
+                {currentSchedule.length ? currentSchedule.map((activity) => (
+                  <Pressable
+                    key={activity.id}
+                    style={[styles.quickActivityChoice, selectedActivityId === activity.id && styles.quickActivityChoiceActive]}
+                    onPress={() => { handleActivitySelect(activity.id); Haptics.selectionAsync(); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedActivityId === activity.id }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.quickActivityName} numberOfLines={1}>{activity.name}</Text>
+                      <Text style={styles.quickActivityMeta}>{activity.blockName} · {activity.plannedDate}</Text>
+                    </View>
+                    <Ionicons
+                      name={selectedActivityId === activity.id ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={selectedActivityId === activity.id ? COLORS.primary : COLORS.textMuted}
+                    />
+                  </Pressable>
+                )) : (
+                  <Text style={styles.quickHint}>There are no planned activities. Choose “Other work” to continue.</Text>
+                )}
+              </View>
+            ) : (
+              <>
+                <Text style={styles.quickFieldLabel}>Type of work</Text>
+                <View style={styles.quickCategoryGrid}>
+                  {OPERATION_CATEGORIES.map((category) => (
+                    <Pressable
+                      key={category.id}
+                      style={[styles.quickCategory, operationCategory === category.id && styles.quickCategoryActive]}
+                      onPress={() => { setOperationCategory(category.id); Haptics.selectionAsync(); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: operationCategory === category.id }}
+                    >
+                      <Text style={[styles.quickCategoryText, operationCategory === category.id && styles.quickCategoryTextActive]}>
+                        {category.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={customActivityName}
+                  onChangeText={setCustomActivityName}
+                  placeholder="Work name (required)"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Name of the work"
+                  returnKeyType="done"
+                />
+              </>
+            )}
+          </View>
+
+          <View style={styles.quickSection}>
+            <Text style={styles.quickSectionTitle}>Where and when?</Text>
+            <Text style={styles.quickFieldLabel}>Planting block</Text>
+            <View style={styles.quickChipRow}>
+              <Pressable
+                style={[styles.quickChoice, selectedBlockId === null && styles.quickChoiceActive]}
+                onPress={() => setSelectedBlockId(null)}
+              >
+                <Text style={[styles.quickChoiceText, selectedBlockId === null && styles.quickChoiceTextActive]}>All blocks</Text>
+              </Pressable>
+              {seasonBlocks.map((block) => (
+                <Pressable
+                  key={block.id}
+                  style={[styles.quickChoice, selectedBlockId === block.id && styles.quickChoiceActive]}
+                  onPress={() => setSelectedBlockId(block.id)}
+                >
+                  <Text style={[styles.quickChoiceText, selectedBlockId === block.id && styles.quickChoiceTextActive]}>{block.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.quickDateDisplayRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.quickFieldLabel}>Date</Text>
+                <Text style={styles.quickDateText}>
+                  {date === today ? "Today" : date === yesterday ? "Yesterday" : formatDateFriendly(date)}
+                </Text>
+              </View>
+              <Pressable
+                style={styles.quickChangeButton}
+                onPress={() => setShowCustomDateInput((visible) => !visible)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.quickDetailsText}>{showCustomDateInput ? "Hide dates" : "Change date"}</Text>
+              </Pressable>
+            </View>
+            {showCustomDateInput && (
+              <View style={styles.quickDatePicker}>
+                <View style={styles.quickChipRow}>
+                  {[{ label: "Today", value: today }, { label: "Yesterday", value: yesterday }].map((option) => (
+                    <Pressable
+                      key={option.label}
+                      style={[styles.quickChoice, date === option.value && styles.quickChoiceActive]}
+                      onPress={() => setDate(option.value)}
+                    >
+                      <Text style={[styles.quickChoiceText, date === option.value && styles.quickChoiceTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={date}
+                  onChangeText={setDate}
+                  placeholder="YYYY-MM-DD for another date"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numbers-and-punctuation"
+                  accessibilityLabel="Activity date"
+                />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.quickSection}>
+            <Text style={styles.quickSectionTitle}>People and work done</Text>
+            <View style={styles.quickInputRow}>
+              <View style={styles.quickInputColumn}>
+                <Text style={styles.quickFieldLabel}>People</Text>
+                <TextInput
+                  style={styles.quickNumberInput}
+                  value={numWorkers}
+                  onChangeText={setNumWorkers}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Number of workers"
+                />
+              </View>
+              <View style={styles.quickInputColumn}>
+                <Text style={styles.quickFieldLabel}>Days</Text>
+                <TextInput
+                  style={styles.quickNumberInput}
+                  value={daysWorked}
+                  onChangeText={setDaysWorked}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Days worked"
+                />
+              </View>
+            </View>
+            <TextInput
+              style={styles.input}
+              value={workerNames}
+              onChangeText={setWorkerNames}
+              placeholder="Worker names (optional)"
+              placeholderTextColor={COLORS.textMuted}
+              accessibilityLabel="Worker names, optional"
+            />
+            <View>
+              <Text style={styles.quickFieldLabel}>Labour paid (KES, optional)</Text>
+              <TextInput
+                style={styles.input}
+                value={totalLaborCostInput}
+                onChangeText={setTotalLaborCostInput}
+                keyboardType="decimal-pad"
+                placeholder="Leave blank if not known"
+                placeholderTextColor={COLORS.textMuted}
+                accessibilityLabel="Total labour paid in Kenyan shillings, optional"
+              />
+            </View>
+            <View style={styles.quickInputRow}>
+              <View style={styles.quickInputColumn}>
+                <Text style={styles.quickFieldLabel}>Amount completed</Text>
+                <TextInput
+                  style={styles.quickNumberInput}
+                  value={workQuantity}
+                  onChangeText={setWorkQuantity}
+                  keyboardType="decimal-pad"
+                  placeholder="Optional"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Amount of work completed"
+                />
+              </View>
+              <View style={styles.quickInputColumn}>
+                <Text style={styles.quickFieldLabel}>Unit</Text>
+                <TextInput
+                  style={styles.quickNumberInput}
+                  value={workUnit}
+                  onChangeText={setWorkUnit}
+                  placeholder="Acres, rows…"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Unit of work completed"
+                />
+              </View>
+            </View>
+            <Text style={styles.quickHint}>
+              Enter the crew and work amount when known. Leave them blank if you do not know.
+            </Text>
+          </View>
+
+          <Pressable
+            style={styles.quickMoreDetails}
+            onPress={() => { setStep(2); setShowFullDetails(true); }}
+            accessibilityRole="button"
+          >
+            <Ionicons name="options-outline" size={19} color={COLORS.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.quickMoreTitle}>Add materials, weather, pay or notes</Text>
+              <Text style={styles.quickHint}>Optional details for managers</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+          </Pressable>
+        </KeyboardAwareScrollViewCompat>
+
+        <View style={[styles.quickFooter, { paddingBottom: insets.bottom + 12 }]}>
+          <Pressable
+            style={[styles.quickSaveButton, submitting && { opacity: 0.7 }]}
+            onPress={handleSubmit}
+            disabled={submitting}
+            accessibilityRole="button"
+          >
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+            <Text style={styles.quickSaveText}>
+              {submitting ? "Saving…" : partialSavePending ? "Retry remaining saves" : "Save work record"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.header}>
@@ -497,6 +786,13 @@ export default function LogActivityScreen() {
           <Ionicons name="close" size={22} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Log Activity</Text>
+        <Pressable
+          onPress={() => setShowFullDetails(false)}
+          style={styles.quickDetailsButton}
+          accessibilityRole="button"
+        >
+          <Text style={styles.quickDetailsText}>Quick entry</Text>
+        </Pressable>
         <View style={styles.stepIndicator}>
           <Text style={styles.stepText}>{step}/6</Text>
         </View>
@@ -845,7 +1141,7 @@ export default function LogActivityScreen() {
                   value={numWorkers}
                   onChangeText={setNumWorkers}
                   keyboardType="numeric"
-                  placeholder="2"
+                  placeholder="0"
                   placeholderTextColor={COLORS.textMuted}
                 />
               </View>
@@ -856,7 +1152,7 @@ export default function LogActivityScreen() {
                   value={daysWorked}
                   onChangeText={setDaysWorked}
                   keyboardType="decimal-pad"
-                  placeholder="1"
+                  placeholder="0"
                   placeholderTextColor={COLORS.textMuted}
                 />
               </View>
@@ -913,7 +1209,7 @@ export default function LogActivityScreen() {
               <>
                 <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
                 <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
-                  keyboardType="numeric" placeholder="500" placeholderTextColor={COLORS.textMuted} />
+                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldHint}>{numWorkers} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
               </>
             )}
@@ -926,7 +1222,7 @@ export default function LogActivityScreen() {
                 <Text style={styles.fieldHint}>E.g. 1.4 acres (decimals allowed)</Text>
                 <Text style={styles.fieldLabel}>Rate per Acre (KES)</Text>
                 <TextInput style={styles.input} value={ratePerAcre} onChangeText={setRatePerAcre}
-                  keyboardType="numeric" placeholder="2400" placeholderTextColor={COLORS.textMuted} />
+                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldHint}>{acresWorked} acres × KES {ratePerAcre}/acre</Text>
               </>
             )}
@@ -935,11 +1231,11 @@ export default function LogActivityScreen() {
               <>
                 <Text style={styles.fieldLabel}>Total Number of Pumps</Text>
                 <TextInput style={styles.input} value={numPumps} onChangeText={setNumPumps}
-                  keyboardType="numeric" placeholder="20" placeholderTextColor={COLORS.textMuted} />
+                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldHint}>Total pumps across the section(s) worked</Text>
                 <Text style={styles.fieldLabel}>Rate per Pump (KES)</Text>
                 <TextInput style={styles.input} value={ratePerPump} onChangeText={setRatePerPump}
-                  keyboardType="numeric" placeholder="50" placeholderTextColor={COLORS.textMuted} />
+                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 <Text style={styles.fieldHint}>{numPumps} pumps × KES {ratePerPump}/pump</Text>
               </>
             )}
@@ -1156,6 +1452,126 @@ export default function LogActivityScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.cardBg },
+  quickHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: COLORS.cardBg,
+  },
+  quickHeaderCopy: { flex: 1 },
+  quickHeaderHint: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  quickDetailsButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: COLORS.primarySurface,
+  },
+  quickDetailsText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.primary },
+  quickContent: { padding: 14, gap: 12, paddingBottom: 18 },
+  quickSection: {
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  quickSectionTitle: { fontFamily: "Manrope_700Bold", fontSize: 18, color: COLORS.text },
+  quickFieldLabel: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
+  quickChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  quickChoice: {
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: COLORS.borderLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickChoiceActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  quickChoiceText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.text },
+  quickChoiceTextActive: { color: COLORS.white },
+  quickOptionList: { gap: 8 },
+  quickActivityChoice: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickActivityChoiceActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySurface },
+  quickActivityName: { fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.text },
+  quickActivityMeta: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  quickCategoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  quickCategory: {
+    flexGrow: 1,
+    flexBasis: "46%",
+    minHeight: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickCategoryActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  quickCategoryText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.text, textAlign: "center" },
+  quickCategoryTextActive: { color: COLORS.white },
+  quickHint: { fontFamily: "Manrope_400Regular", fontSize: 12, lineHeight: 17, color: COLORS.textMuted },
+  quickDateDisplayRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  quickDateText: { fontFamily: "Manrope_700Bold", fontSize: 16, color: COLORS.text, marginTop: 2 },
+  quickChangeButton: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.primarySurface },
+  quickDatePicker: { gap: 10 },
+  quickInputRow: { flexDirection: "row", gap: 10 },
+  quickInputColumn: { flex: 1, gap: 6 },
+  quickNumberInput: {
+    minHeight: 48,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: "Manrope_600SemiBold",
+    fontSize: 17,
+    color: COLORS.text,
+  },
+  quickMoreDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.primarySurface,
+  },
+  quickMoreTitle: { fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.text },
+  quickFooter: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    backgroundColor: COLORS.cardBg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  quickSaveButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+  },
+  quickSaveText: { fontFamily: "Manrope_700Bold", fontSize: 16, color: COLORS.white },
   header: {
     flexDirection: "row",
     alignItems: "center",
