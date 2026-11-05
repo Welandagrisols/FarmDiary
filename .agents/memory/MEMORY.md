@@ -1,0 +1,1 @@
+- [Future farm enterprises](farm-enterprise-scope.md) — Keep core operations crop-ready but extensible to later livestock and poultry support.

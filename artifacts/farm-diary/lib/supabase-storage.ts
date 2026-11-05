@@ -79,11 +79,36 @@ export async function getFarms(onOfflineFallback?: () => void): Promise<FarmReco
   }
 
   return withCache(`farms_${userId}`, async () => {
-    let query = supabase.from("farms").select("*").order("created_at", { ascending: true });
-    if (!isAdmin) query = query.eq("user_id", userId);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return data as FarmRecord[];
+    if (isAdmin) {
+      const { data, error } = await supabase
+        .from("farms")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return data as FarmRecord[];
+    }
+
+    const [{ data: ownedFarms, error: ownedError }, { data: memberships, error: membershipError }] =
+      await Promise.all([
+        supabase.from("farms").select("*").eq("user_id", userId),
+        supabase.from("farm_memberships").select("farm_id").eq("user_id", userId),
+      ]);
+    if (ownedError) throw new Error(ownedError.message);
+    if (membershipError) throw new Error(membershipError.message);
+
+    const memberFarmIds = [...new Set((memberships ?? []).map((membership) => membership.farm_id))];
+    const { data: sharedFarms, error: sharedError } = memberFarmIds.length
+      ? await supabase.from("farms").select("*").in("id", memberFarmIds)
+      : { data: [], error: null };
+    if (sharedError) throw new Error(sharedError.message);
+
+    const farmsById = new Map<string, FarmRecord>();
+    for (const farm of [...(ownedFarms ?? []), ...(sharedFarms ?? [])]) {
+      farmsById.set(farm.id, farm as FarmRecord);
+    }
+    return [...farmsById.values()].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
   }, "farms", isAdmin ? undefined : { field: "user_id", id: userId }, onOfflineFallback);
 }
 
