@@ -106,12 +106,21 @@ export default function AddHarvestScreen() {
   const numKgPerUnit = selectedUnit?.key === "kg" ? 1 : parseFloat(kgPerUnit) || 0;
   const weightRequired = Boolean(selectedUnit && selectedUnit.key !== "kg" && selectedUnit.defaultKg > 0);
   const totalKg = numKgPerUnit > 0 ? numQuantity * numKgPerUnit : 0;
+  const todayDateKey = localDateKey(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayDateKey = localDateKey(yesterday);
+  const harvestDateLabel = harvestDate === todayDateKey
+    ? "Today"
+    : harvestDate === yesterdayDateKey
+      ? "Yesterday"
+      : harvestDate;
 
   const dateParts = harvestDate.split("-").map(Number);
   const parsedHarvestDate = dateParts.length === 3
     ? new Date(dateParts[0], dateParts[1] - 1, dateParts[2])
     : null;
-  const isValidDate = Boolean(
+  const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(harvestDate) && Boolean(
     parsedHarvestDate
       && parsedHarvestDate.getFullYear() === dateParts[0]
       && parsedHarvestDate.getMonth() === dateParts[1] - 1
@@ -191,41 +200,103 @@ export default function AddHarvestScreen() {
             </View>
           )}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Section</Text>
-            <View style={styles.sectionRow}>
-              {sections.map((s) => (
-                <Pressable
-                  key={s.id}
-                  style={[styles.sectionBtn, sectionId === s.id && styles.sectionBtnActive]}
-                  onPress={() => { Haptics.selectionAsync(); setSectionId(s.id); }}
-                >
-                  <Text style={[styles.sectionBtnLabel, sectionId === s.id && styles.sectionBtnLabelActive]}>
-                    {s.label}
-                  </Text>
-                  <Text style={[styles.sectionBtnSub, sectionId === s.id && { color: COLORS.white + "CC" }]}>
-                    {s.sublabel}
-                  </Text>
-                </Pressable>
-              ))}
+          {sections.length > 1 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Planting block</Text>
+              <View style={styles.sectionRow}>
+                {sections.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    style={[styles.sectionBtn, sectionId === s.id && styles.sectionBtnActive]}
+                    onPress={() => { Haptics.selectionAsync(); setSectionId(s.id); }}
+                  >
+                    <Text style={[styles.sectionBtnLabel, sectionId === s.id && styles.sectionBtnLabelActive]}>
+                      {s.label}
+                    </Text>
+                    <Text style={[styles.sectionBtnSub, sectionId === s.id && { color: COLORS.white + "CC" }]}>
+                      {s.sublabel}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-          </View>
+          ) : sections[0] ? (
+            <View style={styles.singleBlock}>
+              <Ionicons name="leaf-outline" size={18} color={COLORS.primary} />
+              <View>
+                <Text style={styles.sectionBtnLabel}>{sections[0].label}</Text>
+                <Text style={styles.sectionBtnSub}>{sections[0].sublabel}</Text>
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{getTemplate(activeSeason?.template_id).cropType} Harvest Details</Text>
 
             <View style={styles.field}>
-              <FieldLabel label="Harvest Date" required />
-              <TextInput
-                style={styles.input}
-                value={harvestDate}
-                onChangeText={setHarvestDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numbers-and-punctuation"
-                returnKeyType="next"
-                onSubmitEditing={() => quantityRef.current?.focus()}
-              />
+              <View style={styles.dateHeading}>
+                <FieldLabel label="Harvest date" required />
+                {!showDateOptions ? (
+                  <Pressable onPress={() => setShowDateOptions(true)} hitSlop={8}>
+                    <Text style={styles.dateEdit}>Change</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {!showDateOptions ? (
+                <Text style={styles.dateValue}>{harvestDateLabel}</Text>
+              ) : (
+                <>
+                  <View style={styles.dateChoiceRow}>
+                    <Pressable
+                      style={[styles.unitBtn, harvestDate === todayDateKey && styles.unitBtnActive]}
+                      onPress={() => {
+                        setHarvestDate(todayDateKey);
+                        setShowDateOptions(false);
+                        setShowCustomDateInput(false);
+                      }}
+                    >
+                      <Text style={[styles.unitBtnText, harvestDate === todayDateKey && styles.unitBtnTextActive]}>Today</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.unitBtn, harvestDate === yesterdayDateKey && styles.unitBtnActive]}
+                      onPress={() => {
+                        setHarvestDate(yesterdayDateKey);
+                        setShowDateOptions(false);
+                        setShowCustomDateInput(false);
+                      }}
+                    >
+                      <Text style={[styles.unitBtnText, harvestDate === yesterdayDateKey && styles.unitBtnTextActive]}>Yesterday</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.unitBtn, showCustomDateInput && styles.unitBtnActive]}
+                      onPress={() => setShowCustomDateInput(true)}
+                    >
+                      <Text style={[styles.unitBtnText, showCustomDateInput && styles.unitBtnTextActive]}>Other date</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.dateCancel}
+                      onPress={() => {
+                        setShowDateOptions(false);
+                        setShowCustomDateInput(false);
+                      }}
+                    >
+                      <Text style={styles.dateCancelText}>Done</Text>
+                    </Pressable>
+                  </View>
+                  {showCustomDateInput ? (
+                    <TextInput
+                      style={styles.input}
+                      value={harvestDate}
+                      onChangeText={setHarvestDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={COLORS.textMuted}
+                      keyboardType="numbers-and-punctuation"
+                      returnKeyType="next"
+                      onSubmitEditing={() => quantityRef.current?.focus()}
+                    />
+                  ) : null}
+                </>
+              )}
             </View>
 
             <View style={styles.field}>
@@ -279,47 +350,50 @@ export default function AddHarvestScreen() {
 
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Grade & Notes (optional)</Text>
-
-            <View style={styles.field}>
-              <FieldLabel label="Grade / Quality" />
-              <TextInput
-                ref={gradeRef}
-                style={styles.input}
-                value={grade}
-                onChangeText={setGrade}
-                placeholder="e.g. Grade 1"
-                placeholderTextColor={COLORS.textMuted}
-                returnKeyType="next"
-                onSubmitEditing={() => notesRef.current?.focus()}
-              />
-            </View>
-
-            <View style={styles.field}>
-              <FieldLabel label="Notes" />
-              <TextInput
-                ref={notesRef}
-                style={[styles.input, styles.textArea]}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Any notes about quality, grading, payment terms…"
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                numberOfLines={3}
-                returnKeyType="done"
-              />
-            </View>
-          </View>
-
           <Pressable
-            style={[styles.saveFullBtn, !isValid && styles.saveBtnDisabled]}
-            onPress={handleSave}
-            disabled={saving || !isValid}
+            style={styles.detailsToggle}
+            onPress={() => setShowOptionalDetails((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showOptionalDetails }}
           >
-            <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.white} />
-            <Text style={styles.saveFullBtnText}>{saving ? "Saving..." : "Save Harvest Record"}</Text>
+            <Text style={styles.detailsToggleText}>
+              {showOptionalDetails ? "Hide optional details" : "Add grade or notes"}
+            </Text>
+            <Ionicons name={showOptionalDetails ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
           </Pressable>
+
+          {showOptionalDetails ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Optional details</Text>
+              <View style={styles.field}>
+                <FieldLabel label="Grade / quality" />
+                <TextInput
+                  ref={gradeRef}
+                  style={styles.input}
+                  value={grade}
+                  onChangeText={setGrade}
+                  placeholder="e.g. Grade 1"
+                  placeholderTextColor={COLORS.textMuted}
+                  returnKeyType="next"
+                  onSubmitEditing={() => notesRef.current?.focus()}
+                />
+              </View>
+              <View style={styles.field}>
+                <FieldLabel label="Notes" />
+                <TextInput
+                  ref={notesRef}
+                  style={[styles.input, styles.textArea]}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Optional notes"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  returnKeyType="done"
+                />
+              </View>
+            </View>
+          ) : null}
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -384,6 +458,32 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   sectionRow: { flexDirection: "row", gap: 10 },
+  singleBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.primarySurface,
+  },
+  dateHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dateEdit: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
+  dateValue: { fontFamily: "Manrope_700Bold", fontSize: 18, color: COLORS.text },
+  dateChoiceRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  dateCancel: { paddingHorizontal: 8, paddingVertical: 8 },
+  dateCancelText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
+  detailsToggle: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  detailsToggleText: { fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.primary },
   unitRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   unitBtn: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: COLORS.borderLight, borderWidth: 1, borderColor: COLORS.border },
   unitBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

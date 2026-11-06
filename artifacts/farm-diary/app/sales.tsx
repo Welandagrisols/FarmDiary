@@ -93,11 +93,13 @@ export default function SalesScreen() {
   const [tab, setTab] = useState<"sales" | "stock">("sales");
   const [review, setReview] = useState<ReviewRequest | null>(null);
   const [reason, setReason] = useState("");
+  const [showDiscountDetails, setShowDiscountDetails] = useState(false);
+  const [showAllSales, setShowAllSales] = useState(false);
 
   const [buyerName, setBuyerName] = useState("");
   const [quantityKg, setQuantityKg] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
-  const [discount, setDiscount] = useState("0");
+  const [discount, setDiscount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mpesa");
   const [paymentReference, setPaymentReference] = useState("");
   const [saleBlockId, setSaleBlockId] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export default function SalesScreen() {
 
   const topPadding = Platform.OS === "web" ? 58 : insets.top + 8;
   const seasonId = activeSeason?.id;
+  const seasonBlocks = getSeasonBlocks(activeSeason);
   const productName = activeFarm?.crop_type || "Farm produce";
   const canViewStock = ["admin", "owner", "manager", "storekeeper"].includes(role);
   const canReviewSales = ["admin", "owner", "manager"].includes(role);
@@ -163,6 +166,24 @@ export default function SalesScreen() {
     () => sales.filter((sale) => localDateKey(new Date(sale.created_at)) === todayKey()),
     [sales],
   );
+  const recentBuyers = useMemo(() => {
+    const seen = new Set<string>();
+    return [...sales]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .flatMap((sale) => {
+        const name = sale.buyer_name.trim();
+        const normalized = name.toLocaleLowerCase();
+        if (!name || seen.has(normalized)) return [];
+        seen.add(normalized);
+        return [name];
+      })
+      .slice(0, 4);
+  }, [sales]);
+  const orderedSales = useMemo(
+    () => [...sales].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [sales],
+  );
+  const visibleSales = showAllSales ? orderedSales : orderedSales.slice(0, 3);
   const seasonHarvestKg = useMemo(
     () => harvestRecords
       .filter((record) => record.farm_id === activeFarm?.id && record.season_id === seasonId)
@@ -228,7 +249,7 @@ export default function SalesScreen() {
       const sale = await createSale({
         farmId: activeFarm.id,
         seasonId,
-        blockId: saleBlockId,
+        blockId: saleBlockId || (seasonBlocks.length === 1 ? seasonBlocks[0].id : null),
         productName,
         buyerName,
         quantityKg: qty,
@@ -240,7 +261,8 @@ export default function SalesScreen() {
       setBuyerName("");
       setQuantityKg("");
       setUnitPrice("");
-      setDiscount("0");
+      setDiscount("");
+      setShowDiscountDetails(false);
       setPaymentReference("");
       await load();
       Alert.alert(
@@ -407,25 +429,48 @@ export default function SalesScreen() {
               <Text style={styles.helperTextLeft}>
                 Each entry is linked to the signed-in seller. Discounts wait for manager approval; every sale needs a separate checker.
               </Text>
-              <Text style={styles.fieldLabel}>Source planting block</Text>
-              <View style={styles.chipRow}>
-                <Pressable
-                  style={[styles.chip, saleBlockId === null && styles.chipActive]}
-                  onPress={() => setSaleBlockId(null)}
-                >
-                  <Text style={[styles.chipText, saleBlockId === null && styles.chipTextActive]}>All blocks</Text>
-                </Pressable>
-                {getSeasonBlocks(activeSeason).map((block) => (
-                  <Pressable
-                    key={block.id}
-                    style={[styles.chip, saleBlockId === block.id && styles.chipActive]}
-                    onPress={() => setSaleBlockId(block.id)}
-                  >
-                    <Text style={[styles.chipText, saleBlockId === block.id && styles.chipTextActive]}>{block.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              {seasonBlocks.length > 1 ? (
+                <>
+                  <Text style={styles.fieldLabel}>Planting block (optional)</Text>
+                  <View style={styles.chipRow}>
+                    <Pressable
+                      style={[styles.chip, saleBlockId === null && styles.chipActive]}
+                      onPress={() => setSaleBlockId(null)}
+                    >
+                      <Text style={[styles.chipText, saleBlockId === null && styles.chipTextActive]}>All blocks</Text>
+                    </Pressable>
+                    {seasonBlocks.map((block) => (
+                      <Pressable
+                        key={block.id}
+                        style={[styles.chip, saleBlockId === block.id && styles.chipActive]}
+                        onPress={() => setSaleBlockId(block.id)}
+                      >
+                        <Text style={[styles.chipText, saleBlockId === block.id && styles.chipTextActive]}>{block.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
               <Text style={styles.fieldLabel}>Buyer</Text>
+              {recentBuyers.length ? (
+                <View style={styles.buyerShortcuts}>
+                  <Text style={styles.smallNote}>Choose a recent buyer or type a new name</Text>
+                  <View style={styles.chipRow}>
+                    {recentBuyers.map((buyer) => (
+                      <Pressable
+                        key={buyer}
+                        style={[styles.chip, buyerName.trim().toLocaleLowerCase() === buyer.toLocaleLowerCase() && styles.chipActive]}
+                        onPress={() => setBuyerName(buyer)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.chipText, buyerName.trim().toLocaleLowerCase() === buyer.toLocaleLowerCase() && styles.chipTextActive]}>
+                          {buyer}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
               <TextInput style={styles.input} value={buyerName} onChangeText={setBuyerName} placeholder="Buyer name" placeholderTextColor={COLORS.textMuted} />
               <View style={styles.row}>
                 <View style={styles.flexField}>
@@ -437,16 +482,41 @@ export default function SalesScreen() {
                   <TextInput style={styles.input} value={unitPrice} onChangeText={setUnitPrice} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 </View>
               </View>
-              <View style={styles.row}>
-                <View style={styles.flexField}>
-                  <Text style={styles.fieldLabel}>Discount (KES)</Text>
-                  <TextInput style={styles.input} value={discount} onChangeText={setDiscount} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+              {showDiscountDetails ? (
+                <>
+                  <View style={styles.row}>
+                    <View style={styles.flexField}>
+                      <Text style={styles.fieldLabel}>Discount (KES)</Text>
+                      <TextInput style={styles.input} value={discount} onChangeText={setDiscount} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                    </View>
+                    <View style={[styles.flexField, styles.totalPreview]}>
+                      <Text style={styles.totalPreviewLabel}>Total</Text>
+                      <Text style={styles.totalPreviewValue}>{formatKES(Math.max(0, total))}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.smallNote}>Discounts need manager approval.</Text>
+                  <Pressable
+                    style={styles.discountRemove}
+                    onPress={() => {
+                      setDiscount("");
+                      setShowDiscountDetails(false);
+                    }}
+                  >
+                    <Text style={styles.discountRemoveText}>Remove discount</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <View style={styles.row}>
+                  <Pressable style={[styles.flexField, styles.discountToggle]} onPress={() => setShowDiscountDetails(true)}>
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.discountToggleText}>Add discount</Text>
+                  </Pressable>
+                  <View style={[styles.flexField, styles.totalPreview]}>
+                    <Text style={styles.totalPreviewLabel}>Total</Text>
+                    <Text style={styles.totalPreviewValue}>{formatKES(Math.max(0, total))}</Text>
+                  </View>
                 </View>
-                <View style={[styles.flexField, styles.totalPreview]}>
-                  <Text style={styles.totalPreviewLabel}>Total</Text>
-                  <Text style={styles.totalPreviewValue}>{formatKES(Math.max(0, total))}</Text>
-                </View>
-              </View>
+              )}
               <Text style={styles.fieldLabel}>Payment received</Text>
               <View style={styles.chipRow}>
                 {PAYMENT_METHODS.map((method) => (
@@ -475,7 +545,7 @@ export default function SalesScreen() {
               <Text style={styles.cardTitle}>Sales ledger</Text>
               <Text style={styles.helperText}>{sales.length} entr{sales.length === 1 ? "y" : "ies"}</Text>
             </View>
-            {sales.length ? sales.map((sale) => {
+            {sales.length ? visibleSales.map((sale) => {
               const isOwnSale = sale.seller_id === currentUserId;
               const hasDiscountApproval = Boolean(sale.discount_approved_at);
               const checkedAt = sale.checked_at;
@@ -537,6 +607,18 @@ export default function SalesScreen() {
                 <Text style={styles.helperText}>Sales entered for this season will appear here.</Text>
               </View>
             )}
+            {sales.length > 3 ? (
+              <Pressable
+                style={styles.salesListToggle}
+                onPress={() => setShowAllSales((visible) => !visible)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showAllSales }}
+              >
+                <Text style={styles.salesListToggleText}>
+                  {showAllSales ? "Show recent sales" : `View all sales (${sales.length})`}
+                </Text>
+              </Pressable>
+            ) : null}
           </>
         ) : null}
 
@@ -808,6 +890,29 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   chipTextActive: { color: COLORS.primary },
+  buyerShortcuts: { gap: 5 },
+  discountToggle: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 10,
+    backgroundColor: COLORS.primarySurface,
+  },
+  discountToggleText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.primary },
+  discountRemove: { alignSelf: "flex-start", paddingVertical: 3, paddingHorizontal: 2 },
+  discountRemoveText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.textSecondary },
+  salesListToggle: {
+    alignSelf: "center",
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  salesListToggleText: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
   primaryButton: { minHeight: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.primary, paddingHorizontal: 16 },
   primaryButtonText: {
     fontFamily: "Manrope_700Bold",
