@@ -6,6 +6,7 @@ import {
   CostEntry,
   InventoryItem,
   ActivityLog,
+  FarmWorker,
   ObservationRecord,
   HarvestRecord,
   SeasonRecord,
@@ -321,6 +322,52 @@ export async function deleteActivityLog(id: string): Promise<void> {
   await withWrite("activity_logs", "delete", { id }, async () => {
     const { error } = await supabase.from("activity_logs").delete().eq("id", id);
     if (error) throw new Error(error.message);
+  });
+}
+
+// ─── Farm Worker Roster ───────────────────────────────────────
+
+export async function getFarmWorkers(farmId: string, includeInactive = false): Promise<FarmWorker[]> {
+  const workers = await withCache(`farm_workers_${farmId}`, async () => {
+    const { data, error } = await supabase
+      .from("farm_workers")
+      .select("*")
+      .eq("farm_id", farmId)
+      .order("name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as FarmWorker[];
+  }, "farm_workers", { field: "farm_id", id: farmId });
+
+  return includeInactive ? workers : workers.filter((worker) => worker.is_active);
+}
+
+export async function addFarmWorker(farmId: string, name: string): Promise<FarmWorker> {
+  const record: FarmWorker = {
+    id: genId(),
+    farm_id: farmId,
+    name: name.trim(),
+    is_active: true,
+    created_by: await getAuthUserId(),
+    created_at: new Date().toISOString(),
+  };
+  return withWrite("farm_workers", "insert", record, async () => {
+    const { error } = await supabase.from("farm_workers").insert(record);
+    if (error) throw new Error(error.message);
+    return record;
+  });
+}
+
+export async function setFarmWorkerActive(worker: FarmWorker, isActive: boolean): Promise<FarmWorker> {
+  const record = { ...worker, is_active: isActive };
+  return withWrite("farm_workers", "update", record, async () => {
+    const { data, error } = await supabase
+      .from("farm_workers")
+      .update({ is_active: isActive })
+      .eq("id", worker.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data as FarmWorker;
   });
 }
 

@@ -22,6 +22,9 @@ import { describePlan, inventoryDeltas, laborSubcategory, linkedCostsForActivity
 import { confirmRemoveActivity } from "@/lib/confirm-remove-activity";
 import { resolveInputSubcategory } from "@/lib/cost-subcategory";
 import * as Haptics from "expo-haptics";
+import WorkerPicker from "@/components/WorkerPicker";
+import { getFarmWorkers } from "@/lib/supabase-storage";
+import type { FarmWorker } from "@/lib/storage";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
 const UNIT_OPTIONS = ["L", "mL", "kg", "g", "pkt", "bottles", "bags"];
@@ -74,13 +77,24 @@ export default function EditActivityScreen() {
   useEffect(() => { activityLinksAvailable().then(setLinksOn); }, []);
 
   const log = activityLogs.find((l) => l.id === logId);
+  const initialAssignments = log?.worker_assignments ?? [];
 
   const [date, setDate] = useState(log?.actual_date ?? "");
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [weather, setWeather] = useState(log?.weather_conditions ?? "Sunny");
   const [activityCategory, setActivityCategory] = useState(log?.activity_category ?? "other");
-  const [numWorkers, setNumWorkers] = useState(String(log?.num_workers ?? 0));
-  const [workerNames, setWorkerNames] = useState(log?.worker_names ?? "");
+  const [numWorkers, setNumWorkers] = useState(String(Math.max(0, (log?.num_workers ?? 0) - initialAssignments.length)));
+  const [workerNames, setWorkerNames] = useState(() => {
+    const assignedNames = new Set(initialAssignments.map((worker) => worker.worker_name.trim().toLocaleLowerCase()));
+    return (log?.worker_names ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => name && !assignedNames.has(name.toLocaleLowerCase()))
+      .join(", ");
+  });
+  const [workers, setWorkers] = useState<FarmWorker[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(false);
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>(initialAssignments.map((worker) => worker.worker_id));
   const [daysWorked, setDaysWorked] = useState(String(log?.days_worked ?? 0));
   const [workQuantity, setWorkQuantity] = useState(String(log?.work_quantity ?? ""));
   const [workUnit, setWorkUnit] = useState(log?.work_unit ?? "");
@@ -101,6 +115,20 @@ export default function EditActivityScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    let active = true;
+    if (!log?.farm_id) return () => { active = false; };
+    setWorkersLoading(true);
+    getFarmWorkers(log.farm_id, true)
+      .then((roster) => { if (active) setWorkers(roster); })
+      .catch((error) => {
+        console.warn("[activity-edit] Could not load named workers:", error);
+        if (active) setWorkers([]);
+      })
+      .finally(() => { if (active) setWorkersLoading(false); });
+    return () => { active = false; };
+  }, [log?.farm_id]);
 
   if (!log) {
     return (
@@ -147,10 +175,35 @@ export default function EditActivityScreen() {
   const sectionLabel = getSeasonBlockName(logSeason, log.section_id);
 
   const linkedCosts = linkedCostsForActivity(log.id, costs);
+  const selectedWorkers = selectedWorkerIds.map((workerId) => {
+    const rosterWorker = workers.find((worker) => worker.id === workerId);
+    const savedAssignment = log.worker_assignments?.find((worker) => worker.worker_id === workerId);
+    const name = rosterWorker?.name || savedAssignment?.worker_name || "";
+    return name ? { worker_id: workerId, worker_name: name, days_worked: Number(daysWorked) || 0 } : null;
+  }).filter((worker): worker is NonNullable<typeof worker> => worker !== null);
+  const totalWorkerCount = selectedWorkerIds.length + (Number(numWorkers) || 0);
+  const combinedWorkerNames = [...selectedWorkers.map((worker) => worker.worker_name), workerNames.trim()]
+    .filter(Boolean)
+    .join(", ");
+  const toggleWorker = (workerId: string) => {
+    setSelectedWorkerIds((current) => current.includes(workerId)
+      ? current.filter((id) => id !== workerId)
+      : [...current, workerId]);
+  };
 
   const handleSave = async () => {
     if (!date) {
       Alert.alert("Error", "Activity date is required.");
+      return;
+    }
+    const extraWorkerCount = Number(numWorkers);
+    const daysValue = Number(daysWorked);
+    if (!Number.isInteger(extraWorkerCount) || extraWorkerCount < 0 || !Number.isFinite(daysValue) || daysValue < 0) {
+      Alert.alert("Check labour details", "Enter a valid worker count and number of days.");
+      return;
+    }
+    if (totalWorkerCount > 0 && daysValue <= 0) {
+      Alert.alert("Check labour details", "Enter the number of days worked by each named worker or crew.");
       return;
     }
     const productsUsed: ProductUsed[] = products
@@ -179,7 +232,7 @@ export default function EditActivityScreen() {
         },
         before: { labourCost: log.labor_cost_kes ?? 0, products: log.products_used ?? [] },
         after: {
-          labourCost: laborNum, numWorkers: parseInt(numWorkers) || 0, daysWorked: parseFloat(daysWorked) || 0,
+          labourCost: laborNum, numWorkers: totalWorkerCount, daysWorked: daysValue,
           labourSubcategory: laborSubcategory(log.schedule_activity_id ?? log.activity_name.toLowerCase()), products: productsUsed,
         },
         linked: linkedCosts,
@@ -200,9 +253,10 @@ export default function EditActivityScreen() {
           actual_date: date,
           weather_conditions: weather,
           activity_category: activityCategory.trim() || "other",
-          num_workers: parseInt(numWorkers) || 0,
-          worker_names: workerNames.trim() || null,
-          days_worked: parseFloat(daysWorked) || 0,
+          num_workers: totalWorkerCount,
+          worker_names: combinedWorkerNames || null,
+          worker_assignments: selectedWorkers,
+          days_worked: daysValue,
           work_quantity: workQuantity.trim() ? parseFloat(workQuantity) : null,
           work_unit: workQuantity.trim() ? workUnit.trim() || null : null,
           labor_cost_kes: laborNum,
@@ -356,17 +410,26 @@ export default function EditActivityScreen() {
             placeholder="e.g. Weeding, irrigation, scouting"
             placeholderTextColor={COLORS.textMuted}
           />
-          <Text style={styles.fieldHint}>Workers involved (names or IDs)</Text>
+          <WorkerPicker
+            workers={workers}
+            selectedIds={selectedWorkerIds}
+            onToggle={toggleWorker}
+            loading={workersLoading}
+          />
+          <Text style={styles.fieldHint}>Other worker names (optional)</Text>
           <TextInput
             style={styles.input}
             value={workerNames}
             onChangeText={setWorkerNames}
-            placeholder="Names or IDs, separated by commas"
+            placeholder="Keep older names or add unlisted workers"
             placeholderTextColor={COLORS.textMuted}
+            accessibilityLabel="Other worker names"
           />
           <View style={styles.rowInputs}>
             <View style={styles.rowInputField}>
-              <Text style={styles.fieldHint}>Workers</Text>
+              <Text style={styles.fieldHint}>
+                {selectedWorkerIds.length ? "Extra people" : "Workers"}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={numWorkers}
@@ -374,10 +437,13 @@ export default function EditActivityScreen() {
                 placeholder="0"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="numeric"
+                accessibilityLabel="Additional workers not selected by name"
               />
             </View>
             <View style={styles.rowInputField}>
-              <Text style={styles.fieldHint}>Days worked</Text>
+              <Text style={styles.fieldHint}>
+                {selectedWorkerIds.length ? "Days per person" : "Days worked"}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={daysWorked}

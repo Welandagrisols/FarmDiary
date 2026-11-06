@@ -21,8 +21,10 @@ import COLORS from "@/constants/colors";
 import { INVENTORY_MASTER, SEASON_SEED } from "@/constants/farmData";
 import { resolveInputSubcategory } from "@/lib/cost-subcategory";
 import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@/lib/storage";
-import type { CostEntry } from "@/lib/storage";
+import type { CostEntry, FarmWorker } from "@/lib/storage";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import WorkerPicker from "@/components/WorkerPicker";
+import { getFarmWorkers } from "@/lib/supabase-storage";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
@@ -118,7 +120,9 @@ export default function LogActivityScreen() {
     return [];
   });
   const [numWorkers, setNumWorkers] = useState("");
-  const [workerNames, setWorkerNames] = useState("");
+  const [workers, setWorkers] = useState<FarmWorker[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(false);
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [dailyRate, setDailyRate] = useState("");
   const [daysWorked, setDaysWorked] = useState("");
   const [workQuantity, setWorkQuantity] = useState("");
@@ -138,6 +142,29 @@ export default function LogActivityScreen() {
   const completedCostIndexesRef = useRef(new Set<number>());
   const pendingInventoryWarningRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    if (!farmId) {
+      setWorkers([]);
+      setWorkersLoading(false);
+      return () => { active = false; };
+    }
+
+    setWorkersLoading(true);
+    getFarmWorkers(farmId)
+      .then((roster) => {
+        if (active) setWorkers(roster);
+      })
+      .catch((error) => {
+        console.warn("[activity] Could not load named workers:", error);
+        if (active) setWorkers([]);
+      })
+      .finally(() => {
+        if (active) setWorkersLoading(false);
+      });
+    return () => { active = false; };
+  }, [farmId]);
+
   const selectedActivity = selectedActivityId
     ? currentSchedule.find((a) => a.id === selectedActivityId)
     : null;
@@ -149,7 +176,7 @@ export default function LogActivityScreen() {
 
   const calculatedLaborCost = Math.round(
     laborMode === "per_day"
-      ? (parseFloat(numWorkers) || 0) * (parseFloat(dailyRate) || 0) * (parseFloat(daysWorked) || 0)
+      ? (selectedWorkerIds.length + (parseFloat(numWorkers) || 0)) * (parseFloat(dailyRate) || 0) * (parseFloat(daysWorked) || 0)
       : laborMode === "per_acre"
       ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 0)
       : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 0)
@@ -166,6 +193,14 @@ export default function LogActivityScreen() {
     : null;
   const measuredUnit = workUnit.trim() ||
     (laborMode === "per_acre" ? "acres" : laborMode === "per_pump" ? "pumps" : null);
+  const selectedWorkers = workers.filter((worker) => selectedWorkerIds.includes(worker.id));
+  const totalWorkerCount = selectedWorkerIds.length + (Number(numWorkers) || 0);
+  const selectedWorkerNames = selectedWorkers.map((worker) => worker.name).join(", ");
+  const toggleWorker = (workerId: string) => {
+    setSelectedWorkerIds((current) => current.includes(workerId)
+      ? current.filter((id) => id !== workerId)
+      : [...current, workerId]);
+  };
 
   const productCost = products.reduce((sum, p) => {
     const qty = parseFloat(p.qty) || 0;
@@ -275,9 +310,10 @@ export default function LogActivityScreen() {
       Alert.alert("Error", "Please select or enter an activity name.");
       return;
     }
-    const workerCount = Number(numWorkers);
+    const extraWorkerCount = Number(numWorkers);
+    const workerCount = selectedWorkerIds.length + extraWorkerCount;
     const workDays = Number(daysWorked);
-    if (!Number.isInteger(workerCount) || workerCount < 0 || !Number.isFinite(workDays) || workDays < 0) {
+    if (!Number.isInteger(extraWorkerCount) || extraWorkerCount < 0 || !Number.isFinite(workDays) || workDays < 0) {
       Alert.alert("Check labour details", "Enter a valid worker count and number of days.");
       return;
     }
@@ -345,8 +381,13 @@ export default function LogActivityScreen() {
           products_used: productsUsed,
           is_deviation: products.some((p) => p.isDeviation),
           deviation_reason: null,
-          num_workers: parseInt(numWorkers) || 0,
-          worker_names: workerNames.trim() || null,
+          num_workers: workerCount,
+          worker_names: selectedWorkerNames || null,
+          worker_assignments: selectedWorkers.map((worker) => ({
+            worker_id: worker.id,
+            worker_name: worker.name,
+            days_worked: Number(daysWorked) || 0,
+          })),
           days_worked: parseFloat(daysWorked) || 0,
           work_quantity: measuredQuantity,
           work_unit: measuredUnit,
@@ -379,7 +420,7 @@ export default function LogActivityScreen() {
         if (laborCost > 0) {
           costEntries.push(buildLabourCost(costCtx, {
             amount: laborCost,
-            numWorkers: parseInt(numWorkers) || 0,
+            numWorkers: workerCount,
             daysWorked: parseFloat(daysWorked) || 0,
             dailyRate: parseFloat(dailyRate) || null,
             subcategory: laborSubcategory(activityType === "planned" ? selectedActivityId : customActivityName.toLowerCase()),
@@ -672,9 +713,17 @@ export default function LogActivityScreen() {
 
           <View style={styles.quickSection}>
             <Text style={styles.quickSectionTitle}>People and work done</Text>
+            <WorkerPicker
+              workers={workers}
+              selectedIds={selectedWorkerIds}
+              onToggle={toggleWorker}
+              loading={workersLoading}
+            />
             <View style={styles.quickInputRow}>
               <View style={styles.quickInputColumn}>
-                <Text style={styles.quickFieldLabel}>People</Text>
+                <Text style={styles.quickFieldLabel}>
+                  {selectedWorkerIds.length ? "Extra people" : "People"}
+                </Text>
                 <TextInput
                   style={styles.quickNumberInput}
                   value={numWorkers}
@@ -698,14 +747,6 @@ export default function LogActivityScreen() {
                 />
               </View>
             </View>
-            <TextInput
-              style={styles.input}
-              value={workerNames}
-              onChangeText={setWorkerNames}
-              placeholder="Worker names (optional)"
-              placeholderTextColor={COLORS.textMuted}
-              accessibilityLabel="Worker names, optional"
-            />
             <View>
               <Text style={styles.quickFieldLabel}>Labour paid (KES, optional)</Text>
               <TextInput
@@ -1122,20 +1163,19 @@ export default function LogActivityScreen() {
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Labour & work completed</Text>
 
-            <Text style={styles.fieldLabel}>Workers involved</Text>
-            <TextInput
-              style={styles.input}
-              value={workerNames}
-              onChangeText={setWorkerNames}
-              placeholder="Names or IDs, separated by commas"
-              placeholderTextColor={COLORS.textMuted}
-              accessibilityLabel="Names or IDs of workers involved"
+            <WorkerPicker
+              workers={workers}
+              selectedIds={selectedWorkerIds}
+              onToggle={toggleWorker}
+              loading={workersLoading}
             />
-            <Text style={styles.fieldHint}>These details help managers compare work completed with worker-days.</Text>
+            <Text style={styles.fieldHint}>Days worked apply to each selected person.</Text>
 
             <View style={styles.productInputRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Crew size</Text>
+                <Text style={styles.fieldLabel}>
+                  {selectedWorkerIds.length ? "Extra people" : "Crew size"}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={numWorkers}
@@ -1143,10 +1183,13 @@ export default function LogActivityScreen() {
                   keyboardType="numeric"
                   placeholder="0"
                   placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Additional workers not selected by name"
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Days worked</Text>
+                <Text style={styles.fieldLabel}>
+                  {selectedWorkerIds.length ? "Days per person" : "Days worked"}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={daysWorked}
@@ -1158,7 +1201,7 @@ export default function LogActivityScreen() {
               </View>
             </View>
             <Text style={styles.fieldHint}>
-              {((Number(numWorkers) || 0) * (Number(daysWorked) || 0)).toFixed(1)} worker-days
+              {(totalWorkerCount * (Number(daysWorked) || 0)).toFixed(1)} worker-days
             </Text>
 
             <View style={styles.productInputRow}>
@@ -1210,7 +1253,7 @@ export default function LogActivityScreen() {
                 <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
                 <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
                   keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>{numWorkers} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
+                <Text style={styles.fieldHint}>{totalWorkerCount} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
               </>
             )}
 
@@ -1395,12 +1438,12 @@ export default function LogActivityScreen() {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Labor</Text>
-                <Text style={styles.summaryValue}>{numWorkers} workers · {daysWorked} days · {formatKES(laborCost)}</Text>
+                <Text style={styles.summaryValue}>{totalWorkerCount} workers · {daysWorked} days · {formatKES(laborCost)}</Text>
               </View>
-              {workerNames.trim() ? (
+              {selectedWorkerNames ? (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Crew</Text>
-                  <Text style={styles.summaryValue}>{workerNames.trim()}</Text>
+                  <Text style={styles.summaryValue}>{selectedWorkerNames}</Text>
                 </View>
               ) : null}
               {measuredQuantity && measuredUnit ? (

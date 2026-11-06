@@ -16,6 +16,8 @@ import { router } from "expo-router";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { farmTeamApi } from "@/lib/api";
+import { addFarmWorker, getFarmWorkers, setFarmWorkerActive } from "@/lib/supabase-storage";
+import type { FarmWorker } from "@/lib/storage";
 
 type TeamRole = "manager" | "seller" | "storekeeper";
 interface TeamMember {
@@ -35,25 +37,36 @@ export default function FarmTeamScreen() {
   const insets = useSafeAreaInsets();
   const { activeFarm } = useFarm();
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [workers, setWorkers] = useState<FarmWorker[]>([]);
   const [currentRole, setCurrentRole] = useState("none");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [workerName, setWorkerName] = useState("");
   const [role, setRole] = useState<TeamRole>("seller");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingWorker, setSavingWorker] = useState(false);
+  const [showArchivedWorkers, setShowArchivedWorkers] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 60 : insets.top + 8;
   const canAddManager = currentRole === "owner" || currentRole === "admin";
+  const activeWorkers = workers.filter((worker) => worker.is_active);
+  const archivedWorkers = workers.filter((worker) => !worker.is_active);
 
   const loadTeam = useCallback(async () => {
     if (!activeFarm?.id) {
       setMembers([]);
+      setWorkers([]);
       setLoading(false);
       return;
     }
     try {
-      const response = await farmTeamApi.list(activeFarm.id);
+      const [response, roster] = await Promise.all([
+        farmTeamApi.list(activeFarm.id),
+        getFarmWorkers(activeFarm.id, true),
+      ]);
       setMembers(response.members || []);
+      setWorkers(roster);
       setCurrentRole(response.currentRole || "none");
     } catch (error: any) {
       Alert.alert("Unable to load team", error?.message || "Try again.");
@@ -108,6 +121,57 @@ export default function FarmTeamScreen() {
         },
       },
     ]);
+  };
+
+  const handleAddWorker = async () => {
+    if (!activeFarm?.id) return;
+    const name = workerName.trim();
+    if (!name) {
+      Alert.alert("Name required", "Enter the worker’s name.");
+      return;
+    }
+    if (activeWorkers.some((worker) => worker.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      Alert.alert("Name already added", "Choose this worker from the existing list instead.");
+      return;
+    }
+    setSavingWorker(true);
+    try {
+      const worker = await addFarmWorker(activeFarm.id, name);
+      setWorkers((current) => [...current, worker].sort((a, b) => a.name.localeCompare(b.name)));
+      setWorkerName("");
+    } catch (error: any) {
+      Alert.alert("Could not add worker name", error?.message || "Try again.");
+    } finally {
+      setSavingWorker(false);
+    }
+  };
+
+  const handleToggleWorker = (worker: FarmWorker) => {
+    const activate = !worker.is_active;
+    Alert.alert(
+      activate ? "Restore worker name?" : "Archive worker name?",
+      activate
+        ? `${worker.name} will be available for new activity records.`
+        : `${worker.name} will be hidden from new activity records. Existing records will keep the name.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: activate ? "Restore" : "Archive",
+          style: activate ? "default" : "destructive",
+          onPress: async () => {
+            setSavingWorker(true);
+            try {
+              const updated = await setFarmWorkerActive(worker, activate);
+              setWorkers((current) => current.map((item) => item.id === updated.id ? updated : item));
+            } catch (error: any) {
+              Alert.alert("Could not update worker name", error?.message || "Try again.");
+            } finally {
+              setSavingWorker(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   if (loading) {
@@ -207,6 +271,85 @@ export default function FarmTeamScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Worker names</Text>
+        <Text style={styles.helperTextLeft}>
+          Add names for activity tracking. These workers do not need app accounts.
+        </Text>
+        <View style={styles.workerInputRow}>
+          <TextInput
+            style={[styles.input, styles.workerInput]}
+            value={workerName}
+            onChangeText={setWorkerName}
+            placeholder="Worker name"
+            placeholderTextColor={COLORS.textMuted}
+            returnKeyType="done"
+            onSubmitEditing={handleAddWorker}
+            accessibilityLabel="Worker name"
+          />
+          <Pressable
+            style={[styles.addWorkerButton, savingWorker && styles.buttonDisabled]}
+            onPress={handleAddWorker}
+            disabled={savingWorker}
+            accessibilityLabel="Add worker name"
+            testID="add-farm-worker"
+          >
+            {savingWorker
+              ? <ActivityIndicator color={COLORS.white} size="small" />
+              : <Ionicons name="add" size={22} color={COLORS.white} />}
+          </Pressable>
+        </View>
+        {activeWorkers.length ? activeWorkers.map((worker) => (
+          <View key={worker.id} style={styles.workerRosterRow}>
+            <View style={styles.memberIcon}>
+              <Ionicons name="person-outline" size={17} color={COLORS.primary} />
+            </View>
+            <Text style={styles.workerRosterName}>{worker.name}</Text>
+            <Pressable
+              style={styles.workerRosterAction}
+              onPress={() => handleToggleWorker(worker)}
+              accessibilityLabel={`Archive ${worker.name}`}
+            >
+              <Ionicons name="archive-outline" size={18} color={COLORS.textSecondary} />
+            </Pressable>
+          </View>
+        )) : (
+          <View style={styles.emptyRoster}>
+            <Text style={styles.helperText}>No worker names yet. Add the people who do farm work.</Text>
+          </View>
+        )}
+        {archivedWorkers.length ? (
+          <>
+            <Pressable
+              style={styles.archivedToggle}
+              onPress={() => setShowArchivedWorkers((visible) => !visible)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showArchivedWorkers }}
+            >
+              <Text style={styles.archivedToggleText}>
+                {showArchivedWorkers ? "Hide archived" : `Archived names (${archivedWorkers.length})`}
+              </Text>
+              <Ionicons name={showArchivedWorkers ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
+            </Pressable>
+            {showArchivedWorkers ? archivedWorkers.map((worker) => (
+              <View key={worker.id} style={[styles.workerRosterRow, styles.archivedWorkerRow]}>
+                <View style={styles.memberIcon}>
+                  <Ionicons name="person-outline" size={17} color={COLORS.textMuted} />
+                </View>
+                <Text style={[styles.workerRosterName, styles.archivedWorkerName]}>{worker.name}</Text>
+                <Pressable
+                  style={styles.workerRosterAction}
+                  onPress={() => handleToggleWorker(worker)}
+                  accessibilityLabel={`Restore ${worker.name}`}
+                >
+                  <Ionicons name="refresh" size={18} color={COLORS.primary} />
+                </Pressable>
+              </View>
+            )) : null}
+          </>
+        ) : null}
+      </View>
+
       <View style={styles.listHeader}>
         <Text style={styles.cardTitle}>Current team</Text>
         <Text style={styles.helperText}>{members.length} member{members.length === 1 ? "" : "s"}</Text>
@@ -280,6 +423,13 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: 2,
   },
+  helperTextLeft: {
+    fontFamily: "Manrope_400Regular",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 17,
+    textAlign: "left",
+  },
   input: {
     minHeight: 46,
     borderWidth: 1,
@@ -308,6 +458,39 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   buttonDisabled: { opacity: 0.65 },
+  workerInputRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  workerInput: { flex: 1 },
+  addWorkerButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workerRosterRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  workerRosterName: { flex: 1, fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.text },
+  workerRosterAction: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  emptyRoster: { paddingVertical: 8 },
+  archivedToggle: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  archivedToggleText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
+  archivedWorkerRow: { opacity: 0.72 },
+  archivedWorkerName: { color: COLORS.textSecondary },
   secondaryButton: { marginTop: 8, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, backgroundColor: COLORS.primarySurface },
   secondaryButtonText: {
     fontFamily: "Manrope_600SemiBold",

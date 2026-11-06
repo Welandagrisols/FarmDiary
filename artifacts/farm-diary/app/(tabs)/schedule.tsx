@@ -400,6 +400,22 @@ export default function ScheduleScreen() {
             Record workers, days, and completed quantity to see output per worker-day.
           </Text>
         )}
+        {labourSummary.namedWorkers.length > 0 ? (
+          <View style={styles.namedWorkerList}>
+            <Text style={styles.namedWorkerTitle}>Named worker-days</Text>
+            {labourSummary.namedWorkers.slice(0, 3).map((worker) => (
+              <View key={worker.name.toLocaleLowerCase()} style={styles.productivityRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.productivityCategory}>{worker.name}</Text>
+                  <Text style={styles.productivityMeta}>
+                    {worker.records} work {worker.records === 1 ? "record" : "records"}
+                  </Text>
+                </View>
+                <Text style={styles.productivityRate}>{worker.workerDays.toFixed(1)} days</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.legend}>
@@ -605,6 +621,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   productivityList: { gap: 8 },
+  namedWorkerList: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderLight, gap: 7 },
+  namedWorkerTitle: { fontFamily: "Manrope_700Bold", fontSize: 12, color: COLORS.textSecondary },
   productivityRow: { flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 8 },
   productivityCategory: {
     fontFamily: "Manrope_600SemiBold",

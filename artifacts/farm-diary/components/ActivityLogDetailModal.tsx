@@ -31,6 +31,7 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
   const sectionLabel = getSeasonBlockName(logSeason, log.section_id);
   const sectionColor = COLORS.primary;
   const workerDays = (Number(log.num_workers) || 0) * (Number(log.days_worked) || 0);
+  const namedAssignments = log.worker_assignments ?? [];
   const quantityPerWorkerDay = workerDays > 0 && Number(log.work_quantity) > 0
     ? Number(log.work_quantity) / workerDays
     : null;
@@ -50,7 +51,12 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
   const isQuickComplete =
     log.total_cost_kes === 0 &&
     (log.products_used ?? []).length === 0 &&
-    log.labor_cost_kes === 0;
+    log.labor_cost_kes === 0 &&
+    log.num_workers === 0 &&
+    !log.worker_names &&
+    namedAssignments.length === 0 &&
+    !log.days_worked &&
+    !(Number(log.work_quantity) > 0);
 
   const hasDeviations = (log.products_used ?? []).some((p) => p.is_deviation);
 
@@ -113,7 +119,7 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
             </View>
           ) : (
             <>
-              {(log.labor_cost_kes > 0 || log.num_workers > 0 || log.worker_names || log.days_worked) && (
+              {(log.labor_cost_kes > 0 || log.num_workers > 0 || log.worker_names || log.days_worked || namedAssignments.length > 0) && (
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Labour</Text>
                   <View style={styles.detailCard}>
@@ -121,7 +127,15 @@ export default function ActivityLogDetailModal({ log, onClose, onDelete }: Props
                       label="Workers"
                       value={log.num_workers > 0 ? `${log.num_workers} ${log.num_workers === 1 ? "worker" : "workers"}` : "—"}
                     />
-                    {log.worker_names ? <InfoRow label="Crew" value={log.worker_names} /> : null}
+                    {namedAssignments.length
+                      ? namedAssignments.map((assignment) => (
+                        <InfoRow
+                          key={assignment.worker_id}
+                          label="Named worker"
+                          value={`${assignment.worker_name} · ${assignment.days_worked} ${assignment.days_worked === 1 ? "day" : "days"}`}
+                        />
+                      ))
+                      : log.worker_names ? <InfoRow label="Crew" value={log.worker_names} /> : null}
                     {log.days_worked ? <InfoRow label="Days worked" value={String(log.days_worked)} /> : null}
                     {workerDays > 0 && <InfoRow label="Worker-days" value={workerDays.toFixed(1)} />}
                     <InfoRow label="Labour Cost" value={formatKES(log.labor_cost_kes)} />

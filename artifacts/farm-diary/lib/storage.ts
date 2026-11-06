@@ -82,6 +82,21 @@ export interface ProductUsed {
   deviation_reason: string | null;
 }
 
+export interface FarmWorker {
+  id: string;
+  farm_id: string;
+  name: string;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at: string;
+}
+
+export interface ActivityWorkerAssignment {
+  worker_id: string;
+  worker_name: string;
+  days_worked: number;
+}
+
 export interface ActivityLog {
   id: string;
   farm_id: string;
@@ -97,6 +112,7 @@ export interface ActivityLog {
   deviation_reason: string | null;
   num_workers: number;
   worker_names?: string | null;
+  worker_assignments?: ActivityWorkerAssignment[] | null;
   days_worked?: number | null;
   work_quantity?: number | null;
   work_unit?: string | null;
@@ -110,57 +126,8 @@ export interface ActivityLog {
   created_at: string;
 }
 
-export interface LabourEffectivenessGroup {
-  category: string;
-  unit: string;
-  quantity: number;
-  workerDays: number;
-  quantityPerWorkerDay: number;
-  records: number;
-}
-
-export function summarizeLabourEffectiveness(logs: ActivityLog[]) {
-  const groups = new Map<string, LabourEffectivenessGroup>();
-  let workerDays = 0;
-  let labourCost = 0;
-
-  for (const log of logs) {
-    const workers = Math.max(0, Number(log.num_workers) || 0);
-    const days = Math.max(0, Number(log.days_worked) || 0);
-    const activityWorkerDays = workers * days;
-    workerDays += activityWorkerDays;
-    labourCost += Math.max(0, Number(log.labor_cost_kes) || 0);
-
-    const quantity = Number(log.work_quantity);
-    const unit = log.work_unit?.trim();
-    if (!Number.isFinite(quantity) || quantity <= 0 || !unit || activityWorkerDays <= 0) continue;
-
-    const category = log.activity_category?.trim() || "Other";
-    const label = category.toLowerCase() === "other" ? log.activity_name : category;
-    const key = `${label.toLocaleLowerCase()}::${unit.toLocaleLowerCase()}`;
-    const group = groups.get(key) ?? {
-      category: label,
-      unit,
-      quantity: 0,
-      workerDays: 0,
-      quantityPerWorkerDay: 0,
-      records: 0,
-    };
-
-    group.quantity += quantity;
-    group.workerDays += activityWorkerDays;
-    group.quantityPerWorkerDay = group.quantity / group.workerDays;
-    group.records += 1;
-    groups.set(key, group);
-  }
-
-  return {
-    records: logs.length,
-    workerDays,
-    labourCost,
-    groups: Array.from(groups.values()).sort((a, b) => b.workerDays - a.workerDays),
-  };
-}
+export { summarizeLabourEffectiveness } from "./labour-effectiveness";
+export type { LabourEffectivenessGroup, NamedWorkerDays } from "./labour-effectiveness";
 
 export interface ObservationRecord {
   id: string;
