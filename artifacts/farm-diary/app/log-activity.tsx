@@ -25,17 +25,18 @@ import type { CostEntry, FarmWorker } from "@/lib/storage";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import WorkerPicker from "@/components/WorkerPicker";
 import { getFarmWorkers } from "@/lib/supabase-storage";
+import { getFarmRole, type FarmRole } from "@/lib/sales-storage";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
 const OPERATION_CATEGORIES = [
-  { id: "irrigation", label: "Irrigation / watering" },
-  { id: "weeding", label: "Weeding" },
-  { id: "land_preparation", label: "Land preparation" },
-  { id: "harvesting", label: "Harvesting" },
-  { id: "pest_disease_control", label: "Pest / disease spraying" },
-  { id: "scouting", label: "Scouting" },
-  { id: "other", label: "Other / custom" },
+  { id: "irrigation", label: "Watering", icon: "water-outline" as const },
+  { id: "weeding", label: "Weeding", icon: "leaf-outline" as const },
+  { id: "land_preparation", label: "Land preparation", icon: "construct-outline" as const },
+  { id: "harvesting", label: "Harvesting", icon: "basket-outline" as const },
+  { id: "pest_disease_control", label: "Spraying", icon: "bug-outline" as const },
+  { id: "scouting", label: "Crop check", icon: "search-outline" as const },
+  { id: "other", label: "Other", icon: "ellipsis-horizontal-outline" as const },
 ];
 
 interface ProductRow {
@@ -97,11 +98,18 @@ export default function LogActivityScreen() {
 
   const [step, setStep] = useState(1);
   const [showFullDetails, setShowFullDetails] = useState(false);
+  const [showQuickDetails, setShowQuickDetails] = useState(false);
+  const [showQuickMaterials, setShowQuickMaterials] = useState(false);
   const [activityType, setActivityType] = useState<"planned" | "other" | "historical">(preSelected ? "planned" : "planned");
   const [selectedActivityId, setSelectedActivityId] = useState<string>(preSelected?.id ?? "");
   const [customActivityName, setCustomActivityName] = useState("");
   const [operationCategory, setOperationCategory] = useState("other");
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(preSelected?.blockId ?? null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(
+    preSelected?.blockId ?? (seasonBlocks.length === 1 ? seasonBlocks[0].id : null),
+  );
+  const [blockSelectionMade, setBlockSelectionMade] = useState(
+    Boolean(preSelected) || seasonBlocks.length <= 1,
+  );
   const [date, setDate] = useState(() => localDateKey(new Date()));
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
   const [weather, setWeather] = useState("");
@@ -123,6 +131,7 @@ export default function LogActivityScreen() {
   const [workers, setWorkers] = useState<FarmWorker[]>([]);
   const [workersLoading, setWorkersLoading] = useState(false);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
   const [dailyRate, setDailyRate] = useState("");
   const [daysWorked, setDaysWorked] = useState("");
   const [workQuantity, setWorkQuantity] = useState("");
@@ -147,9 +156,11 @@ export default function LogActivityScreen() {
     if (!farmId) {
       setWorkers([]);
       setWorkersLoading(false);
+      setFarmRole("none");
       return () => { active = false; };
     }
 
+    setFarmRole("none");
     setWorkersLoading(true);
     getFarmWorkers(farmId)
       .then((roster) => {
@@ -162,6 +173,11 @@ export default function LogActivityScreen() {
       .finally(() => {
         if (active) setWorkersLoading(false);
       });
+    getFarmRole(farmId)
+      .then((role) => {
+        if (active) setFarmRole(role);
+      })
+      .catch((error) => console.warn("[activity] Could not load farm role:", error));
     return () => { active = false; };
   }, [farmId]);
 
@@ -169,10 +185,14 @@ export default function LogActivityScreen() {
     ? currentSchedule.find((a) => a.id === selectedActivityId)
     : null;
 
-  const activityName =
-    activityType === "planned"
-      ? (selectedActivity?.name ?? "")
-      : customActivityName;
+  const selectedOperation = OPERATION_CATEGORIES.find((category) => category.id === operationCategory);
+  const activityName = activityType === "planned"
+    ? (selectedActivity?.name ?? "")
+    : operationCategory === "other"
+      ? customActivityName
+      : selectedOperation?.label ?? customActivityName;
+  const canManageLabourCosts = ["admin", "owner", "manager"].includes(farmRole);
+  const showQuickProducts = operationCategory === "pest_disease_control" || showQuickMaterials || products.length > 0;
 
   const calculatedLaborCost = Math.round(
     laborMode === "per_day"
@@ -222,6 +242,7 @@ export default function LogActivityScreen() {
       setSelectedActivityId(id);
       const activity = currentSchedule.find((a) => a.id === id);
       setSelectedBlockId(activity?.blockId ?? null);
+      setBlockSelectionMade(true);
       if (activity) {
         setProducts(
           activity.plannedProducts.map((p) => ({
@@ -255,7 +276,7 @@ export default function LogActivityScreen() {
   };
 
   const addOtherCost = () => {
-    const def = OTHER_COST_TYPES[0];
+    const def = OTHER_COST_TYPES.find((type) => type.key === "other") ?? OTHER_COST_TYPES[0];
     setOtherCosts((prev) => [
       ...prev,
       { typeKey: def.key, category: def.category, subcategory: def.subcategory, description: "", amount: "" },
@@ -308,6 +329,10 @@ export default function LogActivityScreen() {
   const handleSubmit = async () => {
     if (!activityName.trim()) {
       Alert.alert("Error", "Please select or enter an activity name.");
+      return;
+    }
+    if (seasonBlocks.length > 1 && !blockSelectionMade) {
+      Alert.alert("Choose a planting block", "Select a block or choose All blocks before saving.");
       return;
     }
     const extraWorkerCount = Number(numWorkers);
@@ -537,8 +562,12 @@ export default function LogActivityScreen() {
   };
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const canProceed =
-    step === 1 ? (activityType !== "planned" ? !!customActivityName.trim() : !!selectedActivityId) : true;
+  const canProceed = step === 1
+    ? (activityType === "planned"
+        ? !!selectedActivityId
+        : operationCategory !== "other" || !!customActivityName.trim())
+      && (seasonBlocks.length <= 1 || blockSelectionMade)
+    : true;
 
   if (!showFullDetails) {
     const quickDates = getQuickDates();
@@ -559,7 +588,7 @@ export default function LogActivityScreen() {
             style={styles.quickDetailsButton}
             accessibilityRole="button"
           >
-            <Text style={styles.quickDetailsText}>More details</Text>
+            <Text style={styles.quickDetailsText}>Full form</Text>
           </Pressable>
         </View>
 
@@ -629,22 +658,34 @@ export default function LogActivityScreen() {
                       onPress={() => { setOperationCategory(category.id); Haptics.selectionAsync(); }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: operationCategory === category.id }}
+                      accessibilityLabel={category.label}
+                      testID={`activity-category-${category.id}`}
                     >
+                      <Ionicons
+                        name={category.icon}
+                        size={20}
+                        color={operationCategory === category.id ? COLORS.white : COLORS.primary}
+                      />
                       <Text style={[styles.quickCategoryText, operationCategory === category.id && styles.quickCategoryTextActive]}>
                         {category.label}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
-                <TextInput
-                  style={styles.input}
-                  value={customActivityName}
-                  onChangeText={setCustomActivityName}
-                  placeholder="Work name (required)"
-                  placeholderTextColor={COLORS.textMuted}
-                  accessibilityLabel="Name of the work"
-                  returnKeyType="done"
-                />
+                {operationCategory === "other" ? (
+                  <>
+                    <Text style={styles.quickFieldLabel}>Name this work</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={customActivityName}
+                      onChangeText={setCustomActivityName}
+                      placeholder="e.g. Repair water line"
+                      placeholderTextColor={COLORS.textMuted}
+                      accessibilityLabel="Name of the work"
+                      returnKeyType="done"
+                    />
+                  </>
+                ) : null}
               </>
             )}
           </View>
@@ -652,18 +693,37 @@ export default function LogActivityScreen() {
           <View style={styles.quickSection}>
             <Text style={styles.quickSectionTitle}>Where and when?</Text>
             <Text style={styles.quickFieldLabel}>Planting block</Text>
+            {seasonBlocks.length > 1 && !blockSelectionMade ? (
+              <Text style={styles.quickHint}>Choose the block, or choose All blocks.</Text>
+            ) : null}
             <View style={styles.quickChipRow}>
-              <Pressable
-                style={[styles.quickChoice, selectedBlockId === null && styles.quickChoiceActive]}
-                onPress={() => setSelectedBlockId(null)}
-              >
-                <Text style={[styles.quickChoiceText, selectedBlockId === null && styles.quickChoiceTextActive]}>All blocks</Text>
-              </Pressable>
+              {seasonBlocks.length > 1 ? (
+                <Pressable
+                  testID="activity-block-all"
+                  style={[styles.quickChoice, blockSelectionMade && selectedBlockId === null && styles.quickChoiceActive]}
+                  onPress={() => {
+                    setSelectedBlockId(null);
+                    setBlockSelectionMade(true);
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: blockSelectionMade && selectedBlockId === null }}
+                  accessibilityLabel="All blocks"
+                >
+                  <Text style={[styles.quickChoiceText, blockSelectionMade && selectedBlockId === null && styles.quickChoiceTextActive]}>All blocks</Text>
+                </Pressable>
+              ) : null}
               {seasonBlocks.map((block) => (
                 <Pressable
                   key={block.id}
+                  testID={`activity-block-${block.id}`}
                   style={[styles.quickChoice, selectedBlockId === block.id && styles.quickChoiceActive]}
-                  onPress={() => setSelectedBlockId(block.id)}
+                  onPress={() => {
+                    setSelectedBlockId(block.id);
+                    setBlockSelectionMade(true);
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: selectedBlockId === block.id }}
+                  accessibilityLabel={block.name}
                 >
                   <Text style={[styles.quickChoiceText, selectedBlockId === block.id && styles.quickChoiceTextActive]}>{block.name}</Text>
                 </Pressable>
@@ -735,7 +795,7 @@ export default function LogActivityScreen() {
                 />
               </View>
               <View style={styles.quickInputColumn}>
-                <Text style={styles.quickFieldLabel}>Days</Text>
+                <Text style={styles.quickFieldLabel}>Days worked</Text>
                 <TextInput
                   style={styles.quickNumberInput}
                   value={daysWorked}
@@ -747,21 +807,9 @@ export default function LogActivityScreen() {
                 />
               </View>
             </View>
-            <View>
-              <Text style={styles.quickFieldLabel}>Labour paid (KES, optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={totalLaborCostInput}
-                onChangeText={setTotalLaborCostInput}
-                keyboardType="decimal-pad"
-                placeholder="Leave blank if not known"
-                placeholderTextColor={COLORS.textMuted}
-                accessibilityLabel="Total labour paid in Kenyan shillings, optional"
-              />
-            </View>
             <View style={styles.quickInputRow}>
               <View style={styles.quickInputColumn}>
-                <Text style={styles.quickFieldLabel}>Amount completed</Text>
+                <Text style={styles.quickFieldLabel}>Work completed (optional)</Text>
                 <TextInput
                   style={styles.quickNumberInput}
                   value={workQuantity}
@@ -916,6 +964,11 @@ export default function LogActivityScreen() {
                       accessibilityRole="button"
                       accessibilityState={{ selected: operationCategory === category.id }}
                     >
+                    <Ionicons
+                      name={category.icon}
+                      size={18}
+                      color={operationCategory === category.id ? COLORS.white : COLORS.primary}
+                    />
                       <Text
                         style={[
                           styles.sectionOptionText,
@@ -939,20 +992,37 @@ export default function LogActivityScreen() {
             )}
 
             <Text style={styles.fieldLabel}>Planting block</Text>
+            {seasonBlocks.length > 1 && !blockSelectionMade ? (
+              <Text style={styles.fieldHint}>Choose the block, or choose All blocks.</Text>
+            ) : null}
             <View style={[styles.sectionSelector, styles.blockSelector]}>
-              <Pressable
-                style={[styles.sectionOption, selectedBlockId === null && styles.sectionOptionActive]}
-                onPress={() => setSelectedBlockId(null)}
-              >
-                <Text style={[styles.sectionOptionText, selectedBlockId === null && styles.sectionOptionTextActive]}>
-                  All blocks
-                </Text>
-              </Pressable>
+              {seasonBlocks.length > 1 ? (
+                <Pressable
+                  testID="activity-full-block-all"
+                  style={[styles.sectionOption, blockSelectionMade && selectedBlockId === null && styles.sectionOptionActive]}
+                  onPress={() => {
+                    setSelectedBlockId(null);
+                    setBlockSelectionMade(true);
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: blockSelectionMade && selectedBlockId === null }}
+                >
+                  <Text style={[styles.sectionOptionText, blockSelectionMade && selectedBlockId === null && styles.sectionOptionTextActive]}>
+                    All blocks
+                  </Text>
+                </Pressable>
+              ) : null}
               {seasonBlocks.map((block) => (
                 <Pressable
                   key={block.id}
+                  testID={`activity-full-block-${block.id}`}
                   style={[styles.sectionOption, selectedBlockId === block.id && styles.sectionOptionActive]}
-                  onPress={() => setSelectedBlockId(block.id)}
+                  onPress={() => {
+                    setSelectedBlockId(block.id);
+                    setBlockSelectionMade(true);
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: selectedBlockId === block.id }}
                 >
                   <Text style={[styles.sectionOptionText, selectedBlockId === block.id && styles.sectionOptionTextActive]}>
                     {block.name}
