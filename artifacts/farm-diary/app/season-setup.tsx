@@ -303,9 +303,15 @@ export default function SeasonSetupScreen() {
         router.replace("/(tabs)");
       }
     } catch (error) {
+      const message = error && typeof error === "object" && "message" in error
+        ? String((error as { message?: unknown }).message || "")
+        : error instanceof Error ? error.message : "";
+      const needsBlockUpgrade = /blocks/i.test(message) && /(column|schema cache|does not exist)/i.test(message);
       Alert.alert(
         "Could not create season",
-        error instanceof Error ? error.message : "Check your connection and try again.",
+        needsBlockUpgrade
+          ? "The farm database needs the planting-block update. Ask your farm manager to apply the crop-blocks SQL update."
+          : message || "Check your connection and try again.",
       );
     } finally {
       setSubmitting(false);

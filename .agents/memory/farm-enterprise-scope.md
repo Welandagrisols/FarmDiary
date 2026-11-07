@@ -5,8 +5,8 @@ description: Farm Diary is prioritizing crop operations before livestock and pou
 
 Keep the current Farm Diary focused on crop operations while leaving core activity and labour models adaptable for livestock and poultry later.
 
-Worker-facing entry flows should be easy for semi-literate farm workers: minimize required fields, typing, and scrolling.
+Farm hands are not enthusiastic about using systems. Keep worker-facing flows simple, with few required fields, little typing, and minimal scrolling.
 
-**Why:** The user said livestock and poultry will be incorporated later and emphasized reducing data-entry friction for semi-literate workers.
+**Why:** The user asked for an easy-to-use tool that does not overwhelm farm hands.
 
 **How to apply:** Keep shared farm-operation concepts reusable; defer dedicated livestock and poultry workflows until requested. Use quick-entry defaults and reveal optional details only when needed.

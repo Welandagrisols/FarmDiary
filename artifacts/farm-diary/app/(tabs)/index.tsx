@@ -451,6 +451,29 @@ export default function DashboardScreen() {
           </View>
         );
       })}
+      {activeSeason && activeSeason.status !== "closed" ? (
+        <Pressable
+          testID="add-planting"
+          accessibilityRole="button"
+          style={{
+            minHeight: 50,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: COLORS.primary,
+            backgroundColor: COLORS.primarySurface,
+          }}
+          onPress={() => router.push("/add-planting")}
+        >
+          <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+          <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 15, color: COLORS.primary }}>
+            Add planting
+          </Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }

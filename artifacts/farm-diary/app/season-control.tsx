@@ -6,13 +6,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { getTemplate } from "@/constants/farmData";
-import { getCropMeta } from "@/constants/cropTemplates";
-import { formatDate, formatKES, SeasonRecord } from "@/lib/storage";
+import { CropBlock, formatDate, formatKES, getSeasonBlocks, SeasonRecord } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 import { PENDING_SALE_STATUSES, seasonFinance } from "@/lib/season-finance";
 import { useSeasonSales } from "@/lib/use-season-sales";
-
-const BLIGHT_RISKS = ["LOW", "MEDIUM", "HIGH"] as const;
 
 function statusColor(status: SeasonRecord["status"]) {
   switch (status) {
@@ -40,15 +37,9 @@ function EditSeasonModal({ season, onClose, onSave }: {
 
   const [seasonName, setSeasonName] = useState(season.season_name);
 
-  const [varietyA, setVarietyA] = useState(season.section_a.variety);
-  const [plantingDateA, setPlantingDateA] = useState(season.section_a.planting_date);
-  const [acresA, setAcresA] = useState(String(season.section_a.acres));
-  const [blightRiskA, setBlightRiskA] = useState<"LOW" | "MEDIUM" | "HIGH">(season.section_a.blight_risk);
-
-  const [varietyB, setVarietyB] = useState(season.section_b.variety);
-  const [plantingDateB, setPlantingDateB] = useState(season.section_b.planting_date);
-  const [acresB, setAcresB] = useState(String(season.section_b.acres));
-  const [blightRiskB, setBlightRiskB] = useState(season.section_b.blight_risk);
+  const [blocks, setBlocks] = useState<Array<Omit<CropBlock, "acres"> & { acres: string }>>(
+    () => getSeasonBlocks(season).map((block) => ({ ...block, acres: String(block.acres) }))
+  );
 
   const [notes, setNotes] = useState(season.notes || "");
 
@@ -57,30 +48,38 @@ function EditSeasonModal({ season, onClose, onSave }: {
       Alert.alert("Missing", "Season name is required.");
       return;
     }
+    if (
+      blocks.length === 0 ||
+      blocks.some((block) => block.planting_date.length !== 10 || (Number.parseFloat(block.acres) || 0) <= 0)
+    ) {
+      Alert.alert("Check planting details", "Each block needs a planting date and area greater than zero.");
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
         season_name: seasonName.trim(),
-        section_a: {
-          ...season.section_a,
-          variety: varietyA.trim() || season.section_a.variety,
-          planting_date: plantingDateA,
-          acres: parseFloat(acresA) || season.section_a.acres,
-          blight_risk: blightRiskA,
-        },
-        section_b: {
-          ...season.section_b,
-          variety: varietyB.trim() || season.section_b.variety,
-          planting_date: plantingDateB,
-          acres: parseFloat(acresB) || season.section_b.acres,
-          blight_risk: blightRiskB,
-        },
+        blocks: blocks.map((block, index) => ({
+          ...block,
+          name: `Block ${index + 1}`,
+          variety: block.variety.trim() || "Not specified",
+          acres: Number.parseFloat(block.acres),
+        })),
         notes: notes.trim() || null,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
-    } catch {
-      Alert.alert("Error", "Failed to save changes.");
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error
+        ? String((error as { message?: unknown }).message || "")
+        : "";
+      const needsBlockUpgrade = /blocks/i.test(message) && /(column|schema cache|does not exist)/i.test(message);
+      Alert.alert(
+        "Could not save changes",
+        needsBlockUpgrade
+          ? "The farm database needs the planting-block update. Ask your farm manager to apply the crop-blocks SQL update."
+          : message || "Check your connection and try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -116,67 +115,46 @@ function EditSeasonModal({ season, onClose, onSave }: {
             <TextInput style={[editStyles.input, editStyles.notesInput]} value={notes} onChangeText={setNotes} placeholder="Any notes about this season" placeholderTextColor={COLORS.textMuted} multiline numberOfLines={3} />
           </View>
 
-          <Text style={editStyles.sectionLabel}>Section A</Text>
-          <View style={editStyles.card}>
-            <Text style={editStyles.fieldLabel}>Variety</Text>
-            <TextInput style={editStyles.input} value={varietyA} onChangeText={setVarietyA} placeholder="e.g. Variety name" placeholderTextColor={COLORS.textMuted} />
+          <Text style={editStyles.sectionLabel}>Planting blocks</Text>
+          {blocks.map((block, index) => (
+            <View key={block.id} style={editStyles.card}>
+              <Text style={editStyles.fieldLabel}>{block.name || `Block ${index + 1}`}</Text>
+              <TextInput
+                testID={`edit-block-${index + 1}-variety`}
+                style={editStyles.input}
+                value={block.variety}
+                onChangeText={(value) => setBlocks((prev) => prev.map((item) => item.id === block.id ? { ...item, variety: value } : item))}
+                placeholder="Variety (optional)"
+                placeholderTextColor={COLORS.textMuted}
+              />
 
-            <View style={editStyles.divider} />
+              <View style={editStyles.divider} />
 
-            <Text style={editStyles.fieldLabel}>Planting Date</Text>
-            <TextInput style={editStyles.input} value={plantingDateA} onChangeText={setPlantingDateA} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
+              <Text style={editStyles.fieldLabel}>Planting date</Text>
+              <TextInput
+                testID={`edit-block-${index + 1}-date`}
+                style={editStyles.input}
+                value={block.planting_date}
+                onChangeText={(value) => setBlocks((prev) => prev.map((item) => item.id === block.id ? { ...item, planting_date: value } : item))}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numbers-and-punctuation"
+              />
 
-            <View style={editStyles.divider} />
+              <View style={editStyles.divider} />
 
-            <Text style={editStyles.fieldLabel}>Area (acres)</Text>
-            <TextInput style={editStyles.input} value={acresA} onChangeText={setAcresA} placeholder="2" placeholderTextColor={COLORS.textMuted} keyboardType="numeric" />
-
-            <View style={editStyles.divider} />
-
-            <Text style={editStyles.fieldLabel}>{getCropMeta(season.template_id).riskLabel}</Text>
-            <View style={editStyles.chipRow}>
-              {BLIGHT_RISKS.map((r) => (
-                <Pressable
-                  key={r}
-                  style={[editStyles.chip, blightRiskA === r && editStyles.chipActive]}
-                  onPress={() => { Haptics.selectionAsync(); setBlightRiskA(r); }}
-                >
-                  <Text style={[editStyles.chipText, blightRiskA === r && editStyles.chipTextActive]}>{r}</Text>
-                </Pressable>
-              ))}
+              <Text style={editStyles.fieldLabel}>Area (acres)</Text>
+              <TextInput
+                testID={`edit-block-${index + 1}-area`}
+                style={editStyles.input}
+                value={block.acres}
+                onChangeText={(value) => setBlocks((prev) => prev.map((item) => item.id === block.id ? { ...item, acres: value } : item))}
+                placeholder="e.g. 0.5"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="decimal-pad"
+              />
             </View>
-          </View>
-
-          <Text style={editStyles.sectionLabel}>Section B</Text>
-          <View style={editStyles.card}>
-            <Text style={editStyles.fieldLabel}>Variety</Text>
-            <TextInput style={editStyles.input} value={varietyB} onChangeText={setVarietyB} placeholder="e.g. Variety name" placeholderTextColor={COLORS.textMuted} />
-
-            <View style={editStyles.divider} />
-
-            <Text style={editStyles.fieldLabel}>Planting Date</Text>
-            <TextInput style={editStyles.input} value={plantingDateB} onChangeText={setPlantingDateB} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
-
-            <View style={editStyles.divider} />
-
-            <Text style={editStyles.fieldLabel}>Area (acres)</Text>
-            <TextInput style={editStyles.input} value={acresB} onChangeText={setAcresB} placeholder="2" placeholderTextColor={COLORS.textMuted} keyboardType="numeric" />
-
-            <View style={editStyles.divider} />
-
-            <Text style={editStyles.fieldLabel}>{getCropMeta(season.template_id).riskLabel}</Text>
-            <View style={editStyles.chipRow}>
-              {BLIGHT_RISKS.map((r) => (
-                <Pressable
-                  key={r}
-                  style={[editStyles.chip, blightRiskB === r && editStyles.chipActive]}
-                  onPress={() => { Haptics.selectionAsync(); setBlightRiskB(r); }}
-                >
-                  <Text style={[editStyles.chipText, blightRiskB === r && editStyles.chipTextActive]}>{r}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+          ))}
         </ScrollView>
       </View>
     </Modal>
