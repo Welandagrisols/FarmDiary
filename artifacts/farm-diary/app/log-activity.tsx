@@ -98,8 +98,9 @@ export default function LogActivityScreen() {
 
   const [step, setStep] = useState(1);
   const [showFullDetails, setShowFullDetails] = useState(false);
-  const [showQuickDetails, setShowQuickDetails] = useState(false);
+  const [showQuickDetails, setShowQuickDetails] = useState(Boolean(preSelected?.plannedProducts.length));
   const [showQuickMaterials, setShowQuickMaterials] = useState(false);
+  const [showQuickCosts, setShowQuickCosts] = useState(false);
   const [activityType, setActivityType] = useState<"planned" | "other" | "historical">(preSelected ? "planned" : "planned");
   const [selectedActivityId, setSelectedActivityId] = useState<string>(preSelected?.id ?? "");
   const [customActivityName, setCustomActivityName] = useState("");
@@ -255,6 +256,7 @@ export default function LogActivityScreen() {
             unitPrice: p.unitPrice.toString(),
           }))
         );
+        if (activity.plannedProducts.length > 0) setShowQuickDetails(true);
       }
     },
     [currentSchedule]
@@ -655,7 +657,11 @@ export default function LogActivityScreen() {
                     <Pressable
                       key={category.id}
                       style={[styles.quickCategory, operationCategory === category.id && styles.quickCategoryActive]}
-                      onPress={() => { setOperationCategory(category.id); Haptics.selectionAsync(); }}
+                    onPress={() => {
+                      setOperationCategory(category.id);
+                      if (category.id === "pest_disease_control") setShowQuickDetails(true);
+                      Haptics.selectionAsync();
+                    }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: operationCategory === category.id }}
                       accessibilityLabel={category.label}
@@ -839,16 +845,297 @@ export default function LogActivityScreen() {
 
           <Pressable
             style={styles.quickMoreDetails}
-            onPress={() => { setStep(2); setShowFullDetails(true); }}
+            onPress={() => setShowQuickDetails((visible) => !visible)}
             accessibilityRole="button"
+            accessibilityState={{ expanded: showQuickDetails }}
+            testID="activity-quick-details-toggle"
           >
             <Ionicons name="options-outline" size={19} color={COLORS.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.quickMoreTitle}>Add materials, weather, pay or notes</Text>
-              <Text style={styles.quickHint}>Optional details for managers</Text>
+              <Text style={styles.quickMoreTitle}>
+                {showQuickDetails ? "Hide optional details" : "Add optional details"}
+              </Text>
+              <Text style={styles.quickHint}>Weather, materials, extra costs or notes</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+            <Ionicons
+              name={showQuickDetails ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={COLORS.primary}
+            />
           </Pressable>
+
+          {showQuickDetails && (
+            <View style={styles.quickSection}>
+              <Text style={styles.quickSectionTitle}>Optional details</Text>
+
+              <View style={styles.quickOptionalField}>
+                <Text style={styles.quickFieldLabel}>Weather</Text>
+                <View style={styles.weatherSelector}>
+                  {WEATHER_OPTIONS.map((option) => (
+                    <Pressable
+                      key={option}
+                      style={[styles.weatherOption, weather === option && styles.weatherOptionActive]}
+                      onPress={() => setWeather((current) => current === option ? "" : option)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: weather === option }}
+                      accessibilityLabel={option}
+                      testID={`activity-weather-${option.toLowerCase().replace(/ /g, "-")}`}
+                    >
+                      <Ionicons
+                        name={
+                          option === "Sunny" ? "sunny-outline" :
+                          option === "Cloudy" ? "cloud-outline" :
+                          option === "Light Rain" ? "rainy-outline" :
+                          "thunderstorm-outline"
+                        }
+                        size={18}
+                        color={weather === option ? COLORS.white : COLORS.textSecondary}
+                      />
+                      <Text style={[styles.weatherOptionText, weather === option && styles.weatherOptionTextActive]}>
+                        {option}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {showQuickProducts ? (
+                <View style={styles.quickOptionalField}>
+                  <View style={styles.quickOptionalHeading}>
+                    <Text style={styles.quickFieldLabel}>Materials used</Text>
+                    <Text style={styles.quickHint}>Add only what was used</Text>
+                  </View>
+                  {products.map((product, index) => (
+                    <View key={`${product.name}-${index}`} style={styles.productCard}>
+                      <View style={styles.productCardHeader}>
+                        <Text style={styles.productCardName}>
+                          {product.name || `Material ${index + 1}`}
+                        </Text>
+                        <Pressable
+                          onPress={() => removeProduct(index)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove material ${index + 1}`}
+                          testID={`activity-remove-material-${index}`}
+                        >
+                          <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                        </Pressable>
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        value={product.name}
+                        onChangeText={(value) => updateProduct(index, "name", value)}
+                        placeholder="Product name"
+                        placeholderTextColor={COLORS.textMuted}
+                        accessibilityLabel={`Material ${index + 1} name`}
+                      />
+                      <View style={styles.quickInputRow}>
+                        <View style={styles.quickInputColumn}>
+                          <Text style={styles.quickFieldLabel}>Amount</Text>
+                          <TextInput
+                            style={styles.quickNumberInput}
+                            value={product.qty}
+                            onChangeText={(value) => updateProduct(index, "qty", value)}
+                            keyboardType="decimal-pad"
+                            placeholder="Optional"
+                            placeholderTextColor={COLORS.textMuted}
+                            accessibilityLabel={`Material ${index + 1} amount`}
+                          />
+                        </View>
+                        <View style={styles.quickInputColumn}>
+                          <Text style={styles.quickFieldLabel}>Unit</Text>
+                          <TextInput
+                            style={styles.quickNumberInput}
+                            value={product.unit}
+                            onChangeText={(value) => updateProduct(index, "unit", value)}
+                            placeholder="L / kg"
+                            placeholderTextColor={COLORS.textMuted}
+                            accessibilityLabel={`Material ${index + 1} unit`}
+                          />
+                        </View>
+                        <View style={styles.quickInputColumn}>
+                          <Text style={styles.quickFieldLabel}>KES/unit</Text>
+                          <TextInput
+                            style={styles.quickNumberInput}
+                            value={product.unitPrice}
+                            onChangeText={(value) => updateProduct(index, "unitPrice", value)}
+                            keyboardType="decimal-pad"
+                            placeholder="Optional"
+                            placeholderTextColor={COLORS.textMuted}
+                            accessibilityLabel={`Material ${index + 1} price per unit`}
+                          />
+                        </View>
+                      </View>
+                      {product.qty && product.unitPrice ? (
+                        <Text style={styles.productTotal}>
+                          Cost: {formatKES((parseFloat(product.qty) || 0) * (parseFloat(product.unitPrice) || 0))}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                  <Pressable
+                    style={styles.addProductBtn}
+                    onPress={addProduct}
+                    accessibilityRole="button"
+                    testID="activity-add-material"
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.addProductBtnText}>Add material</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.quickInlineAction}
+                  onPress={() => setShowQuickMaterials(true)}
+                  accessibilityRole="button"
+                  testID="activity-add-materials-toggle"
+                >
+                  <Ionicons name="flask-outline" size={19} color={COLORS.primary} />
+                  <Text style={styles.quickInlineActionText}>Add materials</Text>
+                </Pressable>
+              )}
+
+              {showQuickCosts || otherCosts.length > 0 ? (
+                <View style={styles.quickOptionalField}>
+                  <Text style={styles.quickFieldLabel}>Extra costs</Text>
+                  {otherCosts.map((cost, index) => (
+                    <View key={`${cost.typeKey}-${index}`} style={styles.otherCostCard}>
+                      <View style={styles.otherCostHeader}>
+                        <Text style={styles.otherCostTitle}>
+                          {OTHER_COST_TYPES.find((type) => type.key === cost.typeKey)?.label ?? "Extra cost"}
+                        </Text>
+                        <Pressable
+                          onPress={() => setOtherCosts((current) => current.filter((_, i) => i !== index))}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove extra cost ${index + 1}`}
+                          testID={`activity-remove-cost-${index}`}
+                        >
+                          <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                        </Pressable>
+                      </View>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                          {OTHER_COST_TYPES.map((type) => (
+                            <Pressable
+                              key={type.key}
+                              style={[styles.typeChip, cost.typeKey === type.key && styles.typeChipActive]}
+                              onPress={() => setOtherCostType(index, type.key)}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: cost.typeKey === type.key }}
+                              accessibilityLabel={type.label}
+                            >
+                              <Text style={[styles.typeChipText, cost.typeKey === type.key && styles.typeChipTextActive]}>
+                                {type.label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </ScrollView>
+                      <TextInput
+                        style={styles.input}
+                        value={cost.description}
+                        onChangeText={(value) => setOtherCosts((current) =>
+                          current.map((item, i) => i === index ? { ...item, description: value } : item)
+                        )}
+                        placeholder="What was the cost for?"
+                        placeholderTextColor={COLORS.textMuted}
+                        accessibilityLabel={`Extra cost ${index + 1} description`}
+                      />
+                      {cost.typeKey === "water" ? (
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputColumn}>
+                            <Text style={styles.quickFieldLabel}>20L containers</Text>
+                            <TextInput
+                              style={styles.quickNumberInput}
+                              value={cost.waterContainers ?? ""}
+                              onChangeText={(value) => setOtherCosts((current) =>
+                                current.map((item, i) => i === index ? { ...item, waterContainers: value } : item)
+                              )}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor={COLORS.textMuted}
+                              accessibilityLabel="Number of water containers"
+                            />
+                          </View>
+                          <View style={styles.quickInputColumn}>
+                            <Text style={styles.quickFieldLabel}>KES/container</Text>
+                            <TextInput
+                              style={styles.quickNumberInput}
+                              value={cost.waterPricePerContainer ?? "20"}
+                              onChangeText={(value) => setOtherCosts((current) =>
+                                current.map((item, i) => i === index ? { ...item, waterPricePerContainer: value } : item)
+                              )}
+                              keyboardType="decimal-pad"
+                              placeholder="20"
+                              placeholderTextColor={COLORS.textMuted}
+                              accessibilityLabel="Price per water container"
+                            />
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.amountRow}>
+                          <Text style={styles.kesPre}>KES</Text>
+                          <TextInput
+                            style={[styles.input, { flex: 1 }]}
+                            value={cost.amount}
+                            onChangeText={(value) => setOtherCosts((current) =>
+                              current.map((item, i) => i === index ? { ...item, amount: value } : item)
+                            )}
+                            keyboardType="decimal-pad"
+                            placeholder="0"
+                            placeholderTextColor={COLORS.textMuted}
+                            accessibilityLabel={`Extra cost ${index + 1} amount in KES`}
+                          />
+                        </View>
+                      )}
+                      <Text style={styles.productTotal}>Amount: {formatKES(getOtherCostAmount(cost))}</Text>
+                    </View>
+                  ))}
+                  <Pressable
+                    style={styles.addProductBtn}
+                    onPress={addOtherCost}
+                    accessibilityRole="button"
+                    testID="activity-add-extra-cost"
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.addProductBtnText}>Add another cost</Text>
+                  </Pressable>
+                  {otherTotal > 0 ? (
+                    <Text style={styles.productTotal}>Extra costs total: {formatKES(otherTotal)}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.quickInlineAction}
+                  onPress={() => {
+                    setShowQuickCosts(true);
+                    if (!otherCosts.length) addOtherCost();
+                  }}
+                  accessibilityRole="button"
+                  testID="activity-add-cost-toggle"
+                >
+                  <Ionicons name="add-circle-outline" size={19} color={COLORS.primary} />
+                  <Text style={styles.quickInlineActionText}>Add an extra cost</Text>
+                </Pressable>
+              )}
+
+              <View style={styles.quickOptionalField}>
+                <Text style={styles.quickFieldLabel}>Notes</Text>
+                <TextInput
+                  style={[styles.input, styles.notesInput]}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Optional notes about the work"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  accessibilityLabel="Activity notes"
+                  testID="activity-quick-notes"
+                />
+              </View>
+            </View>
+          )}
         </KeyboardAwareScrollViewCompat>
 
         <View style={[styles.quickFooter, { paddingBottom: insets.bottom + 12 }]}>
@@ -1668,6 +1955,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primarySurface,
   },
   quickMoreTitle: { fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.text },
+  quickOptionalField: { gap: 8 },
+  quickOptionalHeading: { gap: 4 },
+  quickInlineAction: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardBg,
+  },
+  quickInlineActionText: { fontFamily: "Manrope_600SemiBold", fontSize: 14, color: COLORS.primary },
   quickFooter: {
     paddingHorizontal: 14,
     paddingTop: 10,
@@ -1842,6 +2143,7 @@ const styles = StyleSheet.create({
   weatherSelector: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   weatherOption: {
     flexDirection: "row", alignItems: "center", gap: 6,
+    minHeight: 44,
     paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
     backgroundColor: COLORS.borderLight,
     borderWidth: 1.5, borderColor: COLORS.border,
@@ -1928,6 +2230,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   typeChip: {
+    minHeight: 42, justifyContent: "center",
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
     backgroundColor: COLORS.borderLight, borderWidth: 1.5, borderColor: COLORS.border,
   },
