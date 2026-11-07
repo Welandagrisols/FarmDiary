@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { formatKES, getSeasonBlockName, getSeasonBlocks } from "@/lib/storage";
@@ -56,6 +57,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
   { value: "bank", label: "Bank" },
 ];
+const WALK_IN_BUYER = "Walk-in buyer";
 
 const localDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -90,7 +92,7 @@ export default function SalesScreen() {
   const [issues, setIssues] = useState<StockIssueRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<"sales" | "stock">("sales");
+  const [tab, setTab] = useState<"entry" | "ledger" | "stock">("entry");
   const [review, setReview] = useState<ReviewRequest | null>(null);
   const [reason, setReason] = useState("");
   const [showDiscountDetails, setShowDiscountDetails] = useState(false);
@@ -117,6 +119,11 @@ export default function SalesScreen() {
   const canViewStock = ["admin", "owner", "manager", "storekeeper"].includes(role);
   const canReviewSales = ["admin", "owner", "manager"].includes(role);
   const canApproveVoids = role === "admin" || role === "owner";
+  const canViewSalesManagement = canReviewSales || role === "storekeeper";
+
+  useEffect(() => {
+    setTab(role === "storekeeper" ? "stock" : "entry");
+  }, [role]);
 
   const load = useCallback(async () => {
     if (!activeFarm?.id || !seasonId) {
@@ -173,12 +180,13 @@ export default function SalesScreen() {
       .flatMap((sale) => {
         const name = sale.buyer_name.trim();
         const normalized = name.toLocaleLowerCase();
-        if (!name || seen.has(normalized)) return [];
+        if (!name || normalized === WALK_IN_BUYER.toLocaleLowerCase() || seen.has(normalized)) return [];
         seen.add(normalized);
         return [name];
       })
       .slice(0, 4);
   }, [sales]);
+  const isWalkInBuyer = buyerName.trim().toLocaleLowerCase() === WALK_IN_BUYER.toLocaleLowerCase();
   const orderedSales = useMemo(
     () => [...sales].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [sales],
@@ -273,6 +281,19 @@ export default function SalesScreen() {
       Alert.alert("Could not record sale", error?.message || "Try again.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePastePaymentReference = async () => {
+    try {
+      const clipboardText = (await Clipboard.getStringAsync()).trim();
+      if (!clipboardText) {
+        Alert.alert("Clipboard is empty", "Copy the M-Pesa or bank reference, then tap Paste.");
+        return;
+      }
+      setPaymentReference(clipboardText);
+    } catch (error: any) {
+      Alert.alert("Could not read clipboard", error?.message || "Paste the reference into the field instead.");
     }
   };
 
@@ -402,32 +423,47 @@ export default function SalesScreen() {
           <View style={styles.roleBadge}><Text style={styles.roleBadgeText}>{roleLabel(role)}</Text></View>
         </View>
 
-        {canViewStock ? (
+        {canViewSalesManagement || canViewStock ? (
           <View style={styles.tabs}>
-            <Pressable style={[styles.tab, tab === "sales" && styles.tabActive]} onPress={() => setTab("sales")}>
-              <Text style={[styles.tabText, tab === "sales" && styles.tabTextActive]}>Sales ledger</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === "stock" && styles.tabActive]} onPress={() => setTab("stock")}>
-              <Text style={[styles.tabText, tab === "stock" && styles.tabTextActive]}>Stock control</Text>
-            </Pressable>
+            {role !== "storekeeper" ? (
+              <Pressable
+                style={[styles.tab, tab === "entry" && styles.tabActive]}
+                onPress={() => setTab("entry")}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === "entry" }}
+              >
+                <Text style={[styles.tabText, tab === "entry" && styles.tabTextActive]}>Record sale</Text>
+              </Pressable>
+            ) : null}
+            {canViewSalesManagement ? (
+              <Pressable
+                style={[styles.tab, tab === "ledger" && styles.tabActive]}
+                onPress={() => setTab("ledger")}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === "ledger" }}
+              >
+                <Text style={[styles.tabText, tab === "ledger" && styles.tabTextActive]}>Sales ledger</Text>
+              </Pressable>
+            ) : null}
+            {canViewStock ? (
+              <Pressable
+                style={[styles.tab, tab === "stock" && styles.tabActive]}
+                onPress={() => setTab("stock")}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === "stock" }}
+              >
+                <Text style={[styles.tabText, tab === "stock" && styles.tabTextActive]}>Stock control</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
-        {tab === "sales" && role !== "storekeeper" ? (
+        {tab === "entry" && role !== "storekeeper" ? (
           <>
-            <View style={styles.todayCard}>
-              <View style={styles.todayIcon}><Ionicons name="receipt-outline" size={19} color={COLORS.primary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.todayLabel}>Today’s recorded sales</Text>
-                <Text style={styles.todayValue}>{formatKES(todayRevenue)}</Text>
-              </View>
-              <Text style={styles.todayCount}>{todaySales.length} sale{todaySales.length === 1 ? "" : "s"}</Text>
-            </View>
-
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Record sale</Text>
               <Text style={styles.helperTextLeft}>
-                Each entry is linked to the signed-in seller. Discounts wait for manager approval; every sale needs a separate checker.
+                Your name is added automatically. A manager checks the sale after you save it.
               </Text>
               {seasonBlocks.length > 1 ? (
                 <>
@@ -452,26 +488,55 @@ export default function SalesScreen() {
                 </>
               ) : null}
               <Text style={styles.fieldLabel}>Buyer</Text>
-              {recentBuyers.length ? (
-                <View style={styles.buyerShortcuts}>
-                  <Text style={styles.smallNote}>Choose a recent buyer or type a new name</Text>
-                  <View style={styles.chipRow}>
-                    {recentBuyers.map((buyer) => (
+              <View style={styles.buyerShortcuts}>
+                <View style={styles.chipRow}>
+                  <Pressable
+                    style={[styles.chip, isWalkInBuyer && styles.chipActive]}
+                    onPress={() => setBuyerName(WALK_IN_BUYER)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isWalkInBuyer }}
+                    testID="sale-walk-in-buyer"
+                  >
+                    <Text style={[styles.chipText, isWalkInBuyer && styles.chipTextActive]}>Walk-in buyer</Text>
+                  </Pressable>
+                  {recentBuyers.map((buyer) => {
+                    const selected = buyerName.trim().toLocaleLowerCase() === buyer.toLocaleLowerCase();
+                    return (
                       <Pressable
                         key={buyer}
-                        style={[styles.chip, buyerName.trim().toLocaleLowerCase() === buyer.toLocaleLowerCase() && styles.chipActive]}
+                        style={[styles.chip, selected && styles.chipActive]}
                         onPress={() => setBuyerName(buyer)}
                         accessibilityRole="button"
+                        accessibilityState={{ selected }}
                       >
-                        <Text style={[styles.chipText, buyerName.trim().toLocaleLowerCase() === buyer.toLocaleLowerCase() && styles.chipTextActive]}>
-                          {buyer}
-                        </Text>
+                        <Text style={[styles.chipText, selected && styles.chipTextActive]}>{buyer}</Text>
                       </Pressable>
-                    ))}
-                  </View>
+                    );
+                  })}
                 </View>
-              ) : null}
-              <TextInput style={styles.input} value={buyerName} onChangeText={setBuyerName} placeholder="Buyer name" placeholderTextColor={COLORS.textMuted} />
+              </View>
+              {isWalkInBuyer ? (
+                <View style={styles.walkInSelected}>
+                  <Text style={styles.walkInSelectedText}>Walk-in buyer selected</Text>
+                  <Pressable
+                    onPress={() => setBuyerName("")}
+                    accessibilityRole="button"
+                    testID="sale-change-buyer"
+                  >
+                    <Text style={styles.changeBuyerText}>Enter a name</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  value={buyerName}
+                  onChangeText={setBuyerName}
+                  placeholder="Buyer name"
+                  placeholderTextColor={COLORS.textMuted}
+                  accessibilityLabel="Buyer name"
+                  testID="sale-buyer-name"
+                />
+              )}
               <View style={styles.row}>
                 <View style={styles.flexField}>
                   <Text style={styles.fieldLabel}>Quantity (kg)</Text>
@@ -532,13 +597,48 @@ export default function SalesScreen() {
               {paymentMethod !== "cash" ? (
                 <>
                   <Text style={styles.fieldLabel}>Payment reference</Text>
-                  <TextInput style={styles.input} value={paymentReference} onChangeText={setPaymentReference} autoCapitalize="characters" placeholder="M-Pesa / bank transaction code" placeholderTextColor={COLORS.textMuted} />
+                  <View style={styles.referenceRow}>
+                    <TextInput
+                      style={[styles.input, styles.referenceInput]}
+                      value={paymentReference}
+                      onChangeText={setPaymentReference}
+                      autoCapitalize="characters"
+                      placeholder="M-Pesa / bank transaction code"
+                      placeholderTextColor={COLORS.textMuted}
+                      accessibilityLabel="Payment reference"
+                      testID="sale-payment-reference"
+                    />
+                    <Pressable
+                      style={styles.pasteButton}
+                      onPress={handlePastePaymentReference}
+                      accessibilityRole="button"
+                      accessibilityLabel="Paste payment reference from clipboard"
+                      testID="sale-paste-reference"
+                    >
+                      <Ionicons name="clipboard-outline" size={18} color={COLORS.primary} />
+                      <Text style={styles.pasteButtonText}>Paste</Text>
+                    </Pressable>
+                  </View>
                 </>
               ) : null}
               <Pressable style={[styles.primaryButton, saving && styles.buttonDisabled]} onPress={handleCreateSale} disabled={saving}>
                 {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Record sale</Text>}
               </Pressable>
               <Text style={styles.smallNote}>Record payment to the farm till/paybill or farm account. Do not use a worker’s personal payment number.</Text>
+            </View>
+
+          </>
+        ) : null}
+
+        {tab === "ledger" && canViewSalesManagement ? (
+          <>
+            <View style={styles.todayCard}>
+              <View style={styles.todayIcon}><Ionicons name="receipt-outline" size={19} color={COLORS.primary} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.todayLabel}>Today’s recorded sales</Text>
+                <Text style={styles.todayValue}>{formatKES(todayRevenue)}</Text>
+              </View>
+              <Text style={styles.todayCount}>{todaySales.length} sale{todaySales.length === 1 ? "" : "s"}</Text>
             </View>
 
             <View style={styles.sectionHeader}>
@@ -722,11 +822,6 @@ export default function SalesScreen() {
           </>
         ) : null}
 
-        {tab === "sales" && role === "storekeeper" ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.helperText}>Storekeepers use Stock Control to count and issue stock. Sales are recorded by the seller’s own account.</Text>
-          </View>
-        ) : null}
       </ScrollView>
 
       <Modal transparent visible={Boolean(review)} animationType="fade" onRequestClose={() => setReview(null)}>
@@ -792,8 +887,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.primary,
   },
-  tabs: { flexDirection: "row", marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.cardBg, borderRadius: 11, padding: 4 },
-  tab: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  tabs: { flexDirection: "row", gap: 3, marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.cardBg, borderRadius: 11, padding: 4 },
+  tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 8, paddingHorizontal: 4 },
   tabActive: {
     backgroundColor: COLORS.ink,
   },
@@ -882,7 +977,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  chip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 10 },
+  chip: { minHeight: 42, justifyContent: "center", borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 10 },
   chipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySurface },
   chipText: {
     fontFamily: "Manrope_500Medium",
@@ -891,6 +986,33 @@ const styles = StyleSheet.create({
   },
   chipTextActive: { color: COLORS.primary },
   buyerShortcuts: { gap: 5 },
+  walkInSelected: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.primarySurface,
+  },
+  walkInSelectedText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.primary },
+  changeBuyerText: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
+  referenceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  referenceInput: { flex: 1 },
+  pasteButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primarySurface,
+  },
+  pasteButtonText: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
   discountToggle: {
     minHeight: 44,
     flexDirection: "row",
