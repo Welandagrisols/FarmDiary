@@ -105,6 +105,7 @@ interface ScheduleBlockInput {
   name?: string;
   planting_date: string;
   acres?: number;
+  template_id?: string;
 }
 
 function offsetDate(dateStr: string, days: number): string {
@@ -236,13 +237,14 @@ export function generatePlannedSchedule(
   plantingDateB?: string
 ): PlannedActivity[] {
   if (Array.isArray(plantingDate)) {
-    return plantingDate.flatMap((block, blockIndex) =>
-      template.stages.map((stage) => {
+    return plantingDate.flatMap((block, blockIndex) => {
+      const blockTemplate = getTemplate(block.template_id || template.id);
+      return blockTemplate.stages.map((stage) => {
         const plannedDate = offsetDate(block.planting_date, stage.offsetDays);
         const areaFactor = block.acres && block.acres > 0 ? block.acres / 2 : 1;
         return {
           id: `${stage.id}:${block.id}`,
-          templateId: template.id,
+          templateId: blockTemplate.id,
           stage: stage.title,
           activityType: stage.activityType,
           name: stage.title,
@@ -251,7 +253,7 @@ export function generatePlannedSchedule(
           blockName: block.name || `Block ${blockIndex + 1}`,
           plannedDateA: plannedDate,
           plannedDateB: plannedDate,
-          daysAfterGermA: Math.max(0, stage.offsetDays - template.germinationDays),
+          daysAfterGermA: Math.max(0, stage.offsetDays - blockTemplate.germinationDays),
           plannedProducts: stage.products,
           estimatedLaborCost: stage.estimatedLaborCost
             ? stage.estimatedLaborCost * areaFactor
@@ -260,8 +262,8 @@ export function generatePlannedSchedule(
           purpose: stage.purpose,
           alert: stage.alert,
         };
-      })
-    );
+      });
+    });
   }
 
   return template.stages.map((stage, index) => {

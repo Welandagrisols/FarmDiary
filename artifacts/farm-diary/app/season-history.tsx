@@ -6,8 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { formatDate, formatKES } from "@/lib/storage";
-import { getTemplate } from "@/constants/farmData";
-import { formatHarvestTotals, getCropMeta } from "@/constants/cropTemplates";
+import { formatSeasonHarvestSummary, seasonCropLabel } from "@/lib/season-crops";
 import { FarmRole, getFarmRole, getFarmSales, SaleRecord } from "@/lib/sales-storage";
 import { groupBySeason, seasonFinance } from "@/lib/season-finance";
 
@@ -92,8 +91,8 @@ export default function SeasonHistoryScreen() {
             const spent = f.costs;
             const revenue = f.revenue;
             const net = f.net;
-            const crop = getTemplate(season.template_id).cropType;
-            const harvestSummary = formatHarvestTotals(seasonHarvests, getCropMeta(season.template_id));
+            const crop = seasonCropLabel(season);
+            const harvestSummary = formatSeasonHarvestSummary(season, seasonHarvests);
 
             return (
               <View key={season.id} style={styles.card}>

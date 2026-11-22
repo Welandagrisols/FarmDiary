@@ -15,9 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { getTemplate } from "@/constants/farmData";
-import { formatHarvestTotals, getCropMeta } from "@/constants/cropTemplates";
 import {
-  getGrowthStage,
   getDaysSincePlanting,
   getDaysUntil,
   formatKES,
@@ -26,6 +24,7 @@ import {
 } from "@/lib/storage";
 import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
 import { seasonCostTotal, seasonFinance } from "@/lib/season-finance";
+import { formatSeasonHarvestSummary, seasonCropLabel } from "@/lib/season-crops";
 
 function getUrgencyColor(daysUntil: number) {
   if (daysUntil <= 0) return COLORS.red;
@@ -114,8 +113,7 @@ export default function DashboardScreen() {
   const plannedBudget = currentSchedule.reduce((sum, a) => sum + a.estimatedTotalCost, 0);
   const totalSpent = seasonCostTotal(costs, activeSeason?.id ?? "");
   const seasonHarvest = harvestRecords.filter((record) => record.season_id === activeSeason?.id);
-  const cropMeta = getCropMeta(activeSeason?.template_id);
-  const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
+  const harvestQuantitySummary = formatSeasonHarvestSummary(activeSeason, seasonHarvest);
   const budgetPercent = plannedBudget > 0 ? Math.min((totalSpent / plannedBudget) * 100, 100) : null;
   const blocks = getSeasonBlocks(activeSeason);
   const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
@@ -152,6 +150,7 @@ export default function DashboardScreen() {
     acres: block.acres,
     planting_date: block.planting_date,
     blight_risk: block.blight_risk,
+    template_id: block.template_id || activeSeason?.template_id,
   }));
 
   const seasonStatusLabel = activeSeason?.status === "closed"
@@ -186,7 +185,7 @@ export default function DashboardScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.farmName} numberOfLines={1}>{activeFarm?.name || "My Farm"}</Text>
           <Text style={styles.farmSub}>
-            {activeSeason ? getTemplate(activeSeason.template_id).cropType : (activeFarm?.crop_type || "Farm")} — {activeSeason?.season_name || "No active season"}
+            {activeSeason ? seasonCropLabel(activeSeason) : (activeFarm?.crop_type || "Farm")} — {activeSeason?.season_name || "No active season"}
           </Text>
         </View>
         <Pressable
@@ -358,7 +357,10 @@ export default function DashboardScreen() {
           ? COLORS.teal
           : COLORS.amber;
         const daysSincePlanting = getDaysSincePlanting(section.planting_date);
-        const growthStage = getGrowthStage(section.planting_date);
+        const blockTemplate = getTemplate(section.template_id);
+        const growthStage = blockTemplate.stages
+          .filter((stage) => stage.offsetDays <= daysSincePlanting)
+          .sort((a, b) => b.offsetDays - a.offsetDays)[0]?.title || "Pre-planting";
         const nextActivity = getNextActivity(section.id);
         const nextDate = nextActivity?.plannedDate || null;
         const daysUntilNext = nextDate ? getDaysUntil(nextDate) : 999;
@@ -371,9 +373,9 @@ export default function DashboardScreen() {
           : null;
         // The fixed spray interval is only established for the potato schedule.
         // Other crops show their crop-specific schedule and require local advice.
-        const sprayWarning = getTemplate(activeSeason?.template_id).id === "potato-template-stephen-shangi"
+        const sprayWarning = blockTemplate.id === "potato-template-stephen-shangi"
           && section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 10;
-        const sprayAlert = getTemplate(activeSeason?.template_id).id === "potato-template-stephen-shangi"
+        const sprayAlert = blockTemplate.id === "potato-template-stephen-shangi"
           && section.blight_risk === "HIGH" && daysSinceSpray !== null && daysSinceSpray >= 12;
 
         return (
@@ -383,7 +385,7 @@ export default function DashboardScreen() {
                 <View style={[styles.sectionBadge, { backgroundColor: sectionColor }]}>
                   <Text style={styles.sectionBadgeText}>{section.label}</Text>
                 </View>
-                <Text style={styles.sectionVariety}>{section.variety}</Text>
+                <Text style={styles.sectionVariety}>{blockTemplate.cropType} · {section.variety}</Text>
               </View>
               <View style={[styles.blightBadge, { backgroundColor: section.blight_risk === "HIGH" ? COLORS.redLight : COLORS.amberLight }]}>
                 <Text style={[styles.blightText, { color: section.blight_risk === "HIGH" ? COLORS.red : COLORS.amber }]}>

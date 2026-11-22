@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
-import { getTemplate } from "@/constants/farmData";
+import { seasonCropLabel } from "@/lib/season-crops";
 import { CropBlock, formatDate, formatKES, getSeasonBlocks, SeasonRecord } from "@/lib/storage";
 import * as Haptics from "expo-haptics";
 import { PENDING_SALE_STATUSES, seasonFinance } from "@/lib/season-finance";
@@ -237,7 +237,7 @@ export default function SeasonControlScreen() {
           <View style={styles.activePanel}>
             <View style={styles.activePanelHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.activePanelLabel}>Active Season · {getTemplate(activeSeason.template_id).cropType}</Text>
+                <Text style={styles.activePanelLabel}>Active Season · {seasonCropLabel(activeSeason)}</Text>
                 <Text style={styles.activePanelName}>{activeSeason.season_name}</Text>
               </View>
               <View style={styles.activePanelActions}>
@@ -309,7 +309,7 @@ export default function SeasonControlScreen() {
           {sortedSeasons.map((s) => (
             <View key={s.id} style={styles.seasonCard}>
               <Text style={styles.seasonCardName}>{s.season_name}</Text>
-              <Text style={styles.seasonCardType}>{getTemplate(s.template_id).cropType} · {s.season_type} · {statusLabel(s.status)}</Text>
+              <Text style={styles.seasonCardType}>{seasonCropLabel(s)} · {s.season_type} · {statusLabel(s.status)}</Text>
               {s.id !== activeSeason?.id && s.status !== "closed"
                 ? <Pressable style={styles.switchBtn} onPress={() => handleSwitch(s.id)}><Text style={styles.switchBtnText}>Switch to this season</Text></Pressable>
                 : null}

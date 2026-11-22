@@ -8,8 +8,11 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS, { CATEGORY_COLORS, CARD_SHADOW } from "@/constants/colors";
 import { formatDate, formatKES, getSeasonBlocks } from "@/lib/storage";
 import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
-import { getTemplate } from "@/constants/farmData";
-import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit } from "@/constants/cropTemplates";
+import { formatHarvestTotals, harvestTotalsByUnit } from "@/constants/cropTemplates";
+import { blockCropMeta, formatSeasonHarvestSummary, getSeasonCropMeta, seasonCropLabel } from "@/lib/season-crops";
+import { gradeTotals } from "@/lib/harvest-grading";
+import { irrigationSummary } from "@/lib/irrigation";
+import { targetProgress } from "@/lib/block-targets";
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={rpt.sectionHeader}>{title}</Text>;
@@ -122,10 +125,11 @@ export default function SeasonReportScreen() {
   const finance = seasonFinance({ seasonId: activeSeason.id, costs, harvest: harvestRecords, sales, includeHarvestRevenue: true });
   const { salesRevenue, pendingSalesValue, costs: totalCosts, revenue: totalRevenue, net: netPL, marginPct } = finance;
 
-  const cropTemplate = getTemplate(activeSeason.template_id);
-  const cropMeta = getCropMeta(activeSeason.template_id);
+  const cropMeta = getSeasonCropMeta(activeSeason);
   const unitTotals = harvestTotalsByUnit(seasonHarvest, cropMeta);
-  const harvestQuantitySummary = formatHarvestTotals(seasonHarvest, cropMeta);
+  const harvestQuantitySummary = formatSeasonHarvestSummary(activeSeason, seasonHarvest);
+  const quality = gradeTotals(seasonHarvest);
+  const irrigation = irrigationSummary(seasonLogs);
   const totalKg = seasonHarvest.reduce((s, r) => s + r.total_kg, 0);
   const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
   const blocks = getSeasonBlocks(activeSeason);
@@ -142,7 +146,7 @@ export default function SeasonReportScreen() {
       .reduce((sum, record) => sum + (Number(record.total_revenue_kes) || 0), 0);
     const blockSales = recordedSales.filter((sale) => sale.block_id === block.id)
       .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
-    return { block, records, revenue: legacyRevenue + blockSales };
+    return { block, records, revenue: legacyRevenue + blockSales, salesKes: blockSales };
   });
 
   const completedIds = getCompletedActivityIds();
@@ -174,9 +178,9 @@ export default function SeasonReportScreen() {
         {/* Hero */}
         <View style={rpt.hero}>
           <Text style={rpt.heroSeason}>{activeSeason.season_name}</Text>
-          <Text style={rpt.heroFarm}>{activeFarm?.name} · {activeSeason.season_type} · {cropTemplate.cropType}</Text>
+          <Text style={rpt.heroFarm}>{activeFarm?.name} · {activeSeason.season_type} · {seasonCropLabel(activeSeason)}</Text>
           <View style={rpt.heroMeta}>
-            <View style={rpt.heroPill}><Ionicons name="calendar-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>Planted {formatDate(activeSeason.section_a.planting_date)}</Text></View>
+            <View style={rpt.heroPill}><Ionicons name="calendar-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>Planted {formatDate(blocks[0]?.planting_date || activeSeason.section_a.planting_date)}</Text></View>
             <View style={rpt.heroPill}><Ionicons name="grid-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>{totalAcres} acres</Text></View>
             <View style={rpt.heroPill}><Ionicons name="leaf-outline" size={12} color={COLORS.white} /><Text style={rpt.heroPillText}>{activeSeason.status}</Text></View>
           </View>
@@ -273,8 +277,8 @@ export default function SeasonReportScreen() {
             <View style={rpt.sectionSplit}>
               {blockBreakdown.map(({ block, records, revenue }) => (
                 <View key={block.id} style={rpt.splitItem}>
-                  <Text style={rpt.splitLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
-                  <Text style={rpt.splitBags}>{formatHarvestTotals(records, cropMeta)}</Text>
+                  <Text style={rpt.splitLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
+                  <Text style={rpt.splitBags}>{formatHarvestTotals(records, blockCropMeta(activeSeason, block))}</Text>
                   <Text style={rpt.splitRevenue}>{formatKES(revenue)}</Text>
                 </View>
               ))}
@@ -291,6 +295,19 @@ export default function SeasonReportScreen() {
             </View>
           </View>
         )}
+
+        {quality.records > 0 ? (
+          <>
+            <SectionHeader title="Harvest quality" />
+            <View style={rpt.card}>
+              <StatRow label="Grade A" value={`${quality.a.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`} />
+              <StatRow label="Grade B" value={`${quality.b.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`} />
+              <StatRow label="Reject / unsold" value={`${quality.reject.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`} />
+              <StatRow label="Graded records" value={String(quality.records)} />
+              {quality.rejectPct != null ? <StatRow label="Reject share" value={`${quality.rejectPct.toFixed(1)}%`} /> : null}
+            </View>
+          </>
+        ) : null}
 
         {/* Activity Completion */}
         <SectionHeader title="Activity Completion" />
@@ -310,17 +327,71 @@ export default function SeasonReportScreen() {
           <StatRow label="Logs Recorded" value={String(seasonLogs.length)} />
         </View>
 
+        {/* Block targets */}
+        <SectionHeader title="Block target progress" />
+        <View style={rpt.card}>
+          {blockBreakdown.map(({ block, records, salesKes }) => {
+            const progress = targetProgress(block, records, salesKes);
+            if (!progress.hasTarget) return null;
+            return (
+              <View key={block.id} style={rpt.targetBlock}>
+                <Text style={rpt.sectionLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}</Text>
+                {progress.targetKg != null ? (
+                  <>
+                    <StatRow label="Harvest" value={`${progress.actualKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} / ${progress.targetKg.toLocaleString()} kg`} />
+                    <View style={rpt.track}>
+                      <View style={[rpt.fill, { width: `${Math.min(100, progress.pct ?? 0)}%`, backgroundColor: COLORS.primary }]} />
+                    </View>
+                    {progress.weightsMissing ? <Text style={rpt.targetNote}>Some harvest records have no weight, so progress may be low.</Text> : null}
+                  </>
+                ) : null}
+                {progress.expectedRevenueKes != null ? (
+                  <StatRow label="Sales vs expected value" value={`${formatKES(progress.actualSalesKes)} / ${formatKES(progress.expectedRevenueKes)}`} />
+                ) : null}
+                {progress.targetKg != null && progress.gapKg != null ? (
+                  <Text style={rpt.targetNote}>
+                    {progress.gapKg >= 0 ? `${progress.gapKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg above target` : `${Math.abs(progress.gapKg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg to target`}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+          {!blocks.some((block) => targetProgress(
+            block,
+            seasonHarvest.filter((record) => record.section_id === block.id),
+            recordedSales.filter((sale) => sale.block_id === block.id).reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0),
+          ).hasTarget) ? (
+            <Text style={rpt.emptyText}>No targets set for these blocks yet.</Text>
+          ) : null}
+          <Pressable style={rpt.targetButton} onPress={() => router.push("/block-targets")} accessibilityRole="button">
+            <Ionicons name="options-outline" size={17} color={COLORS.primary} />
+            <Text style={rpt.targetButtonText}>Edit block targets</Text>
+          </Pressable>
+        </View>
+
+        {/* Irrigation log summary */}
+        <SectionHeader title="Irrigation" />
+        <View style={rpt.card}>
+          <StatRow label="Waterings logged" value={String(irrigation.waterings)} />
+          <StatRow label="Detailed records" value={String(irrigation.withDetails)} />
+          <StatRow label="Recorded watering time" value={`${irrigation.totalMinutes} min`} />
+          <StatRow label="Sodium flushes" value={String(irrigation.leachingFlushes)} />
+          {irrigation.lastDate ? <StatRow label="Most recent watering" value={formatDate(irrigation.lastDate)} /> : null}
+          {irrigation.lastEc != null ? <StatRow label="Latest water EC" value={`${irrigation.lastEc} dS/m${irrigation.lastEcDate ? ` · ${formatDate(irrigation.lastEcDate)}` : ""}`} /> : null}
+          {irrigation.waterings === 0 ? <Text style={rpt.targetNote}>Watering records appear here when workers log irrigation.</Text> : null}
+        </View>
+
         {/* Planting blocks */}
         <SectionHeader title="Planting Block Details" />
         <View style={rpt.card}>
           {blocks.map((block, i) => (
             <View key={block.id}>
               {i > 0 && <View style={rpt.divider} />}
-              <Text style={rpt.sectionLabel}>{block.name}{block.variety ? ` — ${block.variety}` : ""}</Text>
-              <StatRow label={`${cropMeta.plantingVerb} Date`} value={formatDate(block.planting_date)} />
+              <Text style={rpt.sectionLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
+              <StatRow label={`${blockCropMeta(activeSeason, block).plantingVerb} Date`} value={formatDate(block.planting_date)} />
               <StatRow label="Area" value={`${block.acres} acres`} />
               <StatRow
-                label={cropMeta.riskLabel}
+                label={blockCropMeta(activeSeason, block).riskLabel}
                 value={block.blight_risk || "LOW"}
                 valueColor={block.blight_risk === "HIGH" ? COLORS.red : block.blight_risk === "MEDIUM" ? COLORS.amber : COLORS.primary}
               />
@@ -404,6 +475,10 @@ const rpt = StyleSheet.create({
   },
   track: { height: 8, backgroundColor: COLORS.borderLight, borderRadius: 4, overflow: "hidden" },
   fill: { height: "100%", borderRadius: 4 },
+  targetBlock: { gap: 8, paddingVertical: 4 },
+  targetNote: { fontFamily: "Manrope_400Regular", fontSize: 12, lineHeight: 17, color: COLORS.textMuted },
+  targetButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.primarySurface },
+  targetButtonText: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
   budgetNote: {
     fontFamily: "Manrope_400Regular",
     fontSize: 13,

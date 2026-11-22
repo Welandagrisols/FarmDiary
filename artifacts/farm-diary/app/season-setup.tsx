@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,11 @@ import { getCropMeta } from "@/constants/cropTemplates";
 import { CropBlock, formatDate, formatKES } from "@/lib/storage";
 import { addCost } from "@/lib/supabase-storage";
 import * as Haptics from "expo-haptics";
+import BlockTargetFields from "@/components/BlockTargetFields";
+import { targetFieldsForSave, validateTargets } from "@/lib/block-targets";
+import { applySoilGuardToRows } from "@/lib/soil-guard";
+import { soilBannerLines } from "@/lib/soil-guard";
+import { useSoilGuard } from "@/lib/use-soil-guard";
 
 const SEASON_TYPES = ["Long Rains", "Short Rains", "Irrigation Season"];
 
@@ -29,15 +34,19 @@ interface PlannerRow {
   description: string;
   amount: string;
   enabled: boolean;
+  warning?: string | null;
 }
 
 interface PlantingDraft {
   id: string;
   name: string;
+  template_id: string;
   variety: string;
   customVariety: string;
   planting_date: string;
   acres: string;
+  targetYieldKg: string;
+  expectedPriceKes: string;
 }
 
 function makePlannerRows(rows: ReturnType<typeof getCropMeta>["prePlanting"]): PlannerRow[] {
@@ -72,20 +81,24 @@ function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
 
-function createPlantingDraft(variety: string): PlantingDraft {
+function createPlantingDraft(variety: string, templateId: string): PlantingDraft {
   return {
     id: genId(),
     name: "",
+    template_id: templateId,
     variety,
     customVariety: "",
     planting_date: new Date().toISOString().split("T")[0],
     acres: "2",
+    targetYieldKg: "",
+    expectedPriceKes: "",
   };
 }
 
 export default function SeasonSetupScreen() {
   const insets = useSafeAreaInsets();
   const { createSeason, seasons, farmId, refresh } = useFarm();
+  const soilGuard = useSoilGuard(farmId);
 
   const nextSeasonNumber = (seasons.length || 0) + 1;
   const TOTAL_STEPS = 4;
@@ -100,7 +113,7 @@ export default function SeasonSetupScreen() {
   const VARIETIES = meta.varieties;
 
   const [plantingDrafts, setPlantingDrafts] = useState<PlantingDraft[]>(() => [
-    createPlantingDraft(getCropMeta(CROP_TEMPLATES[0].id).varieties[0].label),
+    createPlantingDraft(getCropMeta(CROP_TEMPLATES[0].id).varieties[0].label, CROP_TEMPLATES[0].id),
   ]);
   const [prePlantingDate, setPrePlantingDate] = useState(
     addDays(new Date().toISOString().split("T")[0], -template.prePlantingLeadDays),
@@ -110,20 +123,30 @@ export default function SeasonSetupScreen() {
 
   // Pre-planting cost planner state
   const [plannerRows, setPlannerRows] = useState<PlannerRow[]>(() => makePlannerRows(meta.prePlanting));
+  useEffect(() => {
+    if (soilGuard.hasData) {
+      setPlannerRows((rows) => applySoilGuardToRows(rows, soilGuard));
+    }
+  }, [soilGuard]);
 
   const plantingBlocks: CropBlock[] = plantingDrafts.map((draft, index) => {
-    const variety = VARIETIES.find((item) => item.label === draft.variety) || VARIETIES[0];
+    const blockMeta = getCropMeta(draft.template_id);
+    const blockVarieties = blockMeta.varieties;
+    const variety = blockVarieties.find((item) => item.label === draft.variety) || blockVarieties[0];
     return {
       id: draft.id,
       name: draft.name.trim() || `Block ${index + 1}`,
+      template_id: draft.template_id,
       variety: draft.variety === "Custom" ? draft.customVariety.trim() : draft.variety,
       planting_date: draft.planting_date,
       acres: parseFloat(draft.acres) || 0,
       blight_risk: variety.blightRisk,
       notes: null,
+      ...targetFieldsForSave(draft.targetYieldKg, draft.expectedPriceKes),
     };
   });
   const previewSchedule = generatePlannedSchedule(template, plantingBlocks);
+  const cropLabel = [...new Set(plantingBlocks.map((block) => getTemplate(block.template_id).cropType))].join(" + ");
   const totalPlantedAcres = plantingBlocks.reduce((total, block) => total + block.acres, 0);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -133,7 +156,8 @@ export default function SeasonSetupScreen() {
     const varietyName = draft.variety === "Custom" ? draft.customVariety : draft.variety;
     return varietyName.trim().length > 0 &&
       isValidIsoDate(draft.planting_date) &&
-      isPositiveNumber(draft.acres);
+      isPositiveNumber(draft.acres) &&
+      validateTargets(draft.targetYieldKg, draft.expectedPriceKes) === null;
   });
 
   const enabledPlannerRows = plannerRows.filter((r) => r.enabled && r.amount.trim() !== "");
@@ -153,7 +177,7 @@ export default function SeasonSetupScreen() {
     Haptics.selectionAsync();
     setPlantingDrafts((previous) => [
       ...previous,
-      createPlantingDraft(VARIETIES[0].label),
+      createPlantingDraft(VARIETIES[0].label, cropId),
     ]);
   };
 
@@ -164,10 +188,10 @@ export default function SeasonSetupScreen() {
   };
 
   const handleAddCustomRow = () => {
-    setPlannerRows((prev) => [
+    setPlannerRows((prev) => applySoilGuardToRows([
       ...prev,
       { id: genId(), category: "Pre-Planting", subcategory: "Other Pre-Planting", description: "", amount: "", enabled: true },
-    ]);
+    ], soilGuard));
   };
 
   const handleToggleRow = (id: string) => {
@@ -191,7 +215,8 @@ export default function SeasonSetupScreen() {
     setCropId(nextTemplate.id);
     setPlantingDrafts((previous) =>
       previous.map((draft) => ({
-        ...draft,
+       ...draft,
+       template_id: nextTemplate.id,
         variety: nextMeta.varieties[0].label,
         customVariety: "",
       })),
@@ -200,7 +225,14 @@ export default function SeasonSetupScreen() {
       plantingDrafts[0]?.planting_date || new Date().toISOString().split("T")[0],
       -nextTemplate.prePlantingLeadDays,
     ));
-    setPlannerRows(makePlannerRows(nextMeta.prePlanting));
+    setPlannerRows(applySoilGuardToRows(makePlannerRows(nextMeta.prePlanting), soilGuard));
+  };
+
+  const handleSelectPlantingCrop = (draft: PlantingDraft, nextTemplateId: string) => {
+    const nextMeta = getCropMeta(nextTemplateId);
+    updatePlantingDraft(draft.id, "template_id", nextTemplateId);
+    updatePlantingDraft(draft.id, "variety", nextMeta.varieties[0].label);
+    updatePlantingDraft(draft.id, "customVariety", "");
   };
 
   const handleSubmit = async () => {
@@ -440,7 +472,10 @@ export default function SeasonSetupScreen() {
             </View>
 
             {plantingDrafts.map((draft, index) => {
-              const selectedVariety = VARIETIES.find((item) => item.label === draft.variety) || VARIETIES[0];
+              const draftTemplate = getTemplate(draft.template_id);
+              const draftMeta = getCropMeta(draft.template_id);
+              const draftVarieties = draftMeta.varieties;
+              const selectedVariety = draftVarieties.find((item) => item.label === draft.variety) || draftVarieties[0];
               const estimatedHarvest = isValidIsoDate(draft.planting_date)
                 ? addDays(draft.planting_date, selectedVariety.maturityDays)
                 : null;
@@ -460,7 +495,7 @@ export default function SeasonSetupScreen() {
                   <View style={styles.plantingHeader}>
                     <View style={styles.plantingTitleGroup}>
                       <Text style={styles.plantingTitle}>{draft.name.trim() || `Block ${index + 1}`}</Text>
-                      <Text style={styles.plantingSubtitle}>Planting {index + 1}</Text>
+                      <Text style={styles.plantingSubtitle}>{draftTemplate.cropType} · Planting {index + 1}</Text>
                     </View>
                     <View style={styles.plantingHeaderActions}>
                       <View style={[styles.riskBadge, { backgroundColor: riskBackground }]}>
@@ -492,9 +527,27 @@ export default function SeasonSetupScreen() {
                     />
                   </View>
 
+                  <Text style={styles.fieldLabel}>Crop</Text>
+                  <View style={styles.chipRow}>
+                    {CROP_TEMPLATES.map((crop) => (
+                      <Pressable
+                        key={crop.id}
+                        testID={`planting-${index + 1}-crop-${crop.id}`}
+                        style={[styles.chip, draft.template_id === crop.id && styles.chipActive]}
+                        onPress={() => handleSelectPlantingCrop(draft, crop.id)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: draft.template_id === crop.id }}
+                      >
+                        <Text style={[styles.chipText, draft.template_id === crop.id && styles.chipTextActive]}>
+                          {crop.cropType}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
                   <Text style={styles.fieldLabel}>Variety</Text>
                   <View style={styles.chipRow}>
-                    {VARIETIES.map((variety) => (
+                    {draftVarieties.map((variety) => (
                       <Pressable
                         key={variety.label}
                         testID={`planting-${index + 1}-variety-${variety.label}`}
@@ -528,7 +581,7 @@ export default function SeasonSetupScreen() {
 
                   <View style={styles.plantingFieldsRow}>
                     <View style={[styles.field, styles.plantingField]}>
-                      <Text style={styles.fieldLabel}>{meta.plantingVerb} date</Text>
+                        <Text style={styles.fieldLabel}>{draftMeta.plantingVerb} date</Text>
                       <TextInput
                         style={styles.input}
                         value={draft.planting_date}
@@ -552,6 +605,14 @@ export default function SeasonSetupScreen() {
                       />
                     </View>
                   </View>
+
+                  <BlockTargetFields
+                    yieldText={draft.targetYieldKg}
+                    priceText={draft.expectedPriceKes}
+                    onChangeYield={(value) => updatePlantingDraft(draft.id, "targetYieldKg", value)}
+                    onChangePrice={(value) => updatePlantingDraft(draft.id, "expectedPriceKes", value)}
+                    testIdPrefix={`planting-${index + 1}-target`}
+                  />
 
                   {estimatedHarvest && (
                     <View style={styles.harvestPreview}>
@@ -596,6 +657,15 @@ export default function SeasonSetupScreen() {
               </Text>
             </View>
 
+            {soilBannerLines(soilGuard).length > 0 ? (
+              <View style={styles.soilNotice}>
+                <Ionicons name="flask-outline" size={17} color={COLORS.amberDark} />
+                <Text style={styles.soilNoticeText}>
+                  Soil test heads-up: {soilBannerLines(soilGuard).join(" · ")}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.plannerTotalCard}>
               <View>
                 <Text style={styles.plannerTotalLabel}>Budget total</Text>
@@ -639,6 +709,7 @@ export default function SeasonSetupScreen() {
                       editable={row.enabled}
                     />
                   </View>
+                  {row.warning ? <Text style={styles.soilRowWarning}>{row.warning}</Text> : null}
                 </View>
                 <Pressable onPress={() => handleRemoveRow(row.id)} hitSlop={8} style={styles.plannerRemoveBtn}>
                   <Ionicons name="close-circle-outline" size={18} color={COLORS.textMuted} />
@@ -667,12 +738,12 @@ export default function SeasonSetupScreen() {
               <Ionicons name="calendar-outline" size={28} color={COLORS.primary} />
               <Text style={styles.stepTitle}>Generated Schedule</Text>
               <Text style={styles.stepSubtitle}>
-                Review the {template.cropType} schedule for {seasonName}
+                Review the {cropLabel} schedule for {seasonName}
               </Text>
             </View>
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>{seasonName} · {template.cropType}</Text>
+              <Text style={styles.summaryTitle}>{seasonName} · {cropLabel}</Text>
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
                   <Text style={styles.summaryLabel}>Type</Text>
@@ -687,7 +758,10 @@ export default function SeasonSetupScreen() {
               </View>
               {plantingBlocks.map((block) => (
                 <View key={block.id} style={styles.summaryPlantingRow}>
-                  <Text style={styles.summaryLabel}>{block.name} · {block.variety}</Text>
+                  <Text style={styles.summaryLabel}>
+                    {block.name} · {getTemplate(block.template_id).cropType} · {block.variety}
+                    {block.target_yield_kg ? ` · Target ${block.target_yield_kg} kg` : ""}
+                  </Text>
                   <Text style={styles.summaryValue}>
                     {formatDate(block.planting_date)} · {block.acres} acres
                   </Text>
@@ -715,7 +789,8 @@ export default function SeasonSetupScreen() {
             </Text>
 
             {previewSchedule.map((activity, idx) => {
-              const stageNumber = template.stages.findIndex((stage) => stage.title === activity.stage) + 1;
+              const activityTemplate = getTemplate(activity.templateId);
+              const stageNumber = activityTemplate.stages.findIndex((stage) => stage.title === activity.stage) + 1;
               return (
                 <View key={activity.id} style={styles.scheduleRow}>
                   <View style={styles.scheduleRowLeft}>
@@ -963,6 +1038,16 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: "right",
   },
+  soilNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.amberLight,
+  },
+  soilNoticeText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 12, lineHeight: 18, color: COLORS.amberDark },
+  soilRowWarning: { fontFamily: "Manrope_400Regular", fontSize: 11, lineHeight: 16, color: COLORS.amberDark },
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   toggleSwitch: {
     width: 48, height: 28, borderRadius: 14, backgroundColor: COLORS.borderLight,

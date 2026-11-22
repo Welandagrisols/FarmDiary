@@ -24,6 +24,9 @@ import { formatKES, getSeasonBlocks, getSeasonBlockName, isPrePlanting } from "@
 import type { CostEntry, FarmWorker } from "@/lib/storage";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import WorkerPicker from "@/components/WorkerPicker";
+import IrrigationFields from "@/components/IrrigationFields";
+import { composeNotes, emptyIrrigation, hasIrrigationDetails, irrigationLine, validateIrrigation } from "@/lib/irrigation";
+import type { IrrigationInput } from "@/lib/irrigation";
 import { getFarmWorkers } from "@/lib/supabase-storage";
 import { getFarmRole, type FarmRole } from "@/lib/sales-storage";
 import * as Haptics from "expo-haptics";
@@ -145,6 +148,7 @@ export default function LogActivityScreen() {
   const [totalLaborCostInput, setTotalLaborCostInput] = useState("");
   const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
   const [notes, setNotes] = useState("");
+  const [irrigation, setIrrigation] = useState<IrrigationInput>(() => emptyIrrigation());
   const [submitting, setSubmitting] = useState(false);
   const [partialSavePending, setPartialSavePending] = useState(false);
   const pendingActivityIdRef = useRef<string | null>(null);
@@ -187,6 +191,12 @@ export default function LogActivityScreen() {
     : null;
 
   const selectedOperation = OPERATION_CATEGORIES.find((category) => category.id === operationCategory);
+  const isIrrigationActivity = operationCategory === "irrigation"
+    || /\b(irrigation|watering)\b/i.test(`${selectedActivity?.activityType ?? ""} ${selectedActivity?.name ?? ""}`);
+  const notesForSave = composeNotes(
+    isIrrigationActivity && hasIrrigationDetails(irrigation) ? irrigationLine(irrigation) : "",
+    notes,
+  );
   const activityName = activityType === "planned"
     ? (selectedActivity?.name ?? "")
     : operationCategory === "other"
@@ -333,6 +343,13 @@ export default function LogActivityScreen() {
       Alert.alert("Error", "Please select or enter an activity name.");
       return;
     }
+    if (isIrrigationActivity) {
+      const irrigationProblem = validateIrrigation(irrigation);
+      if (irrigationProblem) {
+        Alert.alert("Check watering details", irrigationProblem);
+        return;
+      }
+    }
     if (seasonBlocks.length > 1 && !blockSelectionMade) {
       Alert.alert("Choose a planting block", "Select a block or choose All blocks before saving.");
       return;
@@ -422,7 +439,7 @@ export default function LogActivityScreen() {
           total_cost_kes: totalCost,
           weather_conditions: weather || null,
           is_historical: isHist,
-          notes,
+          notes: notesForSave,
         }, inventoryUpdates);
 
         pendingActivityIdRef.current = result.record.id;
@@ -440,7 +457,7 @@ export default function LogActivityScreen() {
           date,
           isPrePlanting: isPrePlanting(date, plantingDate),
           isHistorical: isHist,
-          notes,
+          notes: notesForSave,
           weather,
         };
 
@@ -898,6 +915,10 @@ export default function LogActivityScreen() {
                   ))}
                 </View>
               </View>
+
+              {isIrrigationActivity ? (
+                <IrrigationFields value={irrigation} onChange={setIrrigation} />
+              ) : null}
 
               {showQuickProducts ? (
                 <View style={styles.quickOptionalField}>
@@ -1761,6 +1782,7 @@ export default function LogActivityScreen() {
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Notes & Summary</Text>
 
+            {isIrrigationActivity ? <IrrigationFields value={irrigation} onChange={setIrrigation} /> : null}
             <TextInput
               style={[styles.input, styles.notesInput]}
               value={notes}
@@ -1801,6 +1823,12 @@ export default function LogActivityScreen() {
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Crew</Text>
                   <Text style={styles.summaryValue}>{selectedWorkerNames}</Text>
+                </View>
+              ) : null}
+              {isIrrigationActivity && hasIrrigationDetails(irrigation) ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Watering</Text>
+                  <Text style={styles.summaryValue}>{irrigationLine(irrigation)}</Text>
                 </View>
               ) : null}
               {measuredQuantity && measuredUnit ? (

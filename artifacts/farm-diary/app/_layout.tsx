@@ -47,6 +47,8 @@ function RootLayoutNav() {
       <Stack.Screen name="add-harvest" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="export" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="sales" options={{ title: "Sales" }} />
+      <Stack.Screen name="buyer-commitments" options={{ headerShown: false }} />
+      <Stack.Screen name="block-targets" options={{ headerShown: false }} />
       <Stack.Screen name="farm-team" options={{ title: "Farm Team" }} />
       <Stack.Screen name="personal-expenses" options={{ title: "Personal Expenses" }} />
       <Stack.Screen name="add-personal-expense" options={{ title: "Add Expense" }} />

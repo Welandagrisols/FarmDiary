@@ -11,7 +11,8 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { getSeasonBlocks } from "@/lib/storage";
 import { SEASON_SEED, getTemplate } from "@/constants/farmData";
-import { getCropMeta } from "@/constants/cropTemplates";
+import { blockCropMeta } from "@/lib/season-crops";
+import { gradeFieldsForSave, parseKgField, validateGradeSplit } from "@/lib/harvest-grading";
 
 import * as Haptics from "expo-haptics";
 
@@ -67,21 +68,26 @@ export default function AddHarvestScreen() {
   const insets = useSafeAreaInsets();
   const { addHarvestEntry, activeSeason, farmId } = useFarm();
   const seasonId = activeSeason?.id || SEASON_SEED.id;
-  const cropMeta = getCropMeta(activeSeason?.template_id);
-  const sections = getSeasonBlocks(activeSeason).map((block) => ({
+  const seasonBlocks = getSeasonBlocks(activeSeason);
+  const sections = seasonBlocks.map((block) => ({
     id: block.id,
     label: block.name,
-    sublabel: block.variety || "Crop planting",
+    sublabel: `${getTemplate(block.template_id || activeSeason?.template_id).cropType}${block.variety ? ` · ${block.variety}` : ""}`,
   }));
   const [saving, setSaving] = useState(false);
   const [showDateOptions, setShowDateOptions] = useState(false);
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
   const [showOptionalDetails, setShowOptionalDetails] = useState(false);
+  const [gradeAKg, setGradeAKg] = useState("");
+  const [gradeBKg, setGradeBKg] = useState("");
+  const [rejectKg, setRejectKg] = useState("");
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [sectionId, setSectionId] = useState(sections[0]?.id || "section-a");
+  const selectedBlock = seasonBlocks.find((block) => block.id === sectionId) ?? null;
+  const cropMeta = blockCropMeta(activeSeason, selectedBlock);
   const [harvestDate, setHarvestDate] = useState(() => localDateKey(new Date()));
   const [quantity, setQuantity] = useState("");
   const [unitKey, setUnitKey] = useState(cropMeta.harvestUnits[0]?.key || "bag");
@@ -127,6 +133,7 @@ export default function AddHarvestScreen() {
       && parsedHarvestDate.getDate() === dateParts[2],
   );
   const isValid = numQuantity > 0 && (!weightRequired || numKgPerUnit > 0) && isValidDate;
+  const gradeParts = { a: parseKgField(gradeAKg), b: parseKgField(gradeBKg), reject: parseKgField(rejectKg) };
 
   const handleUnitChange = (key: string) => {
     const nextUnit = cropMeta.harvestUnits.find((unit) => unit.key === key);
@@ -137,6 +144,11 @@ export default function AddHarvestScreen() {
   const handleSave = async () => {
     if (!isValid) {
       Alert.alert("Missing fields", `Please enter a harvest quantity and valid date${weightRequired ? " and weight per unit" : ""}.`);
+      return;
+    }
+    const gradeProblem = validateGradeSplit(gradeParts, totalKg);
+    if (gradeProblem) {
+      Alert.alert("Check quality weights", gradeProblem);
       return;
     }
     setSaving(true);
@@ -154,12 +166,19 @@ export default function AddHarvestScreen() {
         total_revenue_kes: 0,
         ...(selectedUnit?.key && selectedUnit.key !== "bag" ? { unit: selectedUnit.key } : {}),
         ...(grade.trim() ? { grade: grade.trim() } : {}),
+        ...gradeFieldsForSave(gradeParts),
         buyer: null,
         notes: notes.trim() || null,
       });
       router.back();
     } catch (e) {
-      reportWriteError(e, "Could not save harvest record. If this uses a new unit or grade, verify the multi-crop database upgrade has been applied.", "Error");
+      const message = e instanceof Error ? e.message : "";
+      const hasGradedWeights = Object.keys(gradeFieldsForSave(gradeParts)).length > 0;
+      if (hasGradedWeights && /(grade_a_kg|grade_b_kg|reject_kg|column)/i.test(message)) {
+        Alert.alert("Harvest grading is not set up", "Apply scripts/harvest-grading.sql in Supabase, then try again.");
+      } else {
+        reportWriteError(e, "Could not save harvest record. Check your connection and try again.", "Error");
+      }
       setSaving(false);
     }
   };
@@ -208,7 +227,18 @@ export default function AddHarvestScreen() {
                   <Pressable
                     key={s.id}
                     style={[styles.sectionBtn, sectionId === s.id && styles.sectionBtnActive]}
-                    onPress={() => { Haptics.selectionAsync(); setSectionId(s.id); }}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      const nextMeta = blockCropMeta(activeSeason, seasonBlocks.find((block) => block.id === s.id));
+                      const nextUnit = nextMeta.harvestUnits[0];
+                      setSectionId(s.id);
+                      setUnitKey(nextUnit?.key || "kg");
+                      setKgPerUnit(nextUnit?.defaultKg ? String(nextUnit.defaultKg) : "");
+                      setQuantity("");
+                      setGradeAKg("");
+                      setGradeBKg("");
+                      setRejectKg("");
+                    }}
                   >
                     <Text style={[styles.sectionBtnLabel, sectionId === s.id && styles.sectionBtnLabelActive]}>
                       {s.label}
@@ -231,7 +261,7 @@ export default function AddHarvestScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{getTemplate(activeSeason?.template_id).cropType} Harvest Details</Text>
+            <Text style={styles.sectionTitle}>{cropMeta.cropType} Harvest Details</Text>
 
             <View style={styles.field}>
               <View style={styles.dateHeading}>
@@ -378,6 +408,21 @@ export default function AddHarvestScreen() {
                   onSubmitEditing={() => notesRef.current?.focus()}
                 />
               </View>
+              <View style={styles.gradeGrid}>
+                <View style={[styles.field, styles.gradeField]}>
+                  <FieldLabel label="Grade A (kg)" />
+                  <NumericInput value={gradeAKg} onChangeText={setGradeAKg} placeholder="Optional" />
+                </View>
+                <View style={[styles.field, styles.gradeField]}>
+                  <FieldLabel label="Grade B (kg)" />
+                  <NumericInput value={gradeBKg} onChangeText={setGradeBKg} placeholder="Optional" />
+                </View>
+                <View style={[styles.field, styles.gradeField]}>
+                  <FieldLabel label="Reject (kg)" />
+                  <NumericInput value={rejectKg} onChangeText={setRejectKg} placeholder="Optional" />
+                </View>
+              </View>
+              <Text style={styles.fieldHint}>The quality split is optional and should not exceed the total harvest weight.</Text>
               <View style={styles.field}>
                 <FieldLabel label="Notes" />
                 <TextInput
@@ -458,6 +503,8 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   sectionRow: { flexDirection: "row", gap: 10 },
+  gradeGrid: { flexDirection: "row", gap: 8 },
+  gradeField: { flex: 1, minWidth: 0 },
   singleBlock: {
     flexDirection: "row",
     alignItems: "center",

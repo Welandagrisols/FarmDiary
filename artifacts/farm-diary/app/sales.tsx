@@ -459,6 +459,18 @@ export default function SalesScreen() {
         ) : null}
 
         {tab === "entry" && role !== "storekeeper" ? (
+          <Pressable
+            style={styles.commitmentsLink}
+            onPress={() => router.push("/buyer-commitments")}
+            accessibilityRole="button"
+          >
+            <Ionicons name="people-outline" size={17} color={COLORS.primary} />
+            <Text style={styles.commitmentsLinkText}>View buyer commitments</Text>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+          </Pressable>
+        ) : null}
+
+        {tab === "entry" && role !== "storekeeper" ? (
           <>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Record sale</Text>
@@ -888,6 +900,8 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   tabs: { flexDirection: "row", gap: 3, marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.cardBg, borderRadius: 11, padding: 4 },
+  commitmentsLink: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.primarySurface },
+  commitmentsLinkText: { flex: 1, fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
   tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 8, paddingHorizontal: 4 },
   tabActive: {
     backgroundColor: COLORS.ink,

@@ -158,6 +158,9 @@ export interface HarvestRecord {
   total_revenue_kes: number;
   unit?: string | null;
   grade?: string | null;
+  grade_a_kg?: number | null;
+  grade_b_kg?: number | null;
+  reject_kg?: number | null;
   buyer: string | null;
   notes: string | null;
   recorded_by?: string | null;
@@ -210,6 +213,10 @@ export interface CropBlock {
   acres: number;
   blight_risk: "LOW" | "MEDIUM" | "HIGH";
   notes: string | null;
+  /** Missing on older seasons; those blocks inherit the season crop. */
+  template_id?: string;
+  target_yield_kg?: number | null;
+  expected_price_kes_per_kg?: number | null;
 }
 
 export interface SeasonRecord {

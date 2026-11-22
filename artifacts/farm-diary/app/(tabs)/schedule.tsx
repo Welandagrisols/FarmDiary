@@ -29,6 +29,8 @@ import {
   summarizeLabourEffectiveness,
 } from "@/lib/storage";
 import ActivityLogDetailModal from "@/components/ActivityLogDetailModal";
+import { useSoilGuard } from "@/lib/use-soil-guard";
+import { soilNoticesForProducts } from "@/lib/soil-guard";
 
 type ActivityStatus = "completed" | "overdue" | "due-soon" | "upcoming";
 
@@ -126,7 +128,9 @@ function ActivityCard({
 }
 
 function ActivityModal({ activity, status, onClose }: { activity: PlannedActivity; status: ActivityStatus; onClose: () => void }) {
-  const { quickCompleteActivity } = useFarm();
+  const { quickCompleteActivity, farmId } = useFarm();
+  const soilGuard = useSoilGuard(farmId);
+  const soilWarnings = soilNoticesForProducts(soilGuard, activity.plannedProducts.map((product) => product.name));
   const typeColor = getTypeColor(activity.activityType);
   const [completing, setCompleting] = React.useState(false);
 
@@ -160,6 +164,12 @@ function ActivityModal({ activity, status, onClose }: { activity: PlannedActivit
               <Text style={styles.alertBoxText}>{activity.alert}</Text>
             </View>
           )}
+          {soilWarnings.map((warning) => (
+            <View key={warning} style={styles.alertBox}>
+              <Ionicons name="flask-outline" size={16} color={COLORS.amber} />
+              <Text style={styles.alertBoxText}>{warning}</Text>
+            </View>
+          ))}
 
           <View style={styles.modalSection}>
             <Text style={styles.modalSectionTitle}>Purpose</Text>

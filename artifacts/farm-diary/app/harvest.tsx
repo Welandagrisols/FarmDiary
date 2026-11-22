@@ -10,8 +10,10 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { formatDate, getSeasonBlockName, getSeasonBlocks, SeasonRecord } from "@/lib/storage";
 import { getFarmRole } from "@/lib/sales-storage";
-import { formatHarvestTotals, getCropMeta, harvestTotalsByUnit, unitFor } from "@/constants/cropTemplates";
+import { formatHarvestTotals, harvestTotalsByUnit, unitFor } from "@/constants/cropTemplates";
 import * as Haptics from "expo-haptics";
+import { blockCropMeta, formatSeasonHarvestSummary, getSeasonCropMeta } from "@/lib/season-crops";
+import { formatGradeSplit, gradeTotals } from "@/lib/harvest-grading";
 
 function SectionBadge({ sectionId, season }: { sectionId: string; season: SeasonRecord | null }) {
   const blockIndex = getSeasonBlocks(season).findIndex((block) => block.id === sectionId);
@@ -30,7 +32,7 @@ export default function HarvestScreen() {
   const { harvestRecords, removeHarvestRecord, refresh, activeSeason, activeFarm } = useFarm();
   const [refreshing, setRefreshing] = useState(false);
   const [canManageHarvest, setCanManageHarvest] = useState(false);
-  const cropMeta = getCropMeta(activeSeason?.template_id);
+  const cropMeta = getSeasonCropMeta(activeSeason);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -70,6 +72,7 @@ export default function HarvestScreen() {
   const blocks = getSeasonBlocks(activeSeason);
   const totalAcres = blocks.reduce((sum, block) => sum + (Number(block.acres) || 0), 0);
   const unitTotals = harvestTotalsByUnit(sorted, cropMeta);
+  const qualityTotals = gradeTotals(sorted);
   const showRecordedWeight = totalKg > 0 && !(unitTotals.length === 1 && unitTotals[0].key === "kg");
   const allWeightsKnown = sorted.length > 0 && sorted.every((record) => record.total_kg > 0);
   const blockBreakdown = blocks.map((block) => {
@@ -77,6 +80,7 @@ export default function HarvestScreen() {
     return {
       block,
       records,
+      cropMeta: blockCropMeta(activeSeason, block),
     };
   }).filter((item) => item.records.length > 0);
 
@@ -103,10 +107,10 @@ export default function HarvestScreen() {
             <View style={styles.summaryMain}>
               <Text style={styles.summaryLabel}>{activeSeason?.season_name || "Season"} · Total Harvest</Text>
               <Text style={styles.summaryRevenue}>
-                {totalKg > 0 ? `${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : formatHarvestTotals(sorted, cropMeta)}
+                {totalKg > 0 ? `${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : formatSeasonHarvestSummary(activeSeason, sorted)}
               </Text>
               <Text style={styles.summaryMeta}>
-                {formatHarvestTotals(sorted, cropMeta)}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
+                {formatSeasonHarvestSummary(activeSeason, sorted)}{showRecordedWeight ? ` · ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg recorded` : ""}
               </Text>
             </View>
             <Ionicons name="leaf-outline" size={32} color={COLORS.white} style={{ opacity: 0.5 }} />
@@ -141,9 +145,9 @@ export default function HarvestScreen() {
               {blockBreakdown.map(({ block, records }) => (
                 <View key={block.id} style={styles.sectionSplitItem}>
                   <Text style={styles.sectionSplitLabel}>
-                    {block.name}{block.variety ? ` (${block.variety})` : ""}
+                    {block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` (${block.variety})` : ""}
                   </Text>
-                  <Text style={styles.sectionSplitValue}>{formatHarvestTotals(records, cropMeta)}</Text>
+                  <Text style={styles.sectionSplitValue}>{formatHarvestTotals(records, blockCropMeta(activeSeason, block))}</Text>
                   <Text style={styles.sectionSplitRevenue}>
                     {records.reduce((sum, record) => sum + (Number(record.total_kg) || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg
                   </Text>
@@ -151,6 +155,19 @@ export default function HarvestScreen() {
               ))}
             </View>
           )}
+          {qualityTotals.records > 0 ? (
+            <View style={styles.qualityCard}>
+              <Text style={styles.qualityTitle}>Graded quality · {qualityTotals.records} records</Text>
+              <Text style={styles.qualityLine}>
+                Grade A {qualityTotals.a.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                {" · "}Grade B {qualityTotals.b.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                {" · "}Reject {qualityTotals.reject.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+              </Text>
+              {qualityTotals.rejectPct != null ? (
+                <Text style={styles.qualityLine}>Reject share {qualityTotals.rejectPct.toFixed(1)}%</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {sorted.length === 0 ? (
@@ -167,7 +184,9 @@ export default function HarvestScreen() {
           <>
             <Text style={styles.listLabel}>{activeSeason?.season_name || "Season"} · {sorted.length} {sorted.length === 1 ? "record" : "records"}</Text>
             {sorted.map((record) => {
-              const unit = unitFor(cropMeta, record.unit);
+              const recordBlock = blocks.find((block) => block.id === record.section_id) ?? null;
+              const recordMeta = blockCropMeta(activeSeason, recordBlock);
+              const unit = unitFor(recordMeta, record.unit);
               return (
               <Pressable
                 key={record.id}
@@ -203,6 +222,7 @@ export default function HarvestScreen() {
                     <Ionicons name="pricetag-outline" size={13} color={COLORS.textMuted} />
                   </View>
                   {record.grade ? <Text style={styles.recordStatText}>Grade: {record.grade}</Text> : null}
+                  {formatGradeSplit(record) ? <Text style={styles.recordStatText}>{formatGradeSplit(record)}</Text> : null}
                   {record.buyer && (
                     <View style={styles.recordStat}>
                       <Ionicons name="person-outline" size={13} color={COLORS.textMuted} />
@@ -302,6 +322,9 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     opacity: 0.85,
   },
+  qualityCard: { backgroundColor: COLORS.primarySurface, borderRadius: 12, padding: 12, gap: 4 },
+  qualityTitle: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
+  qualityLine: { fontFamily: "Manrope_500Medium", fontSize: 12, lineHeight: 17, color: COLORS.textSecondary },
   listLabel: {
     fontFamily: "Manrope_600SemiBold",
     fontSize: 13,

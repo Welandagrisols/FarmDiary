@@ -17,9 +17,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import COLORS from "@/constants/colors";
 import { getCropMeta } from "@/constants/cropTemplates";
-import { getTemplate } from "@/constants/farmData";
+import { CROP_TEMPLATES, getTemplate } from "@/constants/farmData";
 import { useFarm } from "@/context/FarmContext";
 import { CropBlock, getSeasonBlocks } from "@/lib/storage";
+import BlockTargetFields from "@/components/BlockTargetFields";
+import { targetFieldsForSave, validateTargets } from "@/lib/block-targets";
 
 const today = () => new Date().toISOString().split("T")[0];
 
@@ -27,11 +29,15 @@ export default function AddPlantingScreen() {
   const insets = useSafeAreaInsets();
   const { activeSeason, updateActiveSeason } = useFarm();
   const existingBlocks = getSeasonBlocks(activeSeason);
-  const cropMeta = getCropMeta(activeSeason?.template_id);
+  const defaultTemplateId = existingBlocks.at(-1)?.template_id || activeSeason?.template_id || CROP_TEMPLATES[0].id;
+  const [templateId, setTemplateId] = useState(defaultTemplateId);
+  const cropMeta = getCropMeta(templateId);
   const defaultVariety = existingBlocks.at(-1)?.variety || cropMeta.varieties[0]?.label || "";
   const [variety, setVariety] = useState(defaultVariety);
   const [plantingDate, setPlantingDate] = useState(today());
   const [acres, setAcres] = useState("");
+  const [targetYieldKg, setTargetYieldKg] = useState("");
+  const [expectedPriceKes, setExpectedPriceKes] = useState("");
   const [saving, setSaving] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -41,7 +47,8 @@ export default function AddPlantingScreen() {
     activeSeason?.status !== "closed" &&
     plantingDate.length === 10 &&
     Number.isFinite(area) &&
-    area > 0;
+    area > 0 &&
+    validateTargets(targetYieldKg, expectedPriceKes) === null;
 
   const handleSave = async () => {
     if (!activeSeason || !canSave) return;
@@ -54,11 +61,13 @@ export default function AddPlantingScreen() {
     const block: CropBlock = {
       id: `block-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: `Block ${existingBlocks.length + 1}`,
+      template_id: templateId,
       variety: selectedVariety,
       planting_date: plantingDate,
       acres: area,
       blight_risk: risk,
       notes: null,
+      ...targetFieldsForSave(targetYieldKg, expectedPriceKes),
     };
 
     setSaving(true);
@@ -118,9 +127,9 @@ export default function AddPlantingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.cropName}>{getTemplate(activeSeason.template_id).cropType} · {activeSeason.season_name}</Text>
+          <Text style={styles.cropName}>{getTemplate(templateId).cropType} · {activeSeason.season_name}</Text>
           <Text style={styles.instructions}>
-            Add only when you plant another area. Its growth stage and schedule use its own planting date.
+            Add another planting. Its crop, growth stage and schedule use its own planting date.
           </Text>
 
           <View style={styles.blockCard}>
@@ -131,6 +140,26 @@ export default function AddPlantingScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.blockTitle}>Block {existingBlocks.length + 1}</Text>
                 <Text style={styles.blockHint}>The name is assigned automatically.</Text>
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Crop</Text>
+              <View style={styles.cropChoices}>
+                {CROP_TEMPLATES.map((crop) => (
+                  <Pressable
+                    key={crop.id}
+                    style={[styles.cropChoice, templateId === crop.id && styles.cropChoiceActive]}
+                    onPress={() => {
+                      setTemplateId(crop.id);
+                      setVariety(getCropMeta(crop.id).varieties[0]?.label ?? "");
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: templateId === crop.id }}
+                  >
+                    <Text style={[styles.cropChoiceText, templateId === crop.id && styles.cropChoiceTextActive]}>{crop.cropType}</Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
 
@@ -176,6 +205,14 @@ export default function AddPlantingScreen() {
               />
               <Text style={styles.helperText}>Pre-filled from the last planting. Change it only if needed.</Text>
             </View>
+
+            <BlockTargetFields
+              yieldText={targetYieldKg}
+              priceText={expectedPriceKes}
+              onChangeYield={setTargetYieldKg}
+              onChangePrice={setExpectedPriceKes}
+              testIdPrefix="new-block-target"
+            />
           </View>
 
           <View style={styles.rollupNote}>
@@ -243,6 +280,11 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   helperText: { fontFamily: "Manrope_400Regular", fontSize: 12, lineHeight: 17, color: COLORS.textMuted },
+  cropChoices: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  cropChoice: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  cropChoiceActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySurface },
+  cropChoiceText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.textSecondary },
+  cropChoiceTextActive: { color: COLORS.primary },
   rollupNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 4 },
   rollupText: { flex: 1, fontFamily: "Manrope_400Regular", fontSize: 13, lineHeight: 18, color: COLORS.primary },
   primaryButton: {
