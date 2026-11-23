@@ -12,7 +12,7 @@ import { formatDate, getSeasonBlockName, getSeasonBlocks, SeasonRecord } from "@
 import { getFarmRole } from "@/lib/sales-storage";
 import { formatHarvestTotals, harvestTotalsByUnit, unitFor } from "@/constants/cropTemplates";
 import * as Haptics from "expo-haptics";
-import { blockCropMeta, formatSeasonHarvestSummary, getSeasonCropMeta } from "@/lib/season-crops";
+import { blockCropMeta, blockCropTemplate, formatSeasonHarvestSummary, getSeasonCropMeta } from "@/lib/season-crops";
 import { formatGradeSplit, gradeTotals } from "@/lib/harvest-grading";
 
 function SectionBadge({ sectionId, season }: { sectionId: string; season: SeasonRecord | null }) {
@@ -145,7 +145,7 @@ export default function HarvestScreen() {
               {blockBreakdown.map(({ block, records }) => (
                 <View key={block.id} style={styles.sectionSplitItem}>
                   <Text style={styles.sectionSplitLabel}>
-                    {block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` (${block.variety})` : ""}
+                    {block.name} · {blockCropTemplate(activeSeason, block).cropType}{block.variety ? ` (${block.variety})` : ""}
                   </Text>
                   <Text style={styles.sectionSplitValue}>{formatHarvestTotals(records, blockCropMeta(activeSeason, block))}</Text>
                   <Text style={styles.sectionSplitRevenue}>

@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
@@ -461,7 +461,7 @@ export default function SalesScreen() {
         {tab === "entry" && role !== "storekeeper" ? (
           <Pressable
             style={styles.commitmentsLink}
-            onPress={() => router.push("/buyer-commitments")}
+            onPress={() => router.push("/buyer-commitments" as Href)}
             accessibilityRole="button"
           >
             <Ionicons name="people-outline" size={17} color={COLORS.primary} />

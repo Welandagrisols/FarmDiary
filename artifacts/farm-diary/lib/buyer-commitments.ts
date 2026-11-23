@@ -23,8 +23,13 @@ export interface SaleForCommitment {
 
 const COUNTED = ["recorded", "void_requested"];
 const norm = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const stem = (text: string): string => norm(text).split(" ")
-  .map((word) => word.length > 3 ? word.replace(/(es|s)$/, "") : word).join(" ");
+const singular = (word: string): string => {
+  if (word.length > 4 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
+  if (word.length > 4 && /(oes|ses|xes|zes|ches|shes)$/.test(word)) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) return word.slice(0, -1);
+  return word;
+};
+const stem = (text: string): string => norm(text).split(" ").map(singular).join(" ");
 
 export const sameBuyer = (a: string, b: string): boolean => norm(a) !== "" && norm(a) === norm(b);
 export const sameProduct = (a: string, b: string): boolean => stem(a) !== "" && stem(a) === stem(b);

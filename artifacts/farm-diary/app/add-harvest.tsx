@@ -261,7 +261,7 @@ export default function AddHarvestScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{cropMeta.cropType} Harvest Details</Text>
+            <Text style={styles.sectionTitle}>{getTemplate(selectedBlock?.template_id || activeSeason?.template_id).cropType} Harvest Details</Text>
 
             <View style={styles.field}>
               <View style={styles.dateHeading}>

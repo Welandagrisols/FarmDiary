@@ -2,14 +2,14 @@ import React, { useEffect, useState } from "react";
 import { COUNTED_SALE_STATUSES, PENDING_SALE_STATUSES, seasonFinance } from "@/lib/season-finance";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CATEGORY_COLORS, CARD_SHADOW } from "@/constants/colors";
 import { formatDate, formatKES, getSeasonBlocks } from "@/lib/storage";
 import { FarmRole, getFarmRole, getSales, SaleRecord } from "@/lib/sales-storage";
 import { formatHarvestTotals, harvestTotalsByUnit } from "@/constants/cropTemplates";
-import { blockCropMeta, formatSeasonHarvestSummary, getSeasonCropMeta, seasonCropLabel } from "@/lib/season-crops";
+import { blockCropMeta, blockCropTemplate, formatSeasonHarvestSummary, getSeasonCropMeta, seasonCropLabel } from "@/lib/season-crops";
 import { gradeTotals } from "@/lib/harvest-grading";
 import { irrigationSummary } from "@/lib/irrigation";
 import { targetProgress } from "@/lib/block-targets";
@@ -277,7 +277,7 @@ export default function SeasonReportScreen() {
             <View style={rpt.sectionSplit}>
               {blockBreakdown.map(({ block, records, revenue }) => (
                 <View key={block.id} style={rpt.splitItem}>
-                  <Text style={rpt.splitLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
+                  <Text style={rpt.splitLabel}>{block.name} · {blockCropTemplate(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
                   <Text style={rpt.splitBags}>{formatHarvestTotals(records, blockCropMeta(activeSeason, block))}</Text>
                   <Text style={rpt.splitRevenue}>{formatKES(revenue)}</Text>
                 </View>
@@ -335,7 +335,7 @@ export default function SeasonReportScreen() {
             if (!progress.hasTarget) return null;
             return (
               <View key={block.id} style={rpt.targetBlock}>
-                <Text style={rpt.sectionLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}</Text>
+                <Text style={rpt.sectionLabel}>{block.name} · {blockCropTemplate(activeSeason, block).cropType}</Text>
                 {progress.targetKg != null ? (
                   <>
                     <StatRow label="Harvest" value={`${progress.actualKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} / ${progress.targetKg.toLocaleString()} kg`} />
@@ -363,7 +363,7 @@ export default function SeasonReportScreen() {
           ).hasTarget) ? (
             <Text style={rpt.emptyText}>No targets set for these blocks yet.</Text>
           ) : null}
-          <Pressable style={rpt.targetButton} onPress={() => router.push("/block-targets")} accessibilityRole="button">
+          <Pressable style={rpt.targetButton} onPress={() => router.push("/block-targets" as Href)} accessibilityRole="button">
             <Ionicons name="options-outline" size={17} color={COLORS.primary} />
             <Text style={rpt.targetButtonText}>Edit block targets</Text>
           </Pressable>
@@ -387,7 +387,7 @@ export default function SeasonReportScreen() {
           {blocks.map((block, i) => (
             <View key={block.id}>
               {i > 0 && <View style={rpt.divider} />}
-              <Text style={rpt.sectionLabel}>{block.name} · {blockCropMeta(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
+              <Text style={rpt.sectionLabel}>{block.name} · {blockCropTemplate(activeSeason, block).cropType}{block.variety ? ` — ${block.variety}` : ""}</Text>
               <StatRow label={`${blockCropMeta(activeSeason, block).plantingVerb} Date`} value={formatDate(block.planting_date)} />
               <StatRow label="Area" value={`${block.acres} acres`} />
               <StatRow
