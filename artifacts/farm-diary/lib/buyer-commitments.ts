@@ -21,7 +21,8 @@ export interface SaleForCommitment {
   created_at: string;
 }
 
-const COUNTED = ["recorded", "void_requested"];
+const SOLD_STATUSES = ["recorded", "void_requested"];
+const BOOKED_STATUSES = ["pending_check", "discount_pending"];
 const norm = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const singular = (word: string): string => {
   if (word.length > 4 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
@@ -55,17 +56,19 @@ export function weekStart(key: string): string {
   return addDays(key, -((weekday + 6) % 7));
 }
 
-export type CommitmentStatus = "met" | "open" | "not_started" | "ended";
+export type CommitmentStatus = "met" | "booked" | "open" | "not_started" | "ended";
 
 export interface CommitmentProgress {
   weekStart: string;
   weekEnd: string;
   expectedKg: number;
   soldKg: number;
+  bookedKg: number;
   remainingKg: number;
   extraKg: number;
   pct: number;
   lastWeekSoldKg: number;
+  lastWeekBookedKg: number;
   status: CommitmentStatus;
 }
 
@@ -80,31 +83,44 @@ export function commitmentProgress(
   const previousStart = addDays(start, -7);
   const previousEnd = addDays(start, -1);
   let sold = 0;
+  let booked = 0;
   let previous = 0;
+  let previousBooked = 0;
   for (const sale of sales) {
-    if (!COUNTED.includes(sale.status) || !sameBuyer(commitment.buyer_name, sale.buyer_name)) continue;
+    const isSold = SOLD_STATUSES.includes(sale.status);
+    const isBooked = BOOKED_STATUSES.includes(sale.status);
+    if ((!isSold && !isBooked) || !sameBuyer(commitment.buyer_name, sale.buyer_name)) continue;
     const blockCrop = cropOfBlock && sale.block_id ? cropOfBlock(sale.block_id) : null;
     if (!sameProduct(commitment.product_name, sale.product_name)
       && !(blockCrop && sameProduct(commitment.product_name, blockCrop))) continue;
     const day = dateKey(sale.created_at);
     const quantity = Number(sale.quantity_kg);
     if (!day || !Number.isFinite(quantity) || quantity <= 0) continue;
-    if (day >= start && day <= end) sold += quantity;
-    else if (day >= previousStart && day <= previousEnd) previous += quantity;
+    if (day >= start && day <= end) {
+      if (isSold) sold += quantity;
+      else booked += quantity;
+    } else if (day >= previousStart && day <= previousEnd) {
+      if (isSold) previous += quantity;
+      else previousBooked += quantity;
+    }
   }
   const expected = Number(commitment.weekly_kg) > 0 ? Number(commitment.weekly_kg) : 0;
   let status: CommitmentStatus = sold >= expected && expected > 0 ? "met" : "open";
+  if (expected > 0 && sold < expected && sold + booked >= expected) status = "booked";
   if (commitment.start_date && today < commitment.start_date) status = "not_started";
   else if (commitment.end_date && today > commitment.end_date) status = "ended";
+  const committed = sold + booked;
   return {
     weekStart: start,
     weekEnd: end,
     expectedKg: expected,
     soldKg: sold,
-    remainingKg: Math.max(0, expected - sold),
-    extraKg: Math.max(0, sold - expected),
-    pct: expected > 0 ? Math.min(100, Math.round((sold / expected) * 100)) : 0,
+    bookedKg: booked,
+    remainingKg: Math.max(0, expected - committed),
+    extraKg: Math.max(0, committed - expected),
+    pct: expected > 0 ? Math.min(100, Math.round((committed / expected) * 100)) : 0,
     lastWeekSoldKg: previous,
+    lastWeekBookedKg: previousBooked,
     status,
   };
 }

@@ -160,15 +160,38 @@ test("buyer commitments match plural crop names and count only recorded sales", 
   };
   const sales = [
     { buyer_name: "Kijiji Market", product_name: "Tomatoes", quantity_kg: 60, status: "recorded", created_at: "2026-11-24" },
+    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 30, status: "pending_check", created_at: "2026-11-24" },
+    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 5, status: "discount_pending", created_at: "2026-11-24" },
+    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 2, status: "void_requested", created_at: "2026-11-24" },
     { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 50, status: "voided", created_at: "2026-11-24" },
     { buyer_name: "Other buyer", product_name: "Tomato", quantity_kg: 20, status: "recorded", created_at: "2026-11-24" },
     { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 25, status: "recorded", created_at: "2026-11-18" },
+    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 10, status: "pending_check", created_at: "2026-11-18" },
   ];
   const progress = commitmentProgress(commitment, sales, "2026-11-25");
   assert.deepEqual(
-    [progress.expectedKg, progress.soldKg, progress.remainingKg, progress.lastWeekSoldKg, progress.status],
-    [100, 60, 40, 25, "open"],
+    [
+      progress.expectedKg,
+      progress.soldKg,
+      progress.bookedKg,
+      progress.remainingKg,
+      progress.pct,
+      progress.lastWeekSoldKg,
+      progress.lastWeekBookedKg,
+      progress.status,
+    ],
+    [100, 62, 35, 3, 97, 25, 10, "open"],
   );
+  const fullyBooked = commitmentProgress(
+    commitment,
+    [
+      { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 60, status: "recorded", created_at: "2026-11-24" },
+      { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 40, status: "pending_check", created_at: "2026-11-24" },
+    ],
+    "2026-11-25",
+  );
+  assert.equal(fullyBooked.status, "booked");
+  assert.equal(fullyBooked.remainingKg, 0);
   assert.equal(validateCommitment({
     buyer_name: "Kijiji Market",
     product_name: "Tomato",

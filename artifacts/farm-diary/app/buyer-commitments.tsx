@@ -27,6 +27,7 @@ const EMPTY: CommitmentInput = {
 
 const STATUS = {
   met: { label: "Met this week", bg: COLORS.primarySurface, color: COLORS.primary },
+  booked: { label: "Booked pending review", bg: COLORS.amberLight, color: COLORS.amberDark },
   open: { label: "In progress", bg: COLORS.amberLight, color: COLORS.amber },
   not_started: { label: "Not started", bg: COLORS.background, color: COLORS.textSecondary },
   ended: { label: "Ended", bg: COLORS.background, color: COLORS.textSecondary },
@@ -169,6 +170,12 @@ export default function BuyerCommitmentsScreen() {
       {visible.map((commitment) => {
         const progress = commitmentProgress(commitment, sales, today, cropOfBlock);
         const chip = STATUS[progress.status];
+        const soldPct = progress.expectedKg > 0
+          ? Math.min(100, (progress.soldKg / progress.expectedKg) * 100)
+          : 0;
+        const bookedPct = progress.expectedKg > 0
+          ? Math.min(100 - soldPct, (progress.bookedKg / progress.expectedKg) * 100)
+          : 0;
         return (
           <View key={commitment.id} style={styles.card}>
             <View style={styles.cardTop}>
@@ -184,17 +191,15 @@ export default function BuyerCommitmentsScreen() {
               </View>
             </View>
             <View style={styles.track}>
-              <View style={[styles.fill, {
-                width: `${progress.pct}%`,
-                backgroundColor: progress.status === "met" ? COLORS.primary : COLORS.amber,
-              }]} />
+              <View style={[styles.fill, { width: `${soldPct}%` }]} />
+              {bookedPct > 0 ? <View style={[styles.bookedFill, { width: `${bookedPct}%` }]} /> : null}
             </View>
             <Text style={styles.progressText}>
-              This week: {kg(progress.soldKg)} of {kg(progress.expectedKg)}
-              {progress.remainingKg > 0 ? ` · ${kg(progress.remainingKg)} still to supply` : progress.extraKg > 0 ? ` · ${kg(progress.extraKg)} extra` : ""}
+              This week: {kg(progress.soldKg)} sold · {kg(progress.bookedKg)} booked
+              {progress.remainingKg > 0 ? ` · ${kg(progress.remainingKg)} still open` : progress.extraKg > 0 ? ` · ${kg(progress.extraKg)} over target` : ""}
             </Text>
             <Text style={styles.progressMeta}>
-              Last week: {kg(progress.lastWeekSoldKg)}
+              Last week: {kg(progress.lastWeekSoldKg)} sold · {kg(progress.lastWeekBookedKg)} booked
               {commitment.start_date || commitment.end_date ? ` · ${commitment.start_date ?? "…"} to ${commitment.end_date ?? "open"}` : ""}
             </Text>
             {canManage ? (
@@ -213,7 +218,7 @@ export default function BuyerCommitmentsScreen() {
       })}
 
       {visible.length > 0 ? (
-        <Text style={styles.footnote}>Counts recorded sales to the same buyer for this product or crop block. Weeks run Monday to Sunday.</Text>
+        <Text style={styles.footnote}>Sales awaiting manager review count as booked; approved sales count as sold. Voided sales are excluded. Weeks run Monday to Sunday.</Text>
       ) : null}
 
       {canManage && !error ? (
@@ -285,8 +290,9 @@ const styles = StyleSheet.create({
   cardSub: { fontFamily: "Manrope_400Regular", fontSize: 13, lineHeight: 18, color: COLORS.textSecondary, marginTop: 2 },
   chip: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   chipText: { fontFamily: "Manrope_600SemiBold", fontSize: 11 },
-  track: { height: 8, borderRadius: 4, backgroundColor: COLORS.background, overflow: "hidden", marginTop: 4 },
-  fill: { height: 8, borderRadius: 4 },
+  track: { height: 8, borderRadius: 4, backgroundColor: COLORS.background, overflow: "hidden", marginTop: 4, flexDirection: "row" },
+  fill: { height: 8, backgroundColor: COLORS.primary },
+  bookedFill: { height: 8, backgroundColor: COLORS.amber },
   progressText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.text },
   progressMeta: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textSecondary },
   removeBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingVertical: 4 },
