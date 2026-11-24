@@ -1,6 +1,11 @@
 import { supabase } from "./supabase";
 import type { BuyerCommitment } from "./buyer-commitments";
 
+export type CommitmentDetails = Pick<
+  BuyerCommitment,
+  "buyer_name" | "product_name" | "weekly_kg" | "agreed_price_kes" | "start_date" | "end_date"
+>;
+
 const newId = () => `bc_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 function fail(error: { message: string; code?: string }): never {
@@ -21,12 +26,7 @@ export async function listCommitments(farmId: string): Promise<BuyerCommitment[]
 export async function createCommitment(input: {
   farm_id: string;
   season_id: string | null;
-  buyer_name: string;
-  product_name: string;
-  weekly_kg: number;
-  agreed_price_kes: number | null;
-  start_date: string | null;
-  end_date: string | null;
+} & CommitmentDetails & {
   notes: string | null;
 }): Promise<BuyerCommitment> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -39,6 +39,23 @@ export async function createCommitment(input: {
     created_by: session.user.id,
   };
   const { data, error } = await supabase.from("buyer_commitments").insert(row).select().single();
+  if (error) fail(error);
+  return data as BuyerCommitment;
+}
+
+export async function updateCommitment(
+  id: string,
+  input: CommitmentDetails,
+): Promise<BuyerCommitment> {
+  const { data, error } = await supabase.from("buyer_commitments")
+    .update({
+      ...input,
+      buyer_name: input.buyer_name.trim(),
+      product_name: input.product_name.trim(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
   if (error) fail(error);
   return data as BuyerCommitment;
 }

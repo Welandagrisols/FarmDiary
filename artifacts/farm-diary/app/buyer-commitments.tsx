@@ -8,7 +8,9 @@ import { router, useFocusEffect } from "expo-router";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { getFarmRole, getSales, type FarmRole, type SaleRecord } from "@/lib/sales-storage";
-import { createCommitment, deleteCommitment, listCommitments } from "@/lib/commitment-storage";
+import {
+  createCommitment, deleteCommitment, listCommitments, updateCommitment,
+} from "@/lib/commitment-storage";
 import {
   commitmentProgress, validateCommitment, type BuyerCommitment, type CommitmentInput,
 } from "@/lib/buyer-commitments";
@@ -42,6 +44,7 @@ export default function BuyerCommitmentsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CommitmentInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
@@ -90,28 +93,57 @@ export default function BuyerCommitmentsScreen() {
   const update = (field: keyof CommitmentInput, value: string) =>
     setForm((previous) => ({ ...previous, [field]: value }));
 
+  const startEditing = (commitment: BuyerCommitment) => {
+    setEditingId(commitment.id);
+    setForm({
+      buyer_name: commitment.buyer_name,
+      product_name: commitment.product_name,
+      weekly_kg: String(commitment.weekly_kg),
+      agreed_price_kes: commitment.agreed_price_kes == null ? "" : String(commitment.agreed_price_kes),
+      start_date: commitment.start_date ?? "",
+      end_date: commitment.end_date ?? "",
+    });
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY);
+  };
+
   const handleSave = async () => {
     const problem = validateCommitment(form);
     if (problem) { Alert.alert("Check the details", problem); return; }
     if (!farmId) return;
     setSaving(true);
     try {
-      const created = await createCommitment({
-        farm_id: farmId,
-        season_id: seasonId ?? null,
+      const details = {
         buyer_name: form.buyer_name,
         product_name: form.product_name,
         weekly_kg: Number(form.weekly_kg.replace(",", ".")),
         agreed_price_kes: form.agreed_price_kes.trim() ? Number(form.agreed_price_kes.replace(",", ".")) : null,
         start_date: form.start_date.trim() || null,
         end_date: form.end_date.trim() || null,
-        notes: null,
-      });
-      setCommitments((previous) => [...previous, created]);
-      setForm(EMPTY);
-      setShowForm(false);
+      };
+      if (editingId) {
+        const saved = await updateCommitment(editingId, details);
+        setCommitments((previous) => previous.map((item) => item.id === saved.id ? saved : item));
+      } else {
+        const created = await createCommitment({
+          farm_id: farmId,
+          season_id: seasonId ?? null,
+          ...details,
+          notes: null,
+        });
+        setCommitments((previous) => [...previous, created]);
+      }
+      cancelForm();
     } catch (cause) {
-      Alert.alert("Could not save", cause instanceof Error ? cause.message : "Check your connection and try again.");
+      Alert.alert(
+        editingId ? "Could not update" : "Could not save",
+        cause instanceof Error ? cause.message : "Check your connection and try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -127,6 +159,7 @@ export default function BuyerCommitmentsScreen() {
           try {
             await deleteCommitment(commitment.id);
             setCommitments((previous) => previous.filter((item) => item.id !== commitment.id));
+            if (editingId === commitment.id) cancelForm();
           } catch (cause) {
             Alert.alert("Could not remove", cause instanceof Error ? cause.message : "Try again.");
           }
@@ -147,7 +180,7 @@ export default function BuyerCommitmentsScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Buyer commitments</Text>
-          <Text style={styles.subtitle}>Agreed weekly volume vs what was sold</Text>
+          <Text style={styles.subtitle}>Weekly target with booked and sold amounts</Text>
         </View>
       </View>
 
@@ -203,15 +236,28 @@ export default function BuyerCommitmentsScreen() {
               {commitment.start_date || commitment.end_date ? ` · ${commitment.start_date ?? "…"} to ${commitment.end_date ?? "open"}` : ""}
             </Text>
             {canManage ? (
-              <Pressable
-                onPress={() => handleDelete(commitment)}
-                style={styles.removeBtn}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${commitment.buyer_name} commitment`}
-              >
-                <Ionicons name="trash-outline" size={15} color={COLORS.red} />
-                <Text style={styles.removeText}>Remove</Text>
-              </Pressable>
+              <View style={styles.manageActions}>
+                <Pressable
+                  onPress={() => startEditing(commitment)}
+                  style={styles.manageAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${commitment.buyer_name} commitment`}
+                  testID={`edit-commitment-${commitment.id}`}
+                >
+                  <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.editText}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleDelete(commitment)}
+                  style={styles.manageAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${commitment.buyer_name} commitment`}
+                  testID={`remove-commitment-${commitment.id}`}
+                >
+                  <Ionicons name="trash-outline" size={15} color={COLORS.red} />
+                  <Text style={styles.removeText}>Remove</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         );
@@ -224,7 +270,7 @@ export default function BuyerCommitmentsScreen() {
       {canManage && !error ? (
         showForm ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>New commitment</Text>
+            <Text style={styles.cardTitle}>{editingId ? "Edit commitment" : "New commitment"}</Text>
             <Text style={styles.label}>Buyer</Text>
             <TextInput style={styles.input} value={form.buyer_name} onChangeText={(value) => update("buyer_name", value)} placeholder="e.g. Mama Mboga Network" placeholderTextColor={COLORS.textMuted} />
             <Text style={styles.label}>Crop / product</Text>
@@ -253,16 +299,32 @@ export default function BuyerCommitmentsScreen() {
               </View>
             </View>
             <View style={styles.actions}>
-              <Pressable style={styles.cancelBtn} onPress={() => { setShowForm(false); setForm(EMPTY); }} disabled={saving}>
+              <Pressable style={styles.cancelBtn} onPress={cancelForm} disabled={saving}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={() => void handleSave()} disabled={saving}>
-                {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.saveText}>Save commitment</Text>}
+              <Pressable
+                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                onPress={() => void handleSave()}
+                disabled={saving}
+                accessibilityRole="button"
+                testID={editingId ? "update-commitment" : "save-commitment"}
+              >
+                {saving
+                  ? <ActivityIndicator color={COLORS.white} />
+                  : <Text style={styles.saveText}>{editingId ? "Save changes" : "Save commitment"}</Text>}
               </Pressable>
             </View>
           </View>
         ) : (
-          <Pressable style={styles.addBtn} onPress={() => setShowForm(true)} accessibilityRole="button">
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => {
+              setEditingId(null);
+              setForm(EMPTY);
+              setShowForm(true);
+            }}
+            accessibilityRole="button"
+          >
             <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
             <Text style={styles.addText}>Add buyer commitment</Text>
           </Pressable>
@@ -295,7 +357,9 @@ const styles = StyleSheet.create({
   bookedFill: { height: 8, backgroundColor: COLORS.amber },
   progressText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.text },
   progressMeta: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  removeBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingVertical: 4 },
+  manageActions: { flexDirection: "row", alignItems: "center", gap: 18, alignSelf: "flex-start" },
+  manageAction: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, paddingVertical: 4 },
+  editText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.primary },
   removeText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.red },
   footnote: { fontFamily: "Manrope_400Regular", fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginHorizontal: 20, marginBottom: 14 },
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginHorizontal: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.primary },

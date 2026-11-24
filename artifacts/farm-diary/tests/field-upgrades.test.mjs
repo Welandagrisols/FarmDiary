@@ -201,3 +201,38 @@ test("buyer commitments match plural crop names and count only recorded sales", 
     end_date: "",
   }), null);
 });
+
+test("buyer commitment progress moves a sale from booked to sold after approval", () => {
+  const commitment = {
+    id: "c2",
+    farm_id: "f1",
+    season_id: null,
+    buyer_name: "Kijiji Market",
+    product_name: "Tomato",
+    weekly_kg: 100,
+    agreed_price_kes: null,
+    start_date: null,
+    end_date: null,
+    notes: null,
+    created_at: "2026-11-20",
+  };
+  const sale = {
+    buyer_name: "Kijiji Market",
+    product_name: "Tomatoes",
+    quantity_kg: 40,
+    status: "pending_check",
+    created_at: "2026-11-24",
+  };
+
+  const booked = commitmentProgress(commitment, [sale], "2026-11-25");
+  assert.equal(booked.bookedKg, 40);
+  assert.equal(booked.soldKg, 0);
+
+  const approved = commitmentProgress(commitment, [{ ...sale, status: "recorded" }], "2026-11-25");
+  assert.equal(approved.bookedKg, 0);
+  assert.equal(approved.soldKg, 40);
+
+  const voided = commitmentProgress(commitment, [{ ...sale, status: "voided" }], "2026-11-25");
+  assert.equal(voided.bookedKg, 0);
+  assert.equal(voided.soldKg, 0);
+});
