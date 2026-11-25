@@ -7,6 +7,16 @@ import {
   setActiveSeasonId,
 } from "@/lib/supabase-storage";
 import { supabase } from "@/lib/supabase";
+import {
+  emptyLegacyFarmData,
+  hasLegacyFarmRecords,
+  legacyCacheToFarmData,
+  mergeLegacyFarmData,
+  LegacyFarmData,
+} from "@/lib/legacy-migration-data";
+
+const LEGACY_CACHE_KEY = "farm_offline_cache_v1";
+const LEGACY_CACHE_MIGRATED_KEY = "farm_offline_cache_v1_migrated";
 
 const STORAGE_KEYS = {
   farms: "farm_farms",
@@ -38,29 +48,7 @@ export interface MigrationResult {
   error?: string;
 }
 
-type LegacyData = {
-  farms: Record<string, unknown>[];
-  seasons: Record<string, unknown>[];
-  costs: Record<string, unknown>[];
-  inventory: Record<string, unknown>[];
-  activityLogs: Record<string, unknown>[];
-  observations: Record<string, unknown>[];
-  harvestRecords: Record<string, unknown>[];
-  personalExpenses: Record<string, unknown>[];
-  activeFarmId: string | null;
-  activeSeasonId: string | null;
-};
-
-const emptyCounts: MigrationCounts = {
-  farms: 0,
-  seasons: 0,
-  costs: 0,
-  inventory: 0,
-  activityLogs: 0,
-  observations: 0,
-  harvestRecords: 0,
-  personalExpenses: 0,
-};
+type LegacyData = LegacyFarmData;
 
 function parseArray(raw: string | null, label: string): Record<string, unknown>[] {
   if (!raw) return [];
@@ -90,6 +78,16 @@ async function readLegacyData(): Promise<LegacyData> {
   };
 }
 
+async function readLegacyCacheData(userId: string): Promise<{ data: LegacyData; pending: boolean }> {
+  const [raw, migrated] = await AsyncStorage.multiGet([LEGACY_CACHE_KEY, LEGACY_CACHE_MIGRATED_KEY]);
+  if (!raw[1] || migrated[1] === "true") {
+    return { data: emptyLegacyFarmData(), pending: false };
+  }
+  const cache = JSON.parse(raw[1]);
+  const data = legacyCacheToFarmData(cache, userId);
+  return { data, pending: hasLegacyFarmRecords(data) };
+}
+
 function countLegacyData(data: LegacyData): MigrationCounts {
   return {
     farms: data.farms.length,
@@ -103,30 +101,38 @@ function countLegacyData(data: LegacyData): MigrationCounts {
   };
 }
 
-export async function hasLegacyFarmData(): Promise<boolean> {
-  const data = await readLegacyData();
-  return Object.values(countLegacyData(data)).some((count) => count > 0);
+export async function hasLegacyFarmData(userId: string): Promise<boolean> {
+  const migrationComplete = await hasMigrated();
+  const [tableData, cachedData] = await Promise.all([
+    migrationComplete ? Promise.resolve(emptyLegacyFarmData()) : readLegacyData(),
+    readLegacyCacheData(userId),
+  ]);
+  return hasLegacyFarmRecords(tableData) || cachedData.pending;
 }
 
 export async function runMigrationIfNeeded(): Promise<MigrationResult> {
-  let counts = { ...emptyCounts };
+  let counts = countLegacyData(emptyLegacyFarmData());
   try {
-    if (await hasMigrated()) {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const userId = session?.user.id;
+    if (!userId) throw new Error("Please sign in again before migrating your farm data.");
+
+    const migrationComplete = await hasMigrated();
+    const [tableData, cachedData] = await Promise.all([
+      migrationComplete ? Promise.resolve(emptyLegacyFarmData()) : readLegacyData(),
+      readLegacyCacheData(userId),
+    ]);
+    if (migrationComplete && !cachedData.pending) {
       return { success: true, counts };
     }
 
-    const legacy = await readLegacyData();
+    const legacy = mergeLegacyFarmData(tableData, cachedData.data);
     counts = countLegacyData(legacy);
-    const hasRecords = Object.values(counts).some((count) => count > 0);
+    const hasRecords = hasLegacyFarmRecords(legacy);
 
     if (hasRecords) {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      if (!data.session?.access_token) {
-        throw new Error("Please sign in again before migrating your farm data.");
-      }
-
-      await migrateViaServer(data.session.access_token, {
+      await migrateViaServer(session.access_token, {
         farms: legacy.farms,
         seasons: legacy.seasons,
         costs: legacy.costs,
@@ -141,6 +147,9 @@ export async function runMigrationIfNeeded(): Promise<MigrationResult> {
       if (legacy.activeSeasonId) await setActiveSeasonId(legacy.activeSeasonId);
     }
 
+    if (cachedData.pending && hasRecords) {
+      await AsyncStorage.setItem(LEGACY_CACHE_MIGRATED_KEY, "true");
+    }
     await markMigrated();
     return { success: true, counts };
   } catch (error) {

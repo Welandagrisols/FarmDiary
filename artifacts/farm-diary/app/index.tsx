@@ -22,13 +22,13 @@ export default function Index() {
 
     const redirectAfterMigrationCheck = async () => {
       try {
-        if (await hasMigrated()) {
-          if (!cancelled) router.replace("/farm-picker");
+        if (await hasLegacyFarmData(user.id)) {
+          if (!cancelled) router.replace("/migration");
           return;
         }
 
-        if (await hasLegacyFarmData()) {
-          if (!cancelled) router.replace("/migration");
+        if (await hasMigrated()) {
+          if (!cancelled) router.replace("/farm-picker");
           return;
         }
 

@@ -1,12 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
-
-const OFFLINE_CACHE_KEYS = [
-  "farm_offline_cache",
-  "farm_personal_expenses",
-];
+import {
+  assignUnownedQueueItemsToUser,
+  clearAllStorageForSignOut,
+} from "@/lib/offline-storage";
 
 type AuthContextValue = {
   user: User | null;
@@ -57,9 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (user?.id) await assignUnownedQueueItemsToUser(user.id);
     await supabase.auth.signOut();
-    await AsyncStorage.multiRemove(OFFLINE_CACHE_KEYS);
-  }, []);
+    await clearAllStorageForSignOut();
+  }, [user?.id]);
 
   return (
     <AuthContext.Provider value={{ user, session, isLoading, signIn, signOut }}>

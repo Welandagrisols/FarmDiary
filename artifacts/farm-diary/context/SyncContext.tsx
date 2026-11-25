@@ -3,6 +3,7 @@ import { Alert, AppState } from "react-native";
 import { supabase } from "@/lib/supabase";
 import {
   getQueue,
+  getQueueForUser,
   removeFromQueue,
   incrementRetry,
   addToDeadLetter,
@@ -47,13 +48,17 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const refreshCount = useCallback(async () => {
     try {
-      const queue = await getQueue();
+      if (!user?.id) {
+        setPendingCount(0);
+        return;
+      }
+      const queue = await getQueueForUser(user.id);
       setPendingCount(queue.length);
     } catch (error) {
       console.warn("[sync] Could not read the offline queue:", error);
       setStatus("error");
     }
-  }, []);
+  }, [user?.id]);
 
   const forceSync = useCallback(async () => {
     if (!user) return;
@@ -61,7 +66,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     isSyncing.current = true;
     setStatus("syncing");
     try {
-      const queue = await getQueue();
+      const queue = await getQueueForUser(user.id);
       setPendingCount(queue.length);
       if (!queue.length) {
         setStatus("idle");
@@ -74,7 +79,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         incrementRetry,
         addToDeadLetter,
       });
-      const remaining = await getQueue();
+      const remaining = await getQueueForUser(user.id);
       setPendingCount(remaining.length);
       setStatus(result.failed ? "error" : "idle");
       if (!result.failed && result.synced > 0) setLastSynced(new Date());
@@ -90,7 +95,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
               text: "Retry saved actions",
               onPress: async () => {
                 try {
-                  await restoreDeadLetterItems();
+                  await restoreDeadLetterItems(user.id);
                   await refreshCount();
                   await forceSync();
                 } catch (error) {
@@ -113,7 +118,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     } finally {
       isSyncing.current = false;
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     void refreshCount();

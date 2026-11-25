@@ -400,7 +400,7 @@ export default function SeasonSetupScreen() {
                   </Pressable>
                 ))}
               </View>
-              <Text style={styles.fieldHint}>Each season tracks one crop. Varieties, schedule and harvest units follow this choice; start another season for a different crop.</Text>
+              <Text style={styles.fieldHint}>Use a listed crop for each planting block. Add another block for a different crop, date, area or variety. “Custom” is for a variety, not a new crop.</Text>
               {cropId !== CROP_TEMPLATES[0].id && (
                 <Text style={styles.fieldHint}>This crop schedule is draft guidance. Confirm locally with an agronomist before use.</Text>
               )}

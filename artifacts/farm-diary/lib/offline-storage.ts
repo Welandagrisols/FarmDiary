@@ -1,12 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { applyOfflineMutation, applyPendingMutations, OfflineOperation, OfflineScope } from "./offline-mutations";
 import { isNetworkError } from "./network-errors";
+import { supabase } from "./supabase";
+import { assignUnownedQueueItems, queueItemsForUser } from "./offline-queue-owner";
 
 export interface QueueItem {
   id: string;
   table: string;
   operation: "insert" | "update" | "delete";
   data: any;
+  user_id?: string | null;
   timestamp: number;
   retries: number;
 }
@@ -47,12 +50,27 @@ export async function getQueue(): Promise<QueueItem[]> {
   return parsed;
 }
 
+export async function getQueueForUser(userId: string): Promise<QueueItem[]> {
+  return queueItemsForUser(await getQueue(), userId);
+}
+
 export async function getDeadLetterQueue(): Promise<DeadLetterItem[]> {
   const raw = await AsyncStorage.getItem(DEAD_LETTER_KEY);
   if (!raw) return [];
   const parsed = JSON.parse(raw);
   if (!Array.isArray(parsed)) throw new Error("Saved sync recovery queue has an invalid format.");
   return parsed;
+}
+
+export async function assignUnownedQueueItemsToUser(userId: string): Promise<void> {
+  await mutateQueue(async () => {
+    const queue = await getQueue();
+    const deadLetters = await getDeadLetterQueue();
+    await AsyncStorage.multiSet([
+      [QUEUE_KEY, JSON.stringify(assignUnownedQueueItems(queue, userId))],
+      [DEAD_LETTER_KEY, JSON.stringify(assignUnownedQueueItems(deadLetters, userId))],
+    ]);
+  });
 }
 
 export async function addToDeadLetter(item: QueueItem): Promise<void> {
@@ -65,19 +83,21 @@ export async function addToDeadLetter(item: QueueItem): Promise<void> {
   });
 }
 
-export async function restoreDeadLetterItems(): Promise<number> {
+export async function restoreDeadLetterItems(userId: string): Promise<number> {
   return mutateQueue(async () => {
     const queue = await getQueue();
     const deadLetters = await getDeadLetterQueue();
     const queuedIds = new Set(queue.map((item) => item.id));
-    const restored = deadLetters
+    const ownedDeadLetters = deadLetters.filter((item) => item.user_id === userId);
+    const otherDeadLetters = deadLetters.filter((item) => item.user_id !== userId);
+    const restored = ownedDeadLetters
       .filter((item) => !queuedIds.has(item.id))
       .map(({ failedAt: _failedAt, ...item }) => ({ ...item, retries: 0 }));
     const nextQueue = [...queue, ...restored];
 
     await AsyncStorage.multiSet([
       [QUEUE_KEY, JSON.stringify(nextQueue)],
-      [DEAD_LETTER_KEY, JSON.stringify([])],
+      [DEAD_LETTER_KEY, JSON.stringify(otherDeadLetters)],
     ]);
     return restored.length;
   });
@@ -160,7 +180,8 @@ export async function withCache<T extends { id?: string; farm_id?: string | null
 ): Promise<T[]> {
   try {
     const data = await fetchFn();
-    const queue = await getQueue();
+    const { data: { session } } = await supabase.auth.getSession();
+    const queue = session?.user.id ? await getQueueForUser(session.user.id) : [];
     const withPendingWrites = applyPendingMutations(data, queue, queueTable, scope);
     await writeCache(cacheKey, withPendingWrites);
     return withPendingWrites;
@@ -168,7 +189,8 @@ export async function withCache<T extends { id?: string; farm_id?: string | null
     if (!isNetworkError(error)) throw error;
     onOfflineFallback?.();
     const cached = await readCache<T>(cacheKey);
-    const queue = await getQueue();
+    const { data: { session } } = await supabase.auth.getSession();
+    const queue = session?.user.id ? await getQueueForUser(session.user.id) : [];
     return applyPendingMutations(cached ?? [], queue, queueTable, scope);
   }
 }
@@ -176,7 +198,7 @@ export async function withCache<T extends { id?: string; farm_id?: string | null
 export async function clearAllCaches(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
-    const cacheKeys = allKeys.filter((k) => k.startsWith(CACHE_PREFIX) || k === QUEUE_KEY);
+    const cacheKeys = allKeys.filter((k) => k.startsWith(CACHE_PREFIX));
     if (cacheKeys.length > 0) {
       await AsyncStorage.multiRemove(cacheKeys);
     }
@@ -187,7 +209,7 @@ export async function clearAllStorageForSignOut(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
     const keysToRemove = allKeys.filter(
-      (k) => k.startsWith(CACHE_PREFIX) || k === QUEUE_KEY || k.startsWith("sb-")
+      (k) => k.startsWith(CACHE_PREFIX) || k.startsWith("sb-")
     );
     if (keysToRemove.length > 0) {
       await AsyncStorage.multiRemove(keysToRemove);
@@ -213,7 +235,10 @@ export async function withWrite<T>(
   } catch (error) {
     if (!isNetworkError(error)) throw error;
 
-    await enqueue({ table, operation, data });
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user.id;
+    if (!userId) throw new Error("Sign in again before saving offline farm data.");
+    await enqueue({ table, operation, data, user_id: userId });
     const optimisticRecord = await updateCacheAfterWrite(table, operation, data);
     if (operation === "insert") return data as T;
     if (operation === "update") return (optimisticRecord ?? data) as T;
