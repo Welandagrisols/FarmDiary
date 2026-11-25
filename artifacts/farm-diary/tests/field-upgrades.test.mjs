@@ -25,7 +25,9 @@ import {
 } from "../lib/irrigation.ts";
 import { buildSoilGuard, applySoilGuardToRows, soilNoticesForProducts } from "../lib/soil-guard.ts";
 import {
+  ambiguousCommitmentSales,
   commitmentProgress,
+  sameBuyer,
   sameProduct,
   validateCommitment,
 } from "../lib/buyer-commitments.ts";
@@ -145,6 +147,7 @@ test("soil warnings use the newest reviewed test and flag unsuitable inputs", ()
 
 test("buyer commitments match plural crop names and count only recorded sales", () => {
   assert.equal(sameProduct("Tomatoes", "Tomato"), true);
+  assert.equal(sameBuyer(" Kijiji-Market! ", "kijiji market"), true);
   const commitment = {
     id: "c1",
     farm_id: "f1",
@@ -159,14 +162,14 @@ test("buyer commitments match plural crop names and count only recorded sales", 
     created_at: "2026-11-20",
   };
   const sales = [
-    { buyer_name: "Kijiji Market", product_name: "Tomatoes", quantity_kg: 60, status: "recorded", created_at: "2026-11-24" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 30, status: "pending_check", created_at: "2026-11-24" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 5, status: "discount_pending", created_at: "2026-11-24" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 2, status: "void_requested", created_at: "2026-11-24" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 50, status: "voided", created_at: "2026-11-24" },
-    { buyer_name: "Other buyer", product_name: "Tomato", quantity_kg: 20, status: "recorded", created_at: "2026-11-24" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 25, status: "recorded", created_at: "2026-11-18" },
-    { buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 10, status: "pending_check", created_at: "2026-11-18" },
+    { id: "s1", buyer_name: " kijiji-market ", product_name: "Tomatoes", quantity_kg: 60, status: "recorded", created_at: "2026-11-24" },
+    { id: "s2", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 30, status: "pending_check", created_at: "2026-11-24" },
+    { id: "s3", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 5, status: "discount_pending", created_at: "2026-11-24" },
+    { id: "s4", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 2, status: "void_requested", created_at: "2026-11-24" },
+    { id: "s5", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 50, status: "voided", created_at: "2026-11-24" },
+    { id: "s6", buyer_name: "Other buyer", product_name: "Tomato", quantity_kg: 20, status: "recorded", created_at: "2026-11-24" },
+    { id: "s7", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 25, status: "recorded", created_at: "2026-11-18" },
+    { id: "s8", buyer_name: "Kijiji Market", product_name: "Tomato", quantity_kg: 10, status: "pending_check", created_at: "2026-11-18" },
   ];
   const progress = commitmentProgress(commitment, sales, "2026-11-25");
   assert.deepEqual(
@@ -181,6 +184,10 @@ test("buyer commitments match plural crop names and count only recorded sales", 
       progress.status,
     ],
     [100, 62, 35, 3, 97, 25, 10, "open"],
+  );
+  assert.deepEqual(
+    progress.currentWeekSales.map((match) => [match.sale.id, match.bucket]),
+    [["s1", "sold"], ["s2", "booked"], ["s3", "booked"], ["s4", "sold"]],
   );
   const fullyBooked = commitmentProgress(
     commitment,
@@ -200,6 +207,124 @@ test("buyer commitments match plural crop names and count only recorded sales", 
     start_date: "",
     end_date: "",
   }), null);
+});
+
+test("commitment sales share date, block-crop, and status rules with the totals", () => {
+  const commitment = {
+    id: "tomato-commitment",
+    farm_id: "f1",
+    season_id: null,
+    buyer_name: "Kijiji Market",
+    product_name: "Tomatoes",
+    weekly_kg: 100,
+    agreed_price_kes: null,
+    start_date: null,
+    end_date: null,
+    notes: null,
+    created_at: "2026-11-20",
+  };
+  const sales = [
+    {
+      id: "block-crop-approved",
+      buyer_name: " kijiji-market ",
+      product_name: "Mixed Produce",
+      block_id: "north",
+      quantity_kg: 12,
+      status: "recorded",
+      created_at: "2026-11-24",
+    },
+    {
+      id: "pending",
+      buyer_name: "KIJIJI MARKET",
+      product_name: "Tomato",
+      quantity_kg: 8,
+      status: "pending_check",
+      created_at: "2026-11-24",
+    },
+    {
+      id: "voided",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomato",
+      quantity_kg: 40,
+      status: "voided",
+      created_at: "2026-11-24",
+    },
+    {
+      id: "week-end",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomato",
+      quantity_kg: 3,
+      status: "recorded",
+      created_at: "2026-11-29",
+    },
+    {
+      id: "next-week",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomato",
+      quantity_kg: 25,
+      status: "recorded",
+      created_at: "2026-11-30",
+    },
+  ];
+  const cropOfBlock = (blockId) => blockId === "north" ? "Tomato" : null;
+  const progress = commitmentProgress(commitment, sales, "2026-11-25", cropOfBlock);
+
+  assert.equal(progress.soldKg, 15);
+  assert.equal(progress.bookedKg, 8);
+  assert.deepEqual(
+    progress.currentWeekSales.map((match) => [match.sale.id, match.date, match.bucket]),
+    [
+      ["block-crop-approved", "2026-11-24", "sold"],
+      ["pending", "2026-11-24", "booked"],
+      ["week-end", "2026-11-29", "sold"],
+    ],
+  );
+  assert.equal(progress.currentWeekSales[0].matchedViaBlockCrop, "Tomato");
+  assert.equal(progress.currentWeekSales[1].matchedViaBlockCrop, null);
+});
+
+test("overlapping commitments flag each shared current-week sale", () => {
+  const commitment = (id, buyer, product) => ({
+    id,
+    farm_id: "f1",
+    season_id: null,
+    buyer_name: buyer,
+    product_name: product,
+    weekly_kg: 100,
+    agreed_price_kes: null,
+    start_date: null,
+    end_date: null,
+    notes: null,
+    created_at: "2026-11-20",
+  });
+  const first = commitment("c1", "Kijiji Market", "Tomato");
+  const second = commitment("c2", "Kijiji-Market", "Tomatoes");
+  const unrelated = commitment("c3", "Other buyer", "Tomato");
+  const sharedSale = {
+    id: "sale-shared",
+    buyer_name: "KIJIJI MARKET",
+    product_name: "Tomatoes",
+    quantity_kg: 22,
+    status: "recorded",
+    created_at: "2026-11-24",
+  };
+  const anotherSale = {
+    id: "sale-pending",
+    buyer_name: "kijiji market",
+    product_name: "Tomato",
+    quantity_kg: 10,
+    status: "pending_check",
+    created_at: "2026-11-25",
+  };
+  const ambiguous = ambiguousCommitmentSales(
+    [first, second, unrelated],
+    [sharedSale, anotherSale],
+    "2026-11-25",
+  );
+
+  assert.deepEqual(ambiguous.get(sharedSale)?.map((item) => item.id), ["c1", "c2"]);
+  assert.deepEqual(ambiguous.get(anotherSale)?.map((item) => item.id), ["c1", "c2"]);
+  assert.equal(ambiguous.has({ ...sharedSale }), false);
 });
 
 test("buyer commitment progress moves a sale from booked to sold after approval", () => {

@@ -12,7 +12,8 @@ import {
   createCommitment, deleteCommitment, listCommitments, updateCommitment,
 } from "@/lib/commitment-storage";
 import {
-  commitmentProgress, validateCommitment, type BuyerCommitment, type CommitmentInput,
+  ambiguousCommitmentSales, commitmentProgress, validateCommitment,
+  type BuyerCommitment, type CommitmentInput,
 } from "@/lib/buyer-commitments";
 import { getSeasonBlocks } from "@/lib/storage";
 import { blockCropTemplate, seasonTemplateIds } from "@/lib/season-crops";
@@ -45,6 +46,7 @@ export default function BuyerCommitmentsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedCommitmentId, setExpandedCommitmentId] = useState<string | null>(null);
   const [form, setForm] = useState<CommitmentInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
@@ -90,6 +92,7 @@ export default function BuyerCommitmentsScreen() {
   const cropChoices = [...new Set(seasonTemplateIds(activeSeason).map((id) => getTemplate(id).cropType))];
   const visible = commitments.filter((item) => !item.season_id || item.season_id === seasonId);
   const today = todayKey();
+  const ambiguousSales = ambiguousCommitmentSales(visible, sales, today, cropOfBlock);
   const update = (field: keyof CommitmentInput, value: string) =>
     setForm((previous) => ({ ...previous, [field]: value }));
 
@@ -236,6 +239,87 @@ export default function BuyerCommitmentsScreen() {
               {commitment.start_date || commitment.end_date ? ` · ${commitment.start_date ?? "…"} to ${commitment.end_date ?? "open"}` : ""}
             </Text>
             {canManage ? (
+              <>
+                <Pressable
+                  style={styles.salesToggle}
+                  onPress={() => setExpandedCommitmentId((current) => current === commitment.id ? null : commitment.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show current-week sales for ${commitment.buyer_name} ${commitment.product_name}`}
+                  accessibilityState={{ expanded: expandedCommitmentId === commitment.id }}
+                  testID={`toggle-commitment-sales-${commitment.id}`}
+                >
+                  <Text style={styles.salesToggleText}>
+                    Current-week sales · {progress.currentWeekSales.length}
+                  </Text>
+                  <Ionicons
+                    name={expandedCommitmentId === commitment.id ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={COLORS.textSecondary}
+                  />
+                </Pressable>
+                {expandedCommitmentId === commitment.id ? (
+                  <View style={styles.salesList}>
+                    {progress.currentWeekSales.length === 0 ? (
+                      <Text style={styles.noSalesText}>No matching sales this week.</Text>
+                    ) : progress.currentWeekSales.map((match, index) => {
+                      const allMatches = ambiguousSales.get(match.sale) ?? [];
+                      const otherMatches = allMatches.filter((other) => other.id !== commitment.id);
+                      const saleStatus = match.sale.status === "recorded"
+                        ? "Approved"
+                        : match.sale.status === "void_requested"
+                          ? "Void requested (still counted as sold)"
+                          : match.sale.status === "discount_pending"
+                            ? "Discount awaiting approval"
+                            : "Awaiting review";
+                      return (
+                        <View
+                          key={match.sale.id ?? `${match.date}-${match.sale.receipt_number ?? index}`}
+                          style={styles.saleRow}
+                        >
+                          <View style={styles.saleRowTop}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.saleTitle}>
+                                {match.sale.receipt_number || match.sale.id || `Sale ${index + 1}`}
+                                {" · "}
+                                {kg(match.quantityKg)}
+                              </Text>
+                              <Text style={styles.saleMeta}>
+                                {match.date} · {match.sale.buyer_name} · {match.sale.product_name}
+                              </Text>
+                              <Text style={styles.saleMeta}>
+                                {saleStatus}
+                                {match.matchedViaBlockCrop ? ` · Matched via block crop: ${match.matchedViaBlockCrop}` : ""}
+                              </Text>
+                            </View>
+                            <View style={[
+                              styles.saleBucket,
+                              match.bucket === "sold" ? styles.saleBucketSold : styles.saleBucketBooked,
+                            ]}>
+                              <Text style={[
+                                styles.saleBucketText,
+                                match.bucket === "sold" ? styles.saleBucketSoldText : styles.saleBucketBookedText,
+                              ]}>
+                                {match.bucket === "sold" ? "Sold" : "Booked"}
+                              </Text>
+                            </View>
+                          </View>
+                          {otherMatches.length > 0 ? (
+                            <View style={styles.ambiguityNotice}>
+                              <Ionicons name="alert-circle-outline" size={16} color={COLORS.amberDark} />
+                              <Text style={styles.ambiguityText}>
+                                Also matches {otherMatches.map((other) => `${other.buyer_name} · ${other.product_name}`).join("; ")}.
+                                This sale appears in more than one commitment total.
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            {canManage ? (
               <View style={styles.manageActions}>
                 <Pressable
                   onPress={() => startEditing(commitment)}
@@ -264,7 +348,9 @@ export default function BuyerCommitmentsScreen() {
       })}
 
       {visible.length > 0 ? (
-        <Text style={styles.footnote}>Sales awaiting manager review count as booked; approved sales count as sold. Voided sales are excluded. Weeks run Monday to Sunday.</Text>
+        <Text style={styles.footnote}>
+          Sales awaiting manager review count as booked; approved and void-requested sales count as sold under the current rules. Voided sales are excluded. Weeks run Monday to Sunday.
+        </Text>
       ) : null}
 
       {canManage && !error ? (
@@ -357,6 +443,22 @@ const styles = StyleSheet.create({
   bookedFill: { height: 8, backgroundColor: COLORS.amber },
   progressText: { fontFamily: "Manrope_600SemiBold", fontSize: 13, color: COLORS.text },
   progressMeta: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  salesToggle: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 6, marginTop: 2 },
+  salesToggleText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.textSecondary },
+  salesList: { gap: 8 },
+  noSalesText: { fontFamily: "Manrope_400Regular", fontSize: 12, color: COLORS.textMuted, paddingVertical: 6 },
+  saleRow: { borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 9, gap: 8 },
+  saleRowTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  saleTitle: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.text },
+  saleMeta: { fontFamily: "Manrope_400Regular", fontSize: 11, lineHeight: 16, color: COLORS.textSecondary, marginTop: 2 },
+  saleBucket: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  saleBucketSold: { backgroundColor: COLORS.primarySurface },
+  saleBucketBooked: { backgroundColor: COLORS.amberLight },
+  saleBucketText: { fontFamily: "Manrope_600SemiBold", fontSize: 10 },
+  saleBucketSoldText: { color: COLORS.primary },
+  saleBucketBookedText: { color: COLORS.amberDark },
+  ambiguityNotice: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 9, borderRadius: 10, backgroundColor: COLORS.amberLight },
+  ambiguityText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 11, lineHeight: 16, color: COLORS.amberDark },
   manageActions: { flexDirection: "row", alignItems: "center", gap: 18, alignSelf: "flex-start" },
   manageAction: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, paddingVertical: 4 },
   editText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.primary },

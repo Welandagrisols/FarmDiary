@@ -13,6 +13,8 @@ export interface BuyerCommitment {
 }
 
 export interface SaleForCommitment {
+  id?: string;
+  receipt_number?: string;
   block_id?: string | null;
   buyer_name: string;
   product_name: string;
@@ -69,7 +71,73 @@ export interface CommitmentProgress {
   pct: number;
   lastWeekSoldKg: number;
   lastWeekBookedKg: number;
+  currentWeekSales: CommitmentSaleContribution[];
   status: CommitmentStatus;
+}
+
+export interface CommitmentSaleContribution {
+  sale: SaleForCommitment;
+  date: string;
+  bucket: "sold" | "booked";
+  quantityKg: number;
+  matchedViaBlockCrop: string | null;
+}
+
+function saleBucket(status: string): CommitmentSaleContribution["bucket"] | null {
+  if (SOLD_STATUSES.includes(status)) return "sold";
+  if (BOOKED_STATUSES.includes(status)) return "booked";
+  return null;
+}
+
+function salesForPeriod(
+  commitment: BuyerCommitment,
+  sales: readonly SaleForCommitment[],
+  from: string,
+  through: string,
+  cropOfBlock?: (blockId: string) => string | null,
+): CommitmentSaleContribution[] {
+  const matches: CommitmentSaleContribution[] = [];
+  for (const sale of sales) {
+    const bucket = saleBucket(sale.status);
+    if (!bucket || !sameBuyer(commitment.buyer_name, sale.buyer_name)) continue;
+    const blockCrop = cropOfBlock && sale.block_id ? cropOfBlock(sale.block_id) : null;
+    const matchesProductName = sameProduct(commitment.product_name, sale.product_name);
+    if (!matchesProductName && !(blockCrop && sameProduct(commitment.product_name, blockCrop))) continue;
+    const date = dateKey(sale.created_at);
+    const quantityKg = Number(sale.quantity_kg);
+    if (!date || date < from || date > through || !Number.isFinite(quantityKg) || quantityKg <= 0) continue;
+    matches.push({
+      sale,
+      date,
+      bucket,
+      quantityKg,
+      matchedViaBlockCrop: matchesProductName ? null : blockCrop,
+    });
+  }
+  return matches;
+}
+
+export function ambiguousCommitmentSales(
+  commitments: readonly BuyerCommitment[],
+  sales: readonly SaleForCommitment[],
+  today: string,
+  cropOfBlock?: (blockId: string) => string | null,
+): Map<SaleForCommitment, BuyerCommitment[]> {
+  const from = weekStart(today);
+  const through = addDays(from, 6);
+  const matchesBySale = new Map<SaleForCommitment, BuyerCommitment[]>();
+
+  for (const commitment of commitments) {
+    for (const { sale } of salesForPeriod(commitment, sales, from, through, cropOfBlock)) {
+      const matches = matchesBySale.get(sale) ?? [];
+      matches.push(commitment);
+      matchesBySale.set(sale, matches);
+    }
+  }
+
+  return new Map(
+    [...matchesBySale.entries()].filter(([, matches]) => matches.length > 1),
+  );
 }
 
 export function commitmentProgress(
@@ -82,28 +150,20 @@ export function commitmentProgress(
   const end = addDays(start, 6);
   const previousStart = addDays(start, -7);
   const previousEnd = addDays(start, -1);
-  let sold = 0;
-  let booked = 0;
-  let previous = 0;
-  let previousBooked = 0;
-  for (const sale of sales) {
-    const isSold = SOLD_STATUSES.includes(sale.status);
-    const isBooked = BOOKED_STATUSES.includes(sale.status);
-    if ((!isSold && !isBooked) || !sameBuyer(commitment.buyer_name, sale.buyer_name)) continue;
-    const blockCrop = cropOfBlock && sale.block_id ? cropOfBlock(sale.block_id) : null;
-    if (!sameProduct(commitment.product_name, sale.product_name)
-      && !(blockCrop && sameProduct(commitment.product_name, blockCrop))) continue;
-    const day = dateKey(sale.created_at);
-    const quantity = Number(sale.quantity_kg);
-    if (!day || !Number.isFinite(quantity) || quantity <= 0) continue;
-    if (day >= start && day <= end) {
-      if (isSold) sold += quantity;
-      else booked += quantity;
-    } else if (day >= previousStart && day <= previousEnd) {
-      if (isSold) previous += quantity;
-      else previousBooked += quantity;
-    }
-  }
+  const currentWeekSales = salesForPeriod(commitment, sales, start, end, cropOfBlock);
+  const previousWeekSales = salesForPeriod(commitment, sales, previousStart, previousEnd, cropOfBlock);
+  const sold = currentWeekSales
+    .filter((match) => match.bucket === "sold")
+    .reduce((total, match) => total + match.quantityKg, 0);
+  const booked = currentWeekSales
+    .filter((match) => match.bucket === "booked")
+    .reduce((total, match) => total + match.quantityKg, 0);
+  const previous = previousWeekSales
+    .filter((match) => match.bucket === "sold")
+    .reduce((total, match) => total + match.quantityKg, 0);
+  const previousBooked = previousWeekSales
+    .filter((match) => match.bucket === "booked")
+    .reduce((total, match) => total + match.quantityKg, 0);
   const expected = Number(commitment.weekly_kg) > 0 ? Number(commitment.weekly_kg) : 0;
   let status: CommitmentStatus = sold >= expected && expected > 0 ? "met" : "open";
   if (expected > 0 && sold < expected && sold + booked >= expected) status = "booked";
@@ -121,6 +181,7 @@ export function commitmentProgress(
     pct: expected > 0 ? Math.min(100, Math.round((committed / expected) * 100)) : 0,
     lastWeekSoldKg: previous,
     lastWeekBookedKg: previousBooked,
+    currentWeekSales,
     status,
   };
 }
