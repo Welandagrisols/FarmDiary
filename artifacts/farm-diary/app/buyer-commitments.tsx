@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/commitment-storage";
 import {
   ambiguousCommitmentSales, commitmentProgress, validateCommitment,
+  weeklyBuyerDeliveryShareText, weeklyBuyerDeliverySummary,
   type BuyerCommitment, type CommitmentInput,
 } from "@/lib/buyer-commitments";
 import { getSeasonBlocks } from "@/lib/storage";
@@ -49,11 +50,12 @@ export default function BuyerCommitmentsScreen() {
   const [expandedCommitmentId, setExpandedCommitmentId] = useState<string | null>(null);
   const [form, setForm] = useState<CommitmentInput>(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [sharingSummary, setSharingSummary] = useState(false);
 
   const farmId = activeFarm?.id;
   const seasonId = activeSeason?.id;
   const canManage = ["admin", "owner", "manager"].includes(role);
-  const topPadding = Platform.OS === "web" ? 58 : insets.top + 8;
+  const topPadding = Platform.OS === "web" ? 67 : insets.top + 8;
 
   const load = useCallback(async () => {
     if (!farmId) {
@@ -92,9 +94,30 @@ export default function BuyerCommitmentsScreen() {
   const cropChoices = [...new Set(seasonTemplateIds(activeSeason).map((id) => getTemplate(id).cropType))];
   const visible = commitments.filter((item) => !item.season_id || item.season_id === seasonId);
   const today = todayKey();
+  const weeklySummary = weeklyBuyerDeliverySummary(visible, sales, today, seasonId, cropOfBlock);
   const ambiguousSales = ambiguousCommitmentSales(visible, sales, today, cropOfBlock);
   const update = (field: keyof CommitmentInput, value: string) =>
     setForm((previous) => ({ ...previous, [field]: value }));
+
+  const shareWeeklySummary = async () => {
+    setSharingSummary(true);
+    try {
+      await Share.share({
+        title: `${activeFarm?.name ?? "Farm"} weekly buyer delivery summary`,
+        message: weeklyBuyerDeliveryShareText(weeklySummary, {
+          farmName: activeFarm?.name,
+          seasonName: activeSeason?.season_name,
+        }),
+      });
+    } catch (cause) {
+      Alert.alert(
+        "Could not share summary",
+        cause instanceof Error ? cause.message : "Try again.",
+      );
+    } finally {
+      setSharingSummary(false);
+    }
+  };
 
   const startEditing = (commitment: BuyerCommitment) => {
     setEditingId(commitment.id);
@@ -200,6 +223,83 @@ export default function BuyerCommitmentsScreen() {
           <Ionicons name="people-outline" size={32} color={COLORS.textMuted} />
           <Text style={styles.emptyTitle}>No commitments yet</Text>
           <Text style={styles.emptyText}>Record who agreed to buy how much each week before harvest.</Text>
+        </View>
+      ) : null}
+
+      {!loading && !error && canManage && visible.length > 0 ? (
+        <View style={styles.summaryCard} testID="weekly-buyer-delivery-summary">
+          <View style={styles.summaryHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.summaryTitle}>Weekly delivery summary</Text>
+              <Text style={styles.summaryDate}>
+                {weeklySummary.weekStart} – {weeklySummary.weekEnd}
+                {activeSeason?.season_name ? ` · ${activeSeason.season_name}` : ""}
+              </Text>
+            </View>
+            <Pressable
+              style={[styles.shareButton, (sharingSummary || weeklySummary.rows.length === 0) && styles.shareButtonDisabled]}
+              onPress={() => void shareWeeklySummary()}
+              disabled={sharingSummary || weeklySummary.rows.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Share weekly buyer delivery summary"
+              testID="share-weekly-buyer-delivery-summary"
+            >
+              {sharingSummary
+                ? <ActivityIndicator color={COLORS.primary} size="small" />
+                : <Ionicons name="share-outline" size={18} color={COLORS.primary} />}
+              <Text style={styles.shareButtonText}>Share</Text>
+            </Pressable>
+          </View>
+
+          {weeklySummary.rows.length === 0 ? (
+            <Text style={styles.noActiveCommitments}>No active commitments this week.</Text>
+          ) : (
+            <>
+              <View style={styles.summaryTotals}>
+                {[
+                  { label: "Expected", value: weeklySummary.expectedKg, tone: styles.summaryExpected },
+                  { label: "Sold", value: weeklySummary.soldKg, tone: styles.summarySold },
+                  { label: "Booked", value: weeklySummary.bookedKg, tone: styles.summaryBooked },
+                  { label: "Remaining", value: weeklySummary.remainingKg, tone: styles.summaryRemaining },
+                ].map((metric) => (
+                  <View key={metric.label} style={[styles.summaryMetric, metric.tone]}>
+                    <Text style={styles.summaryMetricLabel}>{metric.label}</Text>
+                    <Text style={styles.summaryMetricValue}>{kg(metric.value)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.summaryCommitmentList}>
+                {weeklySummary.rows.map(({ commitment, progress }) => (
+                  <View key={commitment.id} style={styles.summaryCommitment}>
+                    <Text style={styles.summaryCommitmentTitle}>{commitment.buyer_name}</Text>
+                    <Text style={styles.summaryCommitmentCrop}>{commitment.product_name}</Text>
+                    <View style={styles.summaryCommitmentMetrics}>
+                      {[
+                        { label: "Expected", value: progress.expectedKg },
+                        { label: "Sold", value: progress.soldKg },
+                        { label: "Booked", value: progress.bookedKg },
+                        { label: "Remaining", value: progress.remainingKg },
+                      ].map((metric) => (
+                        <Text key={metric.label} style={styles.summaryCommitmentMetric}>
+                          {metric.label}: {kg(metric.value)}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {weeklySummary.ambiguousSalesCount > 0 ? (
+                <View style={styles.summaryNotice}>
+                  <Ionicons name="information-circle-outline" size={16} color={COLORS.amberDark} />
+                  <Text style={styles.summaryNoticeText}>
+                    {weeklySummary.ambiguousSalesCount} sale{weeklySummary.ambiguousSalesCount === 1 ? "" : "s"} match more than one commitment. Each is counted once in the farm totals.
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          )}
         </View>
       ) : null}
 
@@ -427,6 +527,30 @@ const styles = StyleSheet.create({
   backButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.cardBg },
   title: { fontFamily: "Manrope_700Bold", fontSize: 20, color: COLORS.text },
   subtitle: { fontFamily: "Manrope_400Regular", fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  summaryCard: { backgroundColor: COLORS.ink, borderRadius: 18, padding: 16, gap: 12, marginHorizontal: 16, marginBottom: 14, ...CARD_SHADOW },
+  summaryHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  summaryTitle: { fontFamily: "Manrope_700Bold", fontSize: 16, color: COLORS.inkText },
+  summaryDate: { fontFamily: "Manrope_400Regular", fontSize: 11, lineHeight: 16, color: COLORS.inkMuted, marginTop: 3 },
+  shareButton: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 38, paddingHorizontal: 10, borderRadius: 10, backgroundColor: COLORS.white },
+  shareButtonDisabled: { opacity: 0.55 },
+  shareButtonText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.primary },
+  noActiveCommitments: { fontFamily: "Manrope_400Regular", fontSize: 13, color: COLORS.inkMuted, paddingVertical: 4 },
+  summaryTotals: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  summaryMetric: { width: "48%", minHeight: 56, justifyContent: "center", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 },
+  summaryExpected: { backgroundColor: COLORS.inkSoft },
+  summarySold: { backgroundColor: COLORS.primary },
+  summaryBooked: { backgroundColor: COLORS.amberDark },
+  summaryRemaining: { backgroundColor: COLORS.inkSoft },
+  summaryMetricLabel: { fontFamily: "Manrope_500Medium", fontSize: 10, color: COLORS.inkMuted },
+  summaryMetricValue: { fontFamily: "Manrope_700Bold", fontSize: 14, color: COLORS.inkText, marginTop: 2 },
+  summaryCommitmentList: { borderTopWidth: 1, borderTopColor: COLORS.inkLine },
+  summaryCommitment: { borderBottomWidth: 1, borderBottomColor: COLORS.inkLine, paddingVertical: 10 },
+  summaryCommitmentTitle: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.inkText },
+  summaryCommitmentCrop: { fontFamily: "Manrope_400Regular", fontSize: 11, color: COLORS.inkMuted, marginTop: 1 },
+  summaryCommitmentMetrics: { flexDirection: "row", flexWrap: "wrap", columnGap: 10, rowGap: 4, marginTop: 7 },
+  summaryCommitmentMetric: { width: "48%", fontFamily: "Manrope_500Medium", fontSize: 10, color: COLORS.inkText },
+  summaryNotice: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 9, borderRadius: 10, backgroundColor: COLORS.amberLight },
+  summaryNoticeText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 11, lineHeight: 16, color: COLORS.amberDark },
   notice: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: COLORS.redLight },
   noticeText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 13, lineHeight: 18, color: COLORS.red },
   empty: { alignItems: "center", gap: 8, marginHorizontal: 24, marginTop: 30 },

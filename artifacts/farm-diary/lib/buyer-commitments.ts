@@ -203,6 +203,112 @@ export function commitmentProgress(
   };
 }
 
+export interface WeeklyCommitmentSummaryRow {
+  commitment: BuyerCommitment;
+  progress: CommitmentProgress;
+}
+
+export interface WeeklyBuyerDeliverySummary {
+  weekStart: string;
+  weekEnd: string;
+  rows: WeeklyCommitmentSummaryRow[];
+  expectedKg: number;
+  soldKg: number;
+  bookedKg: number;
+  remainingKg: number;
+  ambiguousSalesCount: number;
+}
+
+function saleSummaryKey(sale: SaleForCommitment): string | SaleForCommitment {
+  if (sale.id) return `id:${sale.id}`;
+  if (sale.receipt_number) return `receipt:${sale.receipt_number}`;
+  return sale;
+}
+
+export function weeklyBuyerDeliverySummary(
+  commitments: readonly BuyerCommitment[],
+  sales: readonly SaleForCommitment[],
+  today: string,
+  seasonId: string | null | undefined,
+  cropOfBlock?: (blockId: string) => string | null,
+): WeeklyBuyerDeliverySummary {
+  const start = weekStart(today);
+  const end = addDays(start, 6);
+  const rows = commitments
+    .filter((commitment) =>
+      (!commitment.season_id || commitment.season_id === seasonId)
+      && (!commitment.start_date || commitment.start_date <= today)
+      && (!commitment.end_date || commitment.end_date >= today)
+    )
+    .map((commitment) => ({
+      commitment,
+      progress: commitmentProgress(commitment, sales, today, cropOfBlock),
+    }));
+
+  const salesByKey = new Map<string | SaleForCommitment, CommitmentSaleContribution>();
+  const matchesByKey = new Map<string | SaleForCommitment, number>();
+  for (const { progress } of rows) {
+    for (const contribution of progress.currentWeekSales) {
+      const key = saleSummaryKey(contribution.sale);
+      matchesByKey.set(key, (matchesByKey.get(key) ?? 0) + 1);
+      if (!salesByKey.has(key)) salesByKey.set(key, contribution);
+    }
+  }
+
+  const uniqueSales = [...salesByKey.values()];
+  const expectedKg = rows.reduce((total, row) => total + row.progress.expectedKg, 0);
+  const soldKg = uniqueSales
+    .filter((contribution) => contribution.bucket === "sold")
+    .reduce((total, contribution) => total + contribution.quantityKg, 0);
+  const bookedKg = uniqueSales
+    .filter((contribution) => contribution.bucket === "booked")
+    .reduce((total, contribution) => total + contribution.quantityKg, 0);
+
+  return {
+    weekStart: start,
+    weekEnd: end,
+    rows,
+    expectedKg,
+    soldKg,
+    bookedKg,
+    remainingKg: Math.max(0, expectedKg - soldKg - bookedKg),
+    ambiguousSalesCount: [...matchesByKey.values()].filter((count) => count > 1).length,
+  };
+}
+
+const formatSummaryKg = (value: number): string =>
+  `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+
+export function weeklyBuyerDeliveryShareText(
+  summary: WeeklyBuyerDeliverySummary,
+  context: { farmName?: string | null; seasonName?: string | null } = {},
+): string {
+  const lines = [
+    `${context.farmName?.trim() || "Farm"} · Weekly buyer delivery summary`,
+    context.seasonName?.trim() ? `Season: ${context.seasonName.trim()}` : null,
+    `Week: ${summary.weekStart} to ${summary.weekEnd}`,
+    "",
+    "Farm totals",
+    `Expected: ${formatSummaryKg(summary.expectedKg)}`,
+    `Sold: ${formatSummaryKg(summary.soldKg)}`,
+    `Booked: ${formatSummaryKg(summary.bookedKg)}`,
+    `Remaining: ${formatSummaryKg(summary.remainingKg)}`,
+    "",
+    "By commitment",
+    ...(summary.rows.length > 0
+      ? summary.rows.map(({ commitment, progress }) =>
+        `${commitment.buyer_name} · ${commitment.product_name}\n`
+          + `  Expected ${formatSummaryKg(progress.expectedKg)} · Sold ${formatSummaryKg(progress.soldKg)}`
+          + ` · Booked ${formatSummaryKg(progress.bookedKg)} · Remaining ${formatSummaryKg(progress.remainingKg)}`
+      )
+      : ["No active commitments this week."]),
+    summary.ambiguousSalesCount > 0
+      ? `Note: ${summary.ambiguousSalesCount} sale${summary.ambiguousSalesCount === 1 ? "" : "s"} matched more than one commitment and are counted once in farm totals.`
+      : null,
+  ];
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
 export function activeCommitmentsMatchingSale(
   commitments: readonly BuyerCommitment[],
   sale: Pick<SaleForCommitment, "buyer_name" | "product_name" | "block_id">,

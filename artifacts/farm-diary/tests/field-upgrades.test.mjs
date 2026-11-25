@@ -33,6 +33,8 @@ import {
   sameProduct,
   suggestedPriceInputValue,
   validateCommitment,
+  weeklyBuyerDeliveryShareText,
+  weeklyBuyerDeliverySummary,
 } from "../lib/buyer-commitments.ts";
 
 test("per-block crop assignment preserves defaults and groups mixed crops", () => {
@@ -461,4 +463,80 @@ test("buyer commitment progress moves a sale from booked to sold after approval"
   const voided = commitmentProgress(commitment, [{ ...sale, status: "voided" }], "2026-11-25");
   assert.equal(voided.bookedKg, 0);
   assert.equal(voided.soldKg, 0);
+});
+
+test("weekly buyer summaries keep season and date-window rules and count shared sales once", () => {
+  const commitment = (id, updates = {}) => ({
+    id,
+    farm_id: "f1",
+    season_id: "s1",
+    buyer_name: "Kijiji Market",
+    product_name: "Tomato",
+    weekly_kg: 100,
+    agreed_price_kes: null,
+    start_date: null,
+    end_date: null,
+    notes: null,
+    created_at: "2026-11-20",
+    ...updates,
+  });
+  const commitments = [
+    commitment("current-season", { start_date: "2026-11-24", end_date: "2026-11-28" }),
+    commitment("all-seasons", { season_id: null }),
+    commitment("future-this-week", { start_date: "2026-11-27", weekly_kg: 500 }),
+    commitment("ended-this-week", { end_date: "2026-11-24", weekly_kg: 600 }),
+    commitment("other-season", { season_id: "s2", weekly_kg: 700 }),
+  ];
+  const sales = [
+    {
+      id: "shared-sold",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomatoes",
+      quantity_kg: 25,
+      status: "recorded",
+      created_at: "2026-11-25",
+    },
+    {
+      id: "shared-booked",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomato",
+      quantity_kg: 15,
+      status: "pending_check",
+      created_at: "2026-11-29",
+    },
+    {
+      id: "outside-week",
+      buyer_name: "Kijiji Market",
+      product_name: "Tomato",
+      quantity_kg: 80,
+      status: "recorded",
+      created_at: "2026-11-30",
+    },
+  ];
+  const before = JSON.stringify({ commitments, sales });
+  const summary = weeklyBuyerDeliverySummary(commitments, sales, "2026-11-25", "s1");
+
+  assert.deepEqual(summary.rows.map(({ commitment: item }) => item.id), ["current-season", "all-seasons"]);
+  assert.deepEqual(
+    [summary.weekStart, summary.weekEnd, summary.expectedKg, summary.soldKg, summary.bookedKg, summary.remainingKg],
+    ["2026-11-23", "2026-11-29", 200, 25, 15, 160],
+  );
+  assert.equal(summary.ambiguousSalesCount, 2);
+  assert.deepEqual(
+    summary.rows.map(({ progress }) => [progress.soldKg, progress.bookedKg, progress.remainingKg]),
+    [[25, 15, 60], [25, 15, 60]],
+  );
+
+  const sharedText = weeklyBuyerDeliveryShareText(summary, {
+    farmName: "Green Valley",
+    seasonName: "Short rains",
+  });
+  assert.match(sharedText, /Green Valley · Weekly buyer delivery summary/);
+  assert.match(sharedText, /Season: Short rains/);
+  assert.match(sharedText, /Expected: 200 kg/);
+  assert.match(sharedText, /Sold: 25 kg/);
+  assert.match(sharedText, /Booked: 15 kg/);
+  assert.match(sharedText, /Remaining: 160 kg/);
+  assert.match(sharedText, /counted once in farm totals/);
+  assert.equal(JSON.stringify({ commitments, sales }), before);
 });
