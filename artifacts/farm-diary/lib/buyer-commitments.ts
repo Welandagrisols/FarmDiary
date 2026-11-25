@@ -37,6 +37,24 @@ const stem = (text: string): string => norm(text).split(" ").map(singular).join(
 export const sameBuyer = (a: string, b: string): boolean => norm(a) !== "" && norm(a) === norm(b);
 export const sameProduct = (a: string, b: string): boolean => stem(a) !== "" && stem(a) === stem(b);
 
+export function matchCommitmentBuyerCrop(
+  commitment: Pick<BuyerCommitment, "buyer_name" | "product_name">,
+  sale: Pick<SaleForCommitment, "buyer_name" | "product_name" | "block_id">,
+  cropOfBlock?: (blockId: string) => string | null,
+): { matches: boolean; matchedViaBlockCrop: string | null } {
+  if (!sameBuyer(commitment.buyer_name, sale.buyer_name)) {
+    return { matches: false, matchedViaBlockCrop: null };
+  }
+  if (sameProduct(commitment.product_name, sale.product_name)) {
+    return { matches: true, matchedViaBlockCrop: null };
+  }
+  const blockCrop = cropOfBlock && sale.block_id ? cropOfBlock(sale.block_id) : null;
+  if (blockCrop && sameProduct(commitment.product_name, blockCrop)) {
+    return { matches: true, matchedViaBlockCrop: blockCrop };
+  }
+  return { matches: false, matchedViaBlockCrop: null };
+}
+
 const pad = (value: number): string => String(value).padStart(2, "0");
 
 export function dateKey(value: string): string {
@@ -99,10 +117,9 @@ function salesForPeriod(
   const matches: CommitmentSaleContribution[] = [];
   for (const sale of sales) {
     const bucket = saleBucket(sale.status);
-    if (!bucket || !sameBuyer(commitment.buyer_name, sale.buyer_name)) continue;
-    const blockCrop = cropOfBlock && sale.block_id ? cropOfBlock(sale.block_id) : null;
-    const matchesProductName = sameProduct(commitment.product_name, sale.product_name);
-    if (!matchesProductName && !(blockCrop && sameProduct(commitment.product_name, blockCrop))) continue;
+    if (!bucket) continue;
+    const identityMatch = matchCommitmentBuyerCrop(commitment, sale, cropOfBlock);
+    if (!identityMatch.matches) continue;
     const date = dateKey(sale.created_at);
     const quantityKg = Number(sale.quantity_kg);
     if (!date || date < from || date > through || !Number.isFinite(quantityKg) || quantityKg <= 0) continue;
@@ -111,7 +128,7 @@ function salesForPeriod(
       date,
       bucket,
       quantityKg,
-      matchedViaBlockCrop: matchesProductName ? null : blockCrop,
+      matchedViaBlockCrop: identityMatch.matchedViaBlockCrop,
     });
   }
   return matches;
@@ -184,6 +201,57 @@ export function commitmentProgress(
     currentWeekSales,
     status,
   };
+}
+
+export function activeCommitmentsMatchingSale(
+  commitments: readonly BuyerCommitment[],
+  sale: Pick<SaleForCommitment, "buyer_name" | "product_name" | "block_id">,
+  today: string,
+  seasonId: string | null | undefined,
+  cropOfBlock?: (blockId: string) => string | null,
+): BuyerCommitment[] {
+  return commitments.filter((commitment) =>
+    (!commitment.season_id || commitment.season_id === seasonId)
+    && (!commitment.start_date || today >= commitment.start_date)
+    && (!commitment.end_date || today <= commitment.end_date)
+    && matchCommitmentBuyerCrop(commitment, sale, cropOfBlock).matches
+  );
+}
+
+export interface CommitmentSaleSuggestion {
+  kind: "none" | "ambiguous" | "single";
+  matches: BuyerCommitment[];
+  progress: CommitmentProgress | null;
+}
+
+export function commitmentSuggestionForSale(
+  commitments: readonly BuyerCommitment[],
+  sales: readonly SaleForCommitment[],
+  sale: Pick<SaleForCommitment, "buyer_name" | "product_name" | "block_id">,
+  today: string,
+  seasonId: string | null | undefined,
+  cropOfBlock?: (blockId: string) => string | null,
+): CommitmentSaleSuggestion {
+  const matches = activeCommitmentsMatchingSale(
+    commitments,
+    sale,
+    today,
+    seasonId,
+    cropOfBlock,
+  );
+  if (matches.length === 0) return { kind: "none", matches, progress: null };
+  if (matches.length > 1) return { kind: "ambiguous", matches, progress: null };
+  return {
+    kind: "single",
+    matches,
+    progress: commitmentProgress(matches[0], sales, today, cropOfBlock),
+  };
+}
+
+export function suggestedPriceInputValue(currentPrice: string, agreedPrice: number | null): string | null {
+  if (currentPrice.trim() || agreedPrice == null) return null;
+  const price = Number(agreedPrice);
+  return Number.isFinite(price) && price >= 0 ? String(price) : null;
 }
 
 export interface CommitmentInput {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLOSED_SEASON_MESSAGE } from "@/lib/season-rules";
 import {
   ActivityIndicator,
@@ -20,6 +20,13 @@ import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { formatKES, getSeasonBlockName, getSeasonBlocks } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
+import { listCommitments } from "@/lib/commitment-storage";
+import {
+  commitmentSuggestionForSale,
+  suggestedPriceInputValue,
+  type BuyerCommitment,
+} from "@/lib/buyer-commitments";
+import { blockCropTemplate } from "@/lib/season-crops";
 import {
   approveSaleDiscount,
   approveSaleVoid,
@@ -66,6 +73,7 @@ const localDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 const todayKey = () => localDateKey(new Date());
+const formatKg = (value: number) => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
 
 function roleLabel(role: FarmRole) {
   return role === "none" ? "No access" : role === "admin" ? "Admin" : role[0].toUpperCase() + role.slice(1);
@@ -87,6 +95,10 @@ export default function SalesScreen() {
   const [role, setRole] = useState<FarmRole>("none");
   const [currentUserId, setCurrentUserId] = useState("");
   const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [commitments, setCommitments] = useState<BuyerCommitment[]>([]);
+  const [commitmentsLoading, setCommitmentsLoading] = useState(false);
+  const [commitmentsLookupFailed, setCommitmentsLookupFailed] = useState(false);
+  const commitmentLoadRequest = useRef(0);
   const [losses, setLosses] = useState<StockLossRecord[]>([]);
   const [counts, setCounts] = useState<StockCountRecord[]>([]);
   const [issues, setIssues] = useState<StockIssueRecord[]>([]);
@@ -101,6 +113,7 @@ export default function SalesScreen() {
   const [buyerName, setBuyerName] = useState("");
   const [quantityKg, setQuantityKg] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
+  const [unitPriceSource, setUnitPriceSource] = useState<"empty" | "manual" | "commitment">("empty");
   const [discount, setDiscount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mpesa");
   const [paymentReference, setPaymentReference] = useState("");
@@ -113,9 +126,17 @@ export default function SalesScreen() {
   const [issuePurpose, setIssuePurpose] = useState("");
 
   const topPadding = Platform.OS === "web" ? 58 : insets.top + 8;
+  const today = todayKey();
   const seasonId = activeSeason?.id;
-  const seasonBlocks = getSeasonBlocks(activeSeason);
+  const saleContextKey = `${activeFarm?.id ?? ""}:${seasonId ?? ""}`;
+  const previousSaleContextKey = useRef(saleContextKey);
+  const seasonBlocks = useMemo(() => getSeasonBlocks(activeSeason), [activeSeason]);
   const productName = activeFarm?.crop_type || "Farm produce";
+  const resolvedSaleBlockId = saleBlockId ?? (seasonBlocks.length === 1 ? seasonBlocks[0].id : null);
+  const cropOfBlock = useCallback((blockId: string) => {
+    const block = seasonBlocks.find((item) => item.id === blockId);
+    return activeSeason && block ? blockCropTemplate(activeSeason, block).cropType : null;
+  }, [activeSeason, seasonBlocks]);
   const canViewStock = ["admin", "owner", "manager", "storekeeper"].includes(role);
   const canReviewSales = ["admin", "owner", "manager"].includes(role);
   const canApproveVoids = role === "admin" || role === "owner";
@@ -125,11 +146,46 @@ export default function SalesScreen() {
     setTab(role === "storekeeper" ? "stock" : "entry");
   }, [role]);
 
+  useEffect(() => {
+    if (previousSaleContextKey.current === saleContextKey) return;
+    previousSaleContextKey.current = saleContextKey;
+    if (unitPriceSource === "commitment") {
+      setUnitPrice("");
+      setUnitPriceSource("empty");
+    }
+  }, [saleContextKey, unitPriceSource]);
+
+  useEffect(() => () => {
+    commitmentLoadRequest.current += 1;
+  }, []);
+
   const load = useCallback(async () => {
+    const requestId = ++commitmentLoadRequest.current;
     if (!activeFarm?.id || !seasonId) {
+      setCommitments([]);
+      setCommitmentsLoading(false);
+      setCommitmentsLookupFailed(false);
+      setSales([]);
       setLoading(false);
       return;
     }
+    setCommitments([]);
+    setCommitmentsLoading(true);
+    setCommitmentsLookupFailed(false);
+    void listCommitments(activeFarm.id)
+      .then((rows) => {
+        if (commitmentLoadRequest.current === requestId) setCommitments(rows);
+      })
+      .catch((error) => {
+        console.warn("[sales] Buyer commitment suggestions unavailable:", error);
+        if (commitmentLoadRequest.current === requestId) {
+          setCommitments([]);
+          setCommitmentsLookupFailed(true);
+        }
+      })
+      .finally(() => {
+        if (commitmentLoadRequest.current === requestId) setCommitmentsLoading(false);
+      });
     try {
       const [{ data: { user } }, farmRole] = await Promise.all([
         supabase.auth.getUser(),
@@ -187,6 +243,63 @@ export default function SalesScreen() {
       .slice(0, 4);
   }, [sales]);
   const isWalkInBuyer = buyerName.trim().toLocaleLowerCase() === WALK_IN_BUYER.toLocaleLowerCase();
+  const commitmentSuggestion = useMemo(() => {
+    if (!buyerName.trim() || isWalkInBuyer || !seasonId || commitmentsLoading || commitmentsLookupFailed) {
+      return null;
+    }
+    return commitmentSuggestionForSale(
+      commitments,
+      sales,
+      {
+        buyer_name: buyerName,
+        product_name: productName,
+        block_id: resolvedSaleBlockId,
+      },
+      today,
+      seasonId,
+      cropOfBlock,
+    );
+  }, [
+    buyerName,
+    commitments,
+    commitmentsLoading,
+    commitmentsLookupFailed,
+    cropOfBlock,
+    isWalkInBuyer,
+    productName,
+    resolvedSaleBlockId,
+    sales,
+    seasonId,
+    today,
+  ]);
+  const handleBuyerNameChange = (value: string) => {
+    if (unitPriceSource === "commitment") {
+      setUnitPrice("");
+      setUnitPriceSource("empty");
+    }
+    setBuyerName(value);
+  };
+  const handleSaleBlockChange = (blockId: string | null) => {
+    if (unitPriceSource === "commitment") {
+      setUnitPrice("");
+      setUnitPriceSource("empty");
+    }
+    setSaleBlockId(blockId);
+  };
+  const handleUnitPriceChange = (value: string) => {
+    setUnitPrice(value);
+    setUnitPriceSource(value.trim() ? "manual" : "empty");
+  };
+  const handleUseAgreedPrice = () => {
+    const commitment = commitmentSuggestion?.kind === "single"
+      ? commitmentSuggestion.matches[0]
+      : null;
+    if (!commitment) return;
+    const value = suggestedPriceInputValue(unitPrice, commitment.agreed_price_kes);
+    if (value === null) return;
+    setUnitPrice(value);
+    setUnitPriceSource("commitment");
+  };
   const orderedSales = useMemo(
     () => [...sales].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [sales],
@@ -257,7 +370,7 @@ export default function SalesScreen() {
       const sale = await createSale({
         farmId: activeFarm.id,
         seasonId,
-        blockId: saleBlockId || (seasonBlocks.length === 1 ? seasonBlocks[0].id : null),
+        blockId: resolvedSaleBlockId,
         productName,
         buyerName,
         quantityKg: qty,
@@ -269,6 +382,7 @@ export default function SalesScreen() {
       setBuyerName("");
       setQuantityKg("");
       setUnitPrice("");
+      setUnitPriceSource("empty");
       setDiscount("");
       setShowDiscountDetails(false);
       setPaymentReference("");
@@ -483,7 +597,7 @@ export default function SalesScreen() {
                   <View style={styles.chipRow}>
                     <Pressable
                       style={[styles.chip, saleBlockId === null && styles.chipActive]}
-                      onPress={() => setSaleBlockId(null)}
+                      onPress={() => handleSaleBlockChange(null)}
                     >
                       <Text style={[styles.chipText, saleBlockId === null && styles.chipTextActive]}>All blocks</Text>
                     </Pressable>
@@ -491,7 +605,7 @@ export default function SalesScreen() {
                       <Pressable
                         key={block.id}
                         style={[styles.chip, saleBlockId === block.id && styles.chipActive]}
-                        onPress={() => setSaleBlockId(block.id)}
+                        onPress={() => handleSaleBlockChange(block.id)}
                       >
                         <Text style={[styles.chipText, saleBlockId === block.id && styles.chipTextActive]}>{block.name}</Text>
                       </Pressable>
@@ -504,7 +618,7 @@ export default function SalesScreen() {
                 <View style={styles.chipRow}>
                   <Pressable
                     style={[styles.chip, isWalkInBuyer && styles.chipActive]}
-                    onPress={() => setBuyerName(WALK_IN_BUYER)}
+                    onPress={() => handleBuyerNameChange(WALK_IN_BUYER)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isWalkInBuyer }}
                     testID="sale-walk-in-buyer"
@@ -517,7 +631,7 @@ export default function SalesScreen() {
                       <Pressable
                         key={buyer}
                         style={[styles.chip, selected && styles.chipActive]}
-                        onPress={() => setBuyerName(buyer)}
+                        onPress={() => handleBuyerNameChange(buyer)}
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
                       >
@@ -531,7 +645,7 @@ export default function SalesScreen() {
                 <View style={styles.walkInSelected}>
                   <Text style={styles.walkInSelectedText}>Walk-in buyer selected</Text>
                   <Pressable
-                    onPress={() => setBuyerName("")}
+                    onPress={() => handleBuyerNameChange("")}
                     accessibilityRole="button"
                     testID="sale-change-buyer"
                   >
@@ -542,7 +656,7 @@ export default function SalesScreen() {
                 <TextInput
                   style={styles.input}
                   value={buyerName}
-                  onChangeText={setBuyerName}
+                  onChangeText={handleBuyerNameChange}
                   placeholder="Buyer name"
                   placeholderTextColor={COLORS.textMuted}
                   accessibilityLabel="Buyer name"
@@ -556,9 +670,71 @@ export default function SalesScreen() {
                 </View>
                 <View style={styles.flexField}>
                   <Text style={styles.fieldLabel}>Price per kg (KES)</Text>
-                  <TextInput style={styles.input} value={unitPrice} onChangeText={setUnitPrice} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                  <TextInput style={styles.input} value={unitPrice} onChangeText={handleUnitPriceChange} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={COLORS.textMuted} />
                 </View>
               </View>
+              {buyerName.trim() && !isWalkInBuyer ? (
+                commitmentsLoading ? (
+                  <View style={styles.commitmentNotice}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                    <Text style={styles.commitmentNoticeText}>Checking for an active buyer commitment…</Text>
+                  </View>
+                ) : commitmentsLookupFailed ? (
+                  <View style={styles.commitmentNotice}>
+                    <Ionicons name="information-circle-outline" size={17} color={COLORS.textSecondary} />
+                    <Text style={styles.commitmentNoticeText}>Commitment details are unavailable. You can still record the sale normally.</Text>
+                  </View>
+                ) : commitmentSuggestion?.kind === "ambiguous" ? (
+                  <View style={[styles.commitmentNotice, styles.commitmentNoticeWarning]}>
+                    <Ionicons name="alert-circle-outline" size={17} color={COLORS.amberDark} />
+                    <Text style={[styles.commitmentNoticeText, styles.commitmentNoticeWarningText]}>
+                      {commitmentSuggestion.matches.length} active commitments match this buyer and crop. No price or volume suggestion is shown.
+                    </Text>
+                  </View>
+                ) : commitmentSuggestion?.kind === "none" ? (
+                  <View style={styles.commitmentNotice}>
+                    <Ionicons name="information-circle-outline" size={17} color={COLORS.textSecondary} />
+                    <Text style={styles.commitmentNoticeText}>No active commitment matches this buyer and crop.</Text>
+                  </View>
+                ) : commitmentSuggestion?.kind === "single" && commitmentSuggestion.progress ? (
+                  <View style={styles.commitmentSuggestion}>
+                    <View style={styles.commitmentSuggestionHeader}>
+                      <Ionicons name="pricetag-outline" size={17} color={COLORS.primary} />
+                      <Text style={styles.commitmentSuggestionTitle}>Active buyer commitment</Text>
+                    </View>
+                    <View style={styles.commitmentSuggestionVolume}>
+                      <Text style={styles.commitmentSuggestionLabel}>Remaining this week</Text>
+                      <Text style={styles.commitmentSuggestionValue}>
+                        {formatKg(commitmentSuggestion.progress.remainingKg)}
+                      </Text>
+                    </View>
+                    {commitmentSuggestion.matches[0].agreed_price_kes != null ? (
+                      <View style={styles.commitmentSuggestionPrice}>
+                        <Text style={styles.commitmentSuggestionText}>
+                          Agreed price: {formatKES(commitmentSuggestion.matches[0].agreed_price_kes)}/kg
+                        </Text>
+                        {unitPrice.trim() === "" ? (
+                          <Pressable
+                            style={styles.useAgreedPriceButton}
+                            onPress={handleUseAgreedPrice}
+                            accessibilityRole="button"
+                            testID="sale-use-commitment-price"
+                          >
+                            <Text style={styles.useAgreedPriceText}>Use agreed price</Text>
+                          </Pressable>
+                        ) : (
+                          <Text style={styles.commitmentSuggestionNote}>Your entered price is unchanged.</Text>
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={styles.commitmentSuggestionNote}>No agreed price is saved. Enter the sale price normally.</Text>
+                    )}
+                    <Text style={styles.commitmentSuggestionNote}>
+                      This is a guide only; the weekly target does not limit this sale.
+                    </Text>
+                  </View>
+                ) : null
+              ) : null}
               {showDiscountDetails ? (
                 <>
                   <View style={styles.row}>
@@ -902,6 +1078,21 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: "row", gap: 3, marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.cardBg, borderRadius: 11, padding: 4 },
   commitmentsLink: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.primarySurface },
   commitmentsLinkText: { flex: 1, fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
+  commitmentNotice: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 12, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.borderLight },
+  commitmentNoticeWarning: { backgroundColor: COLORS.amberLight, borderColor: COLORS.amberLight },
+  commitmentNoticeText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 12, lineHeight: 17, color: COLORS.textSecondary },
+  commitmentNoticeWarningText: { color: COLORS.amberDark },
+  commitmentSuggestion: { padding: 12, borderRadius: 14, backgroundColor: COLORS.primarySurface, borderWidth: 1, borderColor: COLORS.borderLight, gap: 8 },
+  commitmentSuggestionHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  commitmentSuggestionTitle: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.text },
+  commitmentSuggestionVolume: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  commitmentSuggestionLabel: { fontFamily: "Manrope_500Medium", fontSize: 12, color: COLORS.textSecondary },
+  commitmentSuggestionValue: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.text },
+  commitmentSuggestionPrice: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
+  commitmentSuggestionText: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.text },
+  commitmentSuggestionNote: { fontFamily: "Manrope_400Regular", fontSize: 11, lineHeight: 15, color: COLORS.textSecondary },
+  useAgreedPriceButton: { minHeight: 36, justifyContent: "center", paddingHorizontal: 10, borderRadius: 9, backgroundColor: COLORS.primary },
+  useAgreedPriceText: { fontFamily: "Manrope_700Bold", fontSize: 11, color: COLORS.white },
   tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 8, paddingHorizontal: 4 },
   tabActive: {
     backgroundColor: COLORS.ink,

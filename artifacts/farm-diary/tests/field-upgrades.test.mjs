@@ -25,10 +25,13 @@ import {
 } from "../lib/irrigation.ts";
 import { buildSoilGuard, applySoilGuardToRows, soilNoticesForProducts } from "../lib/soil-guard.ts";
 import {
+  activeCommitmentsMatchingSale,
   ambiguousCommitmentSales,
   commitmentProgress,
+  commitmentSuggestionForSale,
   sameBuyer,
   sameProduct,
+  suggestedPriceInputValue,
   validateCommitment,
 } from "../lib/buyer-commitments.ts";
 
@@ -327,6 +330,100 @@ test("overlapping commitments flag each shared current-week sale", () => {
   assert.equal(ambiguous.has({ ...sharedSale }), false);
 });
 
+test("sale suggestions require one active commitment for the selected season and crop", () => {
+  const commitment = (id, updates = {}) => ({
+    id,
+    farm_id: "f1",
+    season_id: "s1",
+    buyer_name: "Kijiji Market",
+    product_name: "Tomato",
+    weekly_kg: 100,
+    agreed_price_kes: 48,
+    start_date: "2026-11-23",
+    end_date: "2026-11-29",
+    notes: null,
+    created_at: "2026-11-20",
+    ...updates,
+  });
+  const saleIdentity = {
+    buyer_name: " kijiji-market ",
+    product_name: "Produce",
+    block_id: "north",
+  };
+  const cropOfBlock = (blockId) => blockId === "north" ? "Tomatoes" : null;
+  const active = commitment("active");
+  const commitments = [
+    active,
+    commitment("wrong-season", { season_id: "s2" }),
+    commitment("starts-later", { start_date: "2026-11-26" }),
+    commitment("already-ended", { end_date: "2026-11-24" }),
+  ];
+  const sales = [{
+    id: "booked",
+    buyer_name: "Kijiji Market",
+    product_name: "Tomato",
+    quantity_kg: 30,
+    status: "pending_check",
+    created_at: "2026-11-24",
+  }];
+
+  assert.deepEqual(
+    activeCommitmentsMatchingSale(commitments, saleIdentity, "2026-11-25", "s1", cropOfBlock).map((item) => item.id),
+    ["active"],
+  );
+  const suggestion = commitmentSuggestionForSale(
+    commitments,
+    sales,
+    saleIdentity,
+    "2026-11-25",
+    "s1",
+    cropOfBlock,
+  );
+  assert.equal(suggestion.kind, "single");
+  assert.equal(suggestion.progress?.bookedKg, 30);
+  assert.equal(suggestion.progress?.remainingKg, 70);
+  assert.equal(suggestion.matches[0].agreed_price_kes, 48);
+
+  const noPriceSuggestion = commitmentSuggestionForSale(
+    [commitment("no-price", { agreed_price_kes: null })],
+    sales,
+    saleIdentity,
+    "2026-11-25",
+    "s1",
+    cropOfBlock,
+  );
+  assert.equal(noPriceSuggestion.kind, "single");
+  assert.equal(noPriceSuggestion.matches[0].agreed_price_kes, null);
+
+  const ambiguous = commitmentSuggestionForSale(
+    [active, commitment("second-active", { season_id: null })],
+    sales,
+    saleIdentity,
+    "2026-11-25",
+    "s1",
+    cropOfBlock,
+  );
+  assert.equal(ambiguous.kind, "ambiguous");
+  assert.equal(ambiguous.progress, null);
+
+  const missing = commitmentSuggestionForSale(
+    [],
+    sales,
+    saleIdentity,
+    "2026-11-25",
+    "s1",
+    cropOfBlock,
+  );
+  assert.equal(missing.kind, "none");
+  assert.equal(missing.progress, null);
+});
+
+test("commitment price is only applied to an empty price field", () => {
+  assert.equal(suggestedPriceInputValue("", 48), "48");
+  assert.equal(suggestedPriceInputValue("51.5", 48), null);
+  assert.equal(suggestedPriceInputValue("", null), null);
+});
+
 test("buyer commitment progress moves a sale from booked to sold after approval", () => {
   const commitment = {
     id: "c2",
@@ -352,10 +449,14 @@ test("buyer commitment progress moves a sale from booked to sold after approval"
   const booked = commitmentProgress(commitment, [sale], "2026-11-25");
   assert.equal(booked.bookedKg, 40);
   assert.equal(booked.soldKg, 0);
+  assert.equal(booked.currentWeekSales[0].bucket, "booked");
+  assert.equal(booked.remainingKg, 60);
 
   const approved = commitmentProgress(commitment, [{ ...sale, status: "recorded" }], "2026-11-25");
   assert.equal(approved.bookedKg, 0);
   assert.equal(approved.soldKg, 40);
+  assert.equal(approved.currentWeekSales[0].bucket, "sold");
+  assert.equal(approved.remainingKg, 60);
 
   const voided = commitmentProgress(commitment, [{ ...sale, status: "voided" }], "2026-11-25");
   assert.equal(voided.bookedKg, 0);
