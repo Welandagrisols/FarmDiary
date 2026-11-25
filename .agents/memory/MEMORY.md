@@ -1,1 +1,3 @@
 - [Future farm enterprises](farm-enterprise-scope.md) — Keep core operations crop-ready but extensible to later livestock and poultry support.
+- [GitHub sync safety](github-sync-safety.md) — Keep local history and mobile app identity when adopting upstream changes.
+- [Farm Diary API runtime](farm-diary-api-runtime.md) — Run the API on Node 22 because the Supabase client expects native WebSocket.
