@@ -51,12 +51,22 @@ import { useAuth } from "@/context/AuthContext";
 import { recordsForFarm } from "@/lib/farm-scope";
 import { applyPendingMutations } from "@/lib/offline-mutations";
 import { getQueue, writeCache } from "@/lib/offline-storage";
+import { getFarmRole } from "@/lib/sales-storage";
+import {
+  assertCanManageLabourCosts,
+  hasLabourCostAmount,
+  hasLabourCostFields,
+} from "@/lib/labour-access";
 
 const ACTIVE_FARM_KEY = "farm_active_farm_id";
 const ACTIVE_SEASON_KEY = "farm_active_season_id";
 const LEGACY_CACHE_KEY = "farm_offline_cache_v1";
 
 type InventoryUse = { name: string; qty: number };
+async function assertFarmLabourCostManager(farmId: string): Promise<void> {
+  assertCanManageLabourCosts(await getFarmRole(farmId));
+}
+
 type FarmDataSnapshot = {
   allFarms: Awaited<ReturnType<typeof getFarms>>;
   farm: Awaited<ReturnType<typeof getActiveFarmRecord>>;
@@ -394,20 +404,27 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
 
   const addCostEntry = useCallback(async (cost: Omit<Parameters<typeof addCost>[0], never>) => {
     assertSeasonOpen(seasons, cost.season_id);
+    if (hasLabourCostFields(cost)) await assertFarmLabourCostManager(cost.farm_id);
     const newRecord = await addCost(cost);
     setCosts((prev) => [...prev, newRecord]);
     return newRecord;
   }, [seasons]);
   const removeCost = useCallback(async (id: string) => {
+    const existing = costs.find((cost) => cost.id === id);
+    if (existing && hasLabourCostFields(existing)) await assertFarmLabourCostManager(existing.farm_id);
     assertSeasonOpen(seasons, costs.find((c) => c.id === id)?.season_id);
     await deleteCost(id);
     setCosts((prev) => prev.filter((c) => c.id !== id));
   }, [seasons, costs]);
   const editCostEntry = useCallback(async (id: string, updates: Partial<CostEntry>) => {
+    const existing = costs.find((cost) => cost.id === id);
+    if ((existing && hasLabourCostFields(existing)) || hasLabourCostFields(updates)) {
+      await assertFarmLabourCostManager(existing?.farm_id ?? updates.farm_id ?? farmId);
+    }
     assertSeasonOpen(seasons, costs.find((c) => c.id === id)?.season_id);
     await updateCost(id, updates);
     setCosts((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-  }, [seasons, costs]);
+  }, [seasons, costs, farmId]);
   const adjustInventoryUse = useCallback(async (scope: { farm_id: string; season_id: string }, deltas: Record<string, number>) => {
     for (const [name, delta] of Object.entries(deltas)) {
       const item = inventory.find((candidate) =>
@@ -434,6 +451,9 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
     inventoryUpdates: InventoryUse[] = [],
   ) => {
     assertSeasonOpen(seasons, entry.season_id);
+    if (hasLabourCostAmount(entry.labor_cost_kes)) {
+      await assertFarmLabourCostManager(entry.farm_id);
+    }
     const newRecord = await addActivityLog(entry);
     setActivityLogs((prev) => [...prev, newRecord]);
     const totalsByProduct = new Map<string, number>();
@@ -491,10 +511,14 @@ export function FarmProvider({ children }: { children: React.ReactNode }) {
   const reopenActiveSeason = useCallback(async () => { if (!activeSeason) return; const updated = await reopenSeason(activeSeason.id); setSeasons((prev) => prev.map((s) => s.id === updated.id ? updated : s)); setActiveSeason(updated); }, [activeSeason]);
   const updateActiveSeason = useCallback(async (updates: Partial<SeasonRecord>) => { if (!activeSeason) return; const updated = await updateSeason(activeSeason.id, updates); setSeasons((prev) => prev.map((s) => s.id === updated.id ? updated : s)); setActiveSeason(updated); }, [activeSeason]);
   const editActivityLog = useCallback(async (id: string, updates: Partial<ActivityLog>) => {
+    if (Object.prototype.hasOwnProperty.call(updates, "labor_cost_kes")) {
+      const farmIdForLog = activityLogs.find((log) => log.id === id)?.farm_id ?? farmId;
+      await assertFarmLabourCostManager(farmIdForLog);
+    }
     assertSeasonOpen(seasons, activityLogs.find((l) => l.id === id)?.season_id);
     const updated = await updateActivityLog(id, updates);
     setActivityLogs((prev) => prev.map((l) => l.id === updated.id ? updated : l));
-  }, [seasons, activityLogs]);
+  }, [seasons, activityLogs, farmId]);
   const createFarm = useCallback(async (farm: Omit<FarmRecord, "id" | "created_at">) => {
     const newFarm = await addFarmRecord(farm);
     setFarms((prev) => prev.some((existing) => existing.id === newFarm.id) ? prev : [...prev, newFarm]);

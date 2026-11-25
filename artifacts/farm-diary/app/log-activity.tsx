@@ -29,6 +29,7 @@ import { composeNotes, emptyIrrigation, hasIrrigationDetails, irrigationLine, va
 import type { IrrigationInput } from "@/lib/irrigation";
 import { getFarmWorkers } from "@/lib/supabase-storage";
 import { getFarmRole, type FarmRole } from "@/lib/sales-storage";
+import { canManageLabourCosts as roleCanManageLabourCosts } from "@/lib/labour-access";
 import * as Haptics from "expo-haptics";
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Light Rain", "Heavy Rain"];
@@ -202,7 +203,7 @@ export default function LogActivityScreen() {
     : operationCategory === "other"
       ? customActivityName
       : selectedOperation?.label ?? customActivityName;
-  const canManageLabourCosts = ["admin", "owner", "manager"].includes(farmRole);
+  const canManageLabourCostEntries = roleCanManageLabourCosts(farmRole);
   const showQuickProducts = operationCategory === "pest_disease_control" || showQuickMaterials || products.length > 0;
 
   const calculatedLaborCost = Math.round(
@@ -212,9 +213,11 @@ export default function LogActivityScreen() {
       ? (parseFloat(acresWorked) || 0) * (parseFloat(ratePerAcre) || 0)
       : (parseFloat(numPumps) || 0) * (parseFloat(ratePerPump) || 0)
   );
-  const laborCost = totalLaborCostInput.trim()
-    ? Math.max(0, Number(totalLaborCostInput) || 0)
-    : calculatedLaborCost;
+  const laborCost = canManageLabourCostEntries
+    ? totalLaborCostInput.trim()
+      ? Math.max(0, Number(totalLaborCostInput) || 0)
+      : calculatedLaborCost
+    : 0;
   const measuredQuantity = workQuantity.trim()
     ? Number(workQuantity)
     : laborMode === "per_acre"
@@ -1606,65 +1609,73 @@ export default function LogActivityScreen() {
               </View>
             </View>
             <Text style={styles.fieldHint}>
-              Record area, weight, rows, or another suitable measure. Per-acre and per-pump pay amounts can be used as the work quantity.
+              Record area, weight, rows, or another suitable measure.
             </Text>
 
-            <Text style={styles.fieldLabel}>How is labor paid?</Text>
-            <View style={styles.laborModeRow}>
-              {([
-                { key: "per_day", label: "Per Day" },
-                { key: "per_acre", label: "Per Acre" },
-                { key: "per_pump", label: "Per Pump" },
-              ] as const).map(({ key, label }) => (
-                <Pressable
-                  key={key}
-                  style={[styles.laborModeChip, laborMode === key && styles.laborModeChipActive]}
-                  onPress={() => { setLaborMode(key); Haptics.selectionAsync(); }}
-                >
-                  <Text style={[styles.laborModeChipText, laborMode === key && styles.laborModeChipTextActive]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {laborMode === "per_day" && (
+            {canManageLabourCostEntries ? (
               <>
-                <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
-                <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
-                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>{totalWorkerCount} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
-              </>
-            )}
+                <Text style={styles.fieldLabel}>How is labor paid?</Text>
+                <View style={styles.laborModeRow}>
+                  {([
+                    { key: "per_day", label: "Per Day" },
+                    { key: "per_acre", label: "Per Acre" },
+                    { key: "per_pump", label: "Per Pump" },
+                  ] as const).map(({ key, label }) => (
+                    <Pressable
+                      key={key}
+                      style={[styles.laborModeChip, laborMode === key && styles.laborModeChipActive]}
+                      onPress={() => { setLaborMode(key); Haptics.selectionAsync(); }}
+                    >
+                      <Text style={[styles.laborModeChipText, laborMode === key && styles.laborModeChipTextActive]}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
 
-            {laborMode === "per_acre" && (
-              <>
-                <Text style={styles.fieldLabel}>Acres Worked</Text>
-                <TextInput style={styles.input} value={acresWorked} onChangeText={setAcresWorked}
-                  keyboardType="decimal-pad" placeholder="1.4" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>E.g. 1.4 acres (decimals allowed)</Text>
-                <Text style={styles.fieldLabel}>Rate per Acre (KES)</Text>
-                <TextInput style={styles.input} value={ratePerAcre} onChangeText={setRatePerAcre}
-                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>{acresWorked} acres × KES {ratePerAcre}/acre</Text>
-              </>
-            )}
+                {laborMode === "per_day" && (
+                  <>
+                    <Text style={styles.fieldLabel}>Daily Rate per Worker (KES)</Text>
+                    <TextInput style={styles.input} value={dailyRate} onChangeText={setDailyRate}
+                      keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                    <Text style={styles.fieldHint}>{totalWorkerCount} workers × KES {dailyRate}/day × {daysWorked} day(s)</Text>
+                  </>
+                )}
 
-            {laborMode === "per_pump" && (
-              <>
-                <Text style={styles.fieldLabel}>Total Number of Pumps</Text>
-                <TextInput style={styles.input} value={numPumps} onChangeText={setNumPumps}
-                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>Total pumps across the section(s) worked</Text>
-                <Text style={styles.fieldLabel}>Rate per Pump (KES)</Text>
-                <TextInput style={styles.input} value={ratePerPump} onChangeText={setRatePerPump}
-                  keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
-                <Text style={styles.fieldHint}>{numPumps} pumps × KES {ratePerPump}/pump</Text>
-              </>
-            )}
+                {laborMode === "per_acre" && (
+                  <>
+                    <Text style={styles.fieldLabel}>Acres Worked</Text>
+                    <TextInput style={styles.input} value={acresWorked} onChangeText={setAcresWorked}
+                      keyboardType="decimal-pad" placeholder="1.4" placeholderTextColor={COLORS.textMuted} />
+                    <Text style={styles.fieldHint}>E.g. 1.4 acres (decimals allowed)</Text>
+                    <Text style={styles.fieldLabel}>Rate per Acre (KES)</Text>
+                    <TextInput style={styles.input} value={ratePerAcre} onChangeText={setRatePerAcre}
+                      keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                    <Text style={styles.fieldHint}>{acresWorked} acres × KES {ratePerAcre}/acre</Text>
+                  </>
+                )}
 
-            <View style={styles.laborTotal}>
-              <Text style={styles.laborTotalLabel}>Total Labor Cost</Text>
-              <Text style={styles.laborTotalValue}>{formatKES(laborCost)}</Text>
-            </View>
+                {laborMode === "per_pump" && (
+                  <>
+                    <Text style={styles.fieldLabel}>Total Number of Pumps</Text>
+                    <TextInput style={styles.input} value={numPumps} onChangeText={setNumPumps}
+                      keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                    <Text style={styles.fieldHint}>Total pumps across the section(s) worked</Text>
+                    <Text style={styles.fieldLabel}>Rate per Pump (KES)</Text>
+                    <TextInput style={styles.input} value={ratePerPump} onChangeText={setRatePerPump}
+                      keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                    <Text style={styles.fieldHint}>{numPumps} pumps × KES {ratePerPump}/pump</Text>
+                  </>
+                )}
+
+                <View style={styles.laborTotal}>
+                  <Text style={styles.laborTotalLabel}>Total Labor Cost</Text>
+                  <Text style={styles.laborTotalValue}>{formatKES(laborCost)}</Text>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.fieldHint}>
+                A farm manager records labour pay and costs. Your crew size, days, and work details can still be saved.
+              </Text>
+            )}
           </View>
         )}
 
@@ -1817,7 +1828,10 @@ export default function LogActivityScreen() {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Labor</Text>
-                <Text style={styles.summaryValue}>{totalWorkerCount} workers · {daysWorked} days · {formatKES(laborCost)}</Text>
+                <Text style={styles.summaryValue}>
+                  {totalWorkerCount} workers · {daysWorked} days
+                  {canManageLabourCostEntries ? ` · ${formatKES(laborCost)}` : " · cost recorded by manager"}
+                </Text>
               </View>
               {selectedWorkerNames ? (
                 <View style={styles.summaryRow}>

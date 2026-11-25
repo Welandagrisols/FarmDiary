@@ -15,6 +15,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFarm } from "@/context/FarmContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
+import { getFarmRole, type FarmRole } from "@/lib/sales-storage";
+import { canManageLabourCosts } from "@/lib/labour-access";
 import { formatKES, getSeasonBlockName, getSeasonBlocks, isPrePlanting, ProductUsed } from "@/lib/storage";
 import { INVENTORY_MASTER } from "@/constants/farmData";
 import { activityLinksAvailable } from "@/lib/activity-links";
@@ -74,9 +76,13 @@ export default function EditActivityScreen() {
   const { logId } = useLocalSearchParams<{ logId: string }>();
   const { activityLogs, activeSeason, seasons, editActivityLog, removeActivityLog, costs, inventory, addCostEntry, editCostEntry, removeCost, adjustInventoryUse } = useFarm();
   const [linksOn, setLinksOn] = useState(false);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleFarmId, setRoleFarmId] = useState<string | null>(null);
   useEffect(() => { activityLinksAvailable().then(setLinksOn); }, []);
 
   const log = activityLogs.find((l) => l.id === logId);
+  const canManageLabourCostEntries = canManageLabourCosts(farmRole);
   const initialAssignments = log?.worker_assignments ?? [];
 
   const [date, setDate] = useState(log?.actual_date ?? "");
@@ -113,6 +119,33 @@ export default function EditActivityScreen() {
   const [notes, setNotes] = useState(log?.notes && log.notes !== "Quick-completed (no costs logged)" ? log.notes : "");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    if (!log?.farm_id) {
+      setFarmRole("none");
+      setRoleFarmId(null);
+      setRoleLoading(false);
+      return () => { active = false; };
+    }
+    setRoleLoading(true);
+    getFarmRole(log.farm_id)
+      .then((role) => {
+        if (active) {
+          setFarmRole(role);
+          setRoleFarmId(log.farm_id);
+        }
+      })
+      .catch((error) => {
+        console.warn("[activity-edit] Could not check farm role:", error);
+        if (active) {
+          setFarmRole("none");
+          setRoleFarmId(log.farm_id);
+        }
+      })
+      .finally(() => { if (active) setRoleLoading(false); });
+    return () => { active = false; };
+  }, [log?.farm_id]);
+
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -143,6 +176,31 @@ export default function EditActivityScreen() {
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={40} color={COLORS.textMuted} />
           <Text style={styles.emptyText}>Activity not found.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const roleResolvedForActivity = roleFarmId === log.farm_id;
+  if (!roleResolvedForActivity || roleLoading || !canManageLabourCostEntries) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Go back">
+            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Edit Activity</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.emptyState}>
+          <Ionicons
+            name={!roleResolvedForActivity || roleLoading ? "hourglass-outline" : "lock-closed-outline"}
+            size={36}
+            color={COLORS.textMuted}
+          />
+          <Text style={styles.emptyText}>
+            {!roleResolvedForActivity || roleLoading ? "Checking manager access…" : "Only a farm manager can edit this activity."}
+          </Text>
         </View>
       </View>
     );

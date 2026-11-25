@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { reportWriteError } from "@/lib/write-errors";
 import {
   View,
@@ -17,18 +17,23 @@ import { useFarm } from "@/context/FarmContext";
 import COLORS from "@/constants/colors";
 import { COST_CATEGORIES } from "@/constants/farmData";
 import { isPrePlanting } from "@/lib/storage";
+import { canManageLabourCosts, isLabourCostCategory } from "@/lib/labour-access";
+import { getFarmRole, type FarmRole } from "@/lib/sales-storage";
 import * as Haptics from "expo-haptics";
 
 type SectionChoice = "section-a" | "section-b" | "both" | "farm";
 
 const CATEGORIES = Object.keys(COST_CATEGORIES);
+const NON_LABOUR_CATEGORIES = CATEGORIES.filter((item) => !isLabourCostCategory(item));
+const INITIAL_CATEGORY = NON_LABOUR_CATEGORIES[0] ?? CATEGORIES[0] ?? "";
 
 export default function AddCostScreen() {
   const insets = useSafeAreaInsets();
   const { addCostEntry, activeSeason, seasonId, farmId } = useFarm();
 
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [subcategory, setSubcategory] = useState(COST_CATEGORIES[CATEGORIES[0]][0]);
+  const [farmRole, setFarmRole] = useState<FarmRole>("none");
+  const [category, setCategory] = useState(INITIAL_CATEGORY);
+  const [subcategory, setSubcategory] = useState(COST_CATEGORIES[INITIAL_CATEGORY]?.[0] ?? "");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [sectionChoice, setSectionChoice] = useState<SectionChoice>("farm");
@@ -49,15 +54,38 @@ export default function AddCostScreen() {
   const [tripTo, setTripTo] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const canManageLabourCostEntries = canManageLabourCosts(farmRole);
   const subcategories = COST_CATEGORIES[category] || [];
 
+  useEffect(() => {
+    let active = true;
+    setFarmRole("none");
+    if (!farmId) return () => { active = false; };
+    getFarmRole(farmId)
+      .then((role) => { if (active) setFarmRole(role); })
+      .catch(() => { if (active) setFarmRole("none"); });
+    return () => { active = false; };
+  }, [farmId]);
+
+  useEffect(() => {
+    if (canManageLabourCostEntries || !isLabourCostCategory(category)) return;
+    const fallback = NON_LABOUR_CATEGORIES[0];
+    if (!fallback) return;
+    setCategory(fallback);
+    setSubcategory(COST_CATEGORIES[fallback]?.[0] ?? "");
+  }, [canManageLabourCostEntries, category]);
+
   const handleCategoryChange = (cat: string) => {
+    if (isLabourCostCategory(cat) && !canManageLabourCostEntries) {
+      Alert.alert("Manager access required", "Only a farm manager can enter labour costs.");
+      return;
+    }
     setCategory(cat);
     setSubcategory(COST_CATEGORIES[cat][0]);
   };
 
   const computedAmount = (() => {
-    if (category === "Labor") {
+    if (isLabourCostCategory(category)) {
       const workers = parseFloat(numWorkers) || 0;
       const days = parseFloat(daysWorked) || 1;
       const rate = parseFloat(ratePerDay) || 500;
@@ -70,6 +98,10 @@ export default function AddCostScreen() {
   const sectionId = sectionChoice === "section-a" ? "section-a" : sectionChoice === "section-b" ? "section-b" : null;
 
   const handleSubmit = async () => {
+    if (isLabourCostCategory(category) && !canManageLabourCostEntries) {
+      Alert.alert("Manager access required", "Only a farm manager can enter labour costs.");
+      return;
+    }
     if (!description.trim()) {
       Alert.alert("Error", "Please enter a description.");
       return;
@@ -101,9 +133,9 @@ export default function AddCostScreen() {
         product_name: category === "Inputs" ? productName || null : null,
         supplier: supplier || null,
         receipt_reference: receipt || null,
-        num_workers: category === "Labor" ? (parseInt(numWorkers) || null) : null,
-        days_worked: category === "Labor" ? (parseFloat(daysWorked) || null) : null,
-        rate_per_worker_per_day: category === "Labor" ? (parseFloat(ratePerDay) || null) : null,
+        num_workers: isLabourCostCategory(category) ? (parseInt(numWorkers) || null) : null,
+        days_worked: isLabourCostCategory(category) ? (parseFloat(daysWorked) || null) : null,
+        rate_per_worker_per_day: isLabourCostCategory(category) ? (parseFloat(ratePerDay) || null) : null,
         facilitator_name: category === "Facilitation" ? facilitatorName || null : null,
         trip_from: category === "Facilitation" ? tripFrom || null : null,
         trip_to: category === "Facilitation" ? tripTo || null : null,
