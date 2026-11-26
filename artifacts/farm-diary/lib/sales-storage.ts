@@ -1,7 +1,11 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+import { getQueueForUser, withCache, withWrite } from "@/lib/offline-storage";
+import { isNetworkError } from "@/lib/network-errors";
 
 export type FarmRole = "admin" | "owner" | "manager" | "seller" | "storekeeper" | "none";
 export type SaleStatus = "pending_check" | "discount_pending" | "recorded" | "void_requested" | "voided";
+export type LocalSaleSyncState = "queued" | "synced";
 
 export interface SaleRecord {
   id: string;
@@ -33,6 +37,13 @@ export interface SaleRecord {
   voided_by_email: string | null;
   void_reason: string | null;
   created_at: string;
+  /** Client-only queue state; never sent as a database column. */
+  localSyncState?: LocalSaleSyncState;
+}
+
+export interface CreateSaleResult {
+  sale: SaleRecord;
+  queued: boolean;
 }
 
 export interface StockLossRecord {
@@ -98,39 +109,92 @@ function localDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+const ROLE_CACHE_PREFIX = "farm_role_cache_";
+const VALID_FARM_ROLES: FarmRole[] = ["admin", "owner", "manager", "seller", "storekeeper", "none"];
+
+function roleCacheKey(userId: string, farmId: string) {
+  return `${ROLE_CACHE_PREFIX}${userId}_${farmId}`;
+}
+
+async function getCachedFarmRole(userId: string, farmId: string): Promise<FarmRole | null> {
+  try {
+    const raw = await AsyncStorage.getItem(roleCacheKey(userId, farmId));
+    if (!raw) return null;
+    const value = JSON.parse(raw)?.role;
+    return VALID_FARM_ROLES.includes(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 async function getSignedInUser() {
-  const { data: { user }, error } = await supabase.auth.getUser();
+  // getSession reads the locally persisted session, so an already signed-in
+  // seller can still create a queued sale when the device has no connection.
+  const { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (!user) throw new Error("Sign in before recording farm transactions.");
-  return user;
+  if (!session?.user) throw new Error("Sign in before recording farm transactions.");
+  return session.user;
 }
 
 export async function getFarmRole(farmId: string): Promise<FarmRole> {
-  const { data, error } = await supabase.rpc("get_farm_role", { p_farm_id: farmId });
-  if (error) throw error;
-  return (data || "none") as FarmRole;
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user.id;
+
+  try {
+    const { data, error } = await supabase.rpc("get_farm_role", { p_farm_id: farmId });
+    if (error) throw error;
+    const role = (data || "none") as FarmRole;
+    if (!VALID_FARM_ROLES.includes(role)) throw new Error("The farm role response is invalid.");
+    if (userId) {
+      await AsyncStorage.setItem(roleCacheKey(userId, farmId), JSON.stringify({ role }));
+    }
+    return role;
+  } catch (error) {
+    if (!isNetworkError(error) || !userId) throw error;
+    const cachedRole = await getCachedFarmRole(userId, farmId);
+    if (cachedRole) return cachedRole;
+    throw error;
+  }
+}
+
+async function getFarmSalesWithOfflineWrites(farmId: string): Promise<SaleRecord[]> {
+  const sales = await withCache<SaleRecord>(
+    `sales_${farmId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("sales")
+        .select("*")
+        .eq("farm_id", farmId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as SaleRecord[];
+    },
+    "sales",
+    { field: "farm_id", id: farmId },
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  const queue = session?.user.id ? await getQueueForUser(session.user.id) : [];
+  const queuedIds = new Set(
+    queue
+      .filter((item) => item.table === "sales" && item.operation !== "delete")
+      .map((item) => item.data?.id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  return sales.map((sale) => ({
+    ...sale,
+    localSyncState: queuedIds.has(sale.id) ? "queued" : "synced",
+  }));
 }
 
 export async function getSales(farmId: string, seasonId: string): Promise<SaleRecord[]> {
-  const { data, error } = await supabase
-    .from("sales")
-    .select("*")
-    .eq("farm_id", farmId)
-    .eq("season_id", seasonId)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data || []) as SaleRecord[];
+  const sales = await getFarmSalesWithOfflineWrites(farmId);
+  return sales.filter((sale) => sale.season_id === seasonId);
 }
 
 /** Every sale on a farm, all crop cycles. Row-level security decides which ones this person may see. */
 export async function getFarmSales(farmId: string): Promise<SaleRecord[]> {
-  const { data, error } = await supabase
-    .from("sales")
-    .select("*")
-    .eq("farm_id", farmId)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data || []) as SaleRecord[];
+  return getFarmSalesWithOfflineWrites(farmId);
 }
 
 export async function createSale(input: {
@@ -144,11 +208,11 @@ export async function createSale(input: {
   discountKes: number;
   paymentMethod: "mpesa" | "cash" | "bank";
   paymentReference: string;
-}): Promise<SaleRecord> {
+}): Promise<CreateSaleResult> {
   const user = await getSignedInUser();
   const subtotal = input.quantityKg * input.unitPriceKes;
   const status: SaleStatus = input.discountKes > 0 ? "discount_pending" : "pending_check";
-  const { data, error } = await supabase.from("sales").insert({
+  const record: SaleRecord = {
     id: makeId("sale"),
     receipt_number: `FD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     farm_id: input.farmId,
@@ -165,9 +229,36 @@ export async function createSale(input: {
     payment_method: input.paymentMethod,
     payment_reference: input.paymentReference.trim() || null,
     status,
-  }).select("*").single();
-  if (error) throw error;
-  return data as SaleRecord;
+    check_note: null,
+    checked_by: null,
+    checked_by_email: null,
+    checked_at: null,
+    discount_approved_by: null,
+    discount_approved_by_email: null,
+    discount_approved_at: null,
+    discount_approval_reason: null,
+    void_requested_by_email: null,
+    void_request_reason: null,
+    voided_by_email: null,
+    void_reason: null,
+    created_at: new Date().toISOString(),
+  };
+  const saved = await withWrite<SaleRecord & { _savedOnline?: true }>(
+    "sales",
+    "insert",
+    record,
+    async () => {
+      const { data, error } = await supabase.from("sales").insert(record).select("*").single();
+      if (error) throw error;
+      return { ...(data as SaleRecord), _savedOnline: true };
+    },
+  );
+  const queued = saved._savedOnline !== true;
+  const { _savedOnline: _onlineMarker, ...sale } = saved;
+  return {
+    sale: { ...sale, localSyncState: queued ? "queued" : "synced" },
+    queued,
+  };
 }
 
 export async function approveSaleDiscount(saleId: string, reason: string) {

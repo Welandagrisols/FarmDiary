@@ -209,7 +209,7 @@ export async function clearAllStorageForSignOut(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
     const keysToRemove = allKeys.filter(
-      (k) => k.startsWith(CACHE_PREFIX) || k.startsWith("sb-")
+      (k) => k.startsWith(CACHE_PREFIX) || k.startsWith("sb-") || k.startsWith("farm_role_cache_")
     );
     if (keysToRemove.length > 0) {
       await AsyncStorage.multiRemove(keysToRemove);

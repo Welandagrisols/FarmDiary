@@ -9,6 +9,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { FarmProvider } from "@/context/FarmContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { SyncProvider } from "@/context/SyncContext";
 import {
   useFonts,
   Manrope_400Regular,
@@ -91,9 +92,11 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
             <AuthProvider>
-              <FarmProvider>
-                <RootLayoutNav />
-              </FarmProvider>
+              <SyncProvider>
+                <FarmProvider>
+                  <RootLayoutNav />
+                </FarmProvider>
+              </SyncProvider>
             </AuthProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>

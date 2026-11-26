@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLOSED_SEASON_MESSAGE } from "@/lib/season-rules";
+import * as Print from "expo-print";
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +17,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
+import { SyncBadge } from "@/components/SyncBadge";
+import { useSync } from "@/context/SyncContext";
 import COLORS, { CARD_SHADOW } from "@/constants/colors";
 import { useFarm } from "@/context/FarmContext";
 import { formatKES, getSeasonBlockName, getSeasonBlocks } from "@/lib/storage";
@@ -27,6 +30,9 @@ import {
   type BuyerCommitment,
 } from "@/lib/buyer-commitments";
 import { blockCropTemplate } from "@/lib/season-crops";
+import { buildSaleReceiptHtml } from "@/lib/sale-receipt";
+import { isNetworkError } from "@/lib/network-errors";
+import { COUNTED_SALE_STATUSES, PENDING_SALE_STATUSES } from "@/lib/season-finance";
 import {
   approveSaleDiscount,
   approveSaleVoid,
@@ -81,7 +87,7 @@ function roleLabel(role: FarmRole) {
 
 function statusLabel(status: SaleRecord["status"]) {
   switch (status) {
-    case "pending_check": return "Awaiting checker";
+    case "pending_check": return "Awaiting Sunmi POS";
     case "discount_pending": return "Discount approval needed";
     case "recorded": return "Recorded";
     case "void_requested": return "Void awaiting owner";
@@ -92,6 +98,7 @@ function statusLabel(status: SaleRecord["status"]) {
 export default function SalesScreen() {
   const insets = useSafeAreaInsets();
   const { activeFarm, activeSeason, harvestRecords } = useFarm();
+  const { pendingCount } = useSync();
   const [role, setRole] = useState<FarmRole>("none");
   const [currentUserId, setCurrentUserId] = useState("");
   const [sales, setSales] = useState<SaleRecord[]>([]);
@@ -210,7 +217,9 @@ export default function SalesScreen() {
         setIssues([]);
       }
     } catch (error: any) {
-      Alert.alert("Could not load sales control", error?.message || "Check your connection and try again.");
+      if (!isNetworkError(error)) {
+        Alert.alert("Could not load sales control", error?.message || "Check your connection and try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -219,7 +228,7 @@ export default function SalesScreen() {
   useEffect(() => {
     setLoading(true);
     load();
-  }, [load]);
+  }, [load, pendingCount]);
 
   const subtotal = (Number(quantityKg) || 0) * (Number(unitPrice) || 0);
   const discountValue = Number(discount) || 0;
@@ -228,6 +237,22 @@ export default function SalesScreen() {
   const todaySales = useMemo(
     () => sales.filter((sale) => localDateKey(new Date(sale.created_at)) === todayKey()),
     [sales],
+  );
+  const todayClosedSales = useMemo(
+    () => todaySales.filter((sale) => COUNTED_SALE_STATUSES.includes(sale.status)),
+    [todaySales],
+  );
+  const todayPendingSalesKg = useMemo(
+    () => todaySales
+      .filter((sale) => PENDING_SALE_STATUSES.includes(sale.status))
+      .reduce((sum, sale) => sum + (Number(sale.quantity_kg) || 0), 0),
+    [todaySales],
+  );
+  const myPendingSales = useMemo(
+    () => sales.filter((sale) =>
+      sale.seller_id === currentUserId && PENDING_SALE_STATUSES.includes(sale.status)
+    ),
+    [currentUserId, sales],
   );
   const recentBuyers = useMemo(() => {
     const seen = new Set<string>();
@@ -319,7 +344,12 @@ export default function SalesScreen() {
     [harvestRecords, activeFarm?.id, seasonId],
   );
   const soldKg = useMemo(
-    () => sales.filter((sale) => sale.status !== "voided")
+    () => sales.filter((sale) => COUNTED_SALE_STATUSES.includes(sale.status))
+      .reduce((sum, sale) => sum + (Number(sale.quantity_kg) || 0), 0),
+    [sales],
+  );
+  const pendingPosKg = useMemo(
+    () => sales.filter((sale) => PENDING_SALE_STATUSES.includes(sale.status))
       .reduce((sum, sale) => sum + (Number(sale.quantity_kg) || 0), 0),
     [sales],
   );
@@ -340,7 +370,7 @@ export default function SalesScreen() {
   const expectedStockKg = seasonHarvestKg - soldKg - lostKg - issuedKg;
   const latestConfirmedCount = counts.find((count) => count.status === "confirmed" && count.product_name === productName);
   const stockVariance = latestConfirmedCount ? expectedStockKg - Number(latestConfirmedCount.quantity_kg) : null;
-  const todayRevenue = todaySales.filter((sale) => sale.status !== "voided")
+  const todayRevenue = todayClosedSales
     .reduce((sum, sale) => sum + (Number(sale.total_kes) || 0), 0);
 
   const handleCreateSale = async () => {
@@ -367,7 +397,7 @@ export default function SalesScreen() {
     }
     setSaving(true);
     try {
-      const sale = await createSale({
+      const result = await createSale({
         farmId: activeFarm.id,
         seasonId,
         blockId: resolvedSaleBlockId,
@@ -379,6 +409,8 @@ export default function SalesScreen() {
         paymentMethod,
         paymentReference,
       });
+      const { sale, queued } = result;
+      setSales((previous) => [sale, ...previous.filter((item) => item.id !== sale.id)]);
       setBuyerName("");
       setQuantityKg("");
       setUnitPrice("");
@@ -386,10 +418,11 @@ export default function SalesScreen() {
       setDiscount("");
       setShowDiscountDetails(false);
       setPaymentReference("");
-      await load();
       Alert.alert(
-        "Sale captured",
-        `${sale.receipt_number} · ${statusLabel(sale.status)}. Keep the payment reference with the receipt.`,
+        queued ? "Sale saved on this phone" : "Sale sent to POS",
+        queued
+          ? `${sale.receipt_number} is saved locally and will sync when the connection returns. It is not yet confirmed or printable.`
+          : `${sale.receipt_number} is waiting for a manager to confirm payment on Sunmi and print the buyer receipt.`,
       );
     } catch (error: any) {
       Alert.alert("Could not record sale", error?.message || "Try again.");
@@ -411,6 +444,23 @@ export default function SalesScreen() {
     }
   };
 
+  const handlePrintReceipt = async (sale: SaleRecord) => {
+    if (!COUNTED_SALE_STATUSES.includes(sale.status)) {
+      Alert.alert("Sale not confirmed", "The receipt is available after a manager confirms the sale at the POS.");
+      return;
+    }
+    try {
+      await Print.printAsync({
+        html: buildSaleReceiptHtml(sale, activeFarm?.name || "Farm Diary"),
+      });
+    } catch (error: any) {
+      Alert.alert(
+        "Could not open the print window",
+        error?.message || "Check that a printer service is available on the POS, then try again.",
+      );
+    }
+  };
+
   const submitReview = async () => {
     if (!review || !reason.trim()) {
       Alert.alert("Reason required", "Add a note so the review is auditable.");
@@ -418,13 +468,29 @@ export default function SalesScreen() {
     }
     setSaving(true);
     try {
-      if (review.action === "check") await checkSale(review.sale.id, reason);
-      if (review.action === "discount") await approveSaleDiscount(review.sale.id, reason);
-      if (review.action === "voidRequest") await requestSaleVoid(review.sale.id, reason);
-      if (review.action === "voidApproval") await approveSaleVoid(review.sale.id, reason);
+      const request = review;
+      const checkNote = reason;
+      if (request.action === "check") {
+        await checkSale(request.sale.id, checkNote);
+        setSales((previous) => previous.map((sale) => sale.id === request.sale.id
+          ? {
+              ...sale,
+              status: "recorded",
+              check_note: checkNote,
+              checked_by: currentUserId,
+              checked_at: new Date().toISOString(),
+            }
+          : sale));
+      }
+      if (request.action === "discount") await approveSaleDiscount(request.sale.id, checkNote);
+      if (request.action === "voidRequest") await requestSaleVoid(request.sale.id, checkNote);
+      if (request.action === "voidApproval") await approveSaleVoid(request.sale.id, checkNote);
       setReview(null);
       setReason("");
       await load();
+      if (request.action === "check") {
+        await handlePrintReceipt({ ...request.sale, status: "recorded", check_note: checkNote });
+      }
     } catch (error: any) {
       Alert.alert("Review was not saved", error?.message || "Try again.");
     } finally {
@@ -584,13 +650,32 @@ export default function SalesScreen() {
           </Pressable>
         ) : null}
 
+        {tab === "entry" && myPendingSales.length > 0 ? (
+          <View style={styles.posPendingCard}>
+            <Text style={styles.posPendingTitle}>Waiting for Sunmi POS</Text>
+            {myPendingSales.slice(0, 3).map((sale) => (
+              <View key={sale.id} style={styles.posPendingRow}>
+                <Text style={styles.posPendingMeta}>
+                  {sale.receipt_number} · {sale.buyer_name} · {formatKES(sale.total_kes)}
+                </Text>
+                <Text style={styles.smallNote}>
+                  {sale.localSyncState === "queued"
+                    ? "Saved on this phone · waiting to sync"
+                    : "Synced · waiting for POS confirmation"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {tab === "entry" && role !== "storekeeper" ? (
           <>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Record sale</Text>
               <Text style={styles.helperTextLeft}>
-                Your name is added automatically. A manager checks the sale after you save it.
+                Your account is recorded as the seller. Sales stay pending until a manager confirms payment at the Sunmi POS.
               </Text>
+              <SyncBadge />
               {seasonBlocks.length > 1 ? (
                 <>
                   <Text style={styles.fieldLabel}>Planting block (optional)</Text>
@@ -770,7 +855,7 @@ export default function SalesScreen() {
                   </View>
                 </View>
               )}
-              <Text style={styles.fieldLabel}>Payment received</Text>
+              <Text style={styles.fieldLabel}>Payment details for POS confirmation</Text>
               <View style={styles.chipRow}>
                 {PAYMENT_METHODS.map((method) => (
                   <Pressable
@@ -809,10 +894,11 @@ export default function SalesScreen() {
                   </View>
                 </>
               ) : null}
-              <Pressable style={[styles.primaryButton, saving && styles.buttonDisabled]} onPress={handleCreateSale} disabled={saving}>
-                {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Record sale</Text>}
+              <Pressable style={[styles.primaryButton, saving && styles.buttonDisabled]} onPress={handleCreateSale} disabled={saving} testID="sale-create">
+                {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Save sale for POS</Text>}
               </Pressable>
-              <Text style={styles.smallNote}>Record payment to the farm till/paybill or farm account. Do not use a worker’s personal payment number.</Text>
+              <Text style={styles.smallNote}>Send payment to the farm till/paybill or farm account, not a worker’s personal number.</Text>
+              <Text style={styles.smallNote}>Phone sales sync to the POS after the connection returns. The buyer receipt is printed after confirmation.</Text>
             </View>
 
           </>
@@ -823,10 +909,10 @@ export default function SalesScreen() {
             <View style={styles.todayCard}>
               <View style={styles.todayIcon}><Ionicons name="receipt-outline" size={19} color={COLORS.primary} /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.todayLabel}>Today’s recorded sales</Text>
+                <Text style={styles.todayLabel}>Today’s sales closed at POS</Text>
                 <Text style={styles.todayValue}>{formatKES(todayRevenue)}</Text>
               </View>
-              <Text style={styles.todayCount}>{todaySales.length} sale{todaySales.length === 1 ? "" : "s"}</Text>
+              <Text style={styles.todayCount}>{todayClosedSales.length} sale{todayClosedSales.length === 1 ? "" : "s"}</Text>
             </View>
 
             <View style={styles.sectionHeader}>
@@ -867,8 +953,13 @@ export default function SalesScreen() {
                   {sale.void_reason ? <Text style={styles.saleReason}>Void approved: {sale.void_reason}</Text> : null}
                   <View style={styles.actionRow}>
                     {canReviewSales && !checkedAt && sale.status !== "voided" && sale.status !== "void_requested" && sale.seller_id !== currentUserId ? (
-                      <Pressable style={styles.outlineAction} onPress={() => { setReason(""); setReview({ action: "check", sale }); }}>
-                        <Text style={styles.outlineActionText}>Check sale</Text>
+                      <Pressable
+                        style={styles.outlineAction}
+                        onPress={() => { setReason(""); setReview({ action: "check", sale }); }}
+                        accessibilityRole="button"
+                        testID={`confirm-sale-${sale.id}`}
+                      >
+                        <Text style={styles.outlineActionText}>Confirm & print</Text>
                       </Pressable>
                     ) : null}
                     {canReviewSales && sale.discount_kes > 0 && !hasDiscountApproval && sale.status !== "voided" ? (
@@ -884,6 +975,17 @@ export default function SalesScreen() {
                     {canApproveVoids && sale.status === "void_requested" ? (
                       <Pressable style={styles.dangerAction} onPress={() => { setReason(""); setReview({ action: "voidApproval", sale }); }}>
                         <Text style={styles.dangerActionText}>Approve void</Text>
+                      </Pressable>
+                    ) : null}
+                    {COUNTED_SALE_STATUSES.includes(sale.status) ? (
+                      <Pressable
+                        style={styles.outlineAction}
+                        onPress={() => handlePrintReceipt(sale)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Print receipt ${sale.receipt_number}`}
+                        testID={`print-sale-receipt-${sale.id}`}
+                      >
+                        <Text style={styles.outlineActionText}>Print receipt</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -921,7 +1023,8 @@ export default function SalesScreen() {
                 {productName}: harvested − sales − recorded loss − confirmed issues − counted stock should equal 0 kg.
               </Text>
               <MetricRow label="Harvested" value={`${seasonHarvestKg.toFixed(1)} kg`} />
-              <MetricRow label="Sales recorded / awaiting review" value={`${soldKg.toFixed(1)} kg`} />
+              <MetricRow label="Sales confirmed at POS" value={`${soldKg.toFixed(1)} kg`} />
+              <MetricRow label="Awaiting POS confirmation" value={`${pendingPosKg.toFixed(1)} kg`} />
               <MetricRow label="Recorded losses" value={`${lostKg.toFixed(1)} kg`} />
               <MetricRow label="Confirmed issues out of store" value={`${issuedKg.toFixed(1)} kg`} />
               <MetricRow label="Expected stock" value={`${expectedStockKg.toFixed(1)} kg`} strong />
@@ -936,7 +1039,7 @@ export default function SalesScreen() {
               <View style={styles.dailySummary}>
                 <Text style={styles.dailySummaryTitle}>Today’s movement</Text>
                 <Text style={styles.smallNote}>
-                  Harvested {todayHarvestKg.toFixed(1)} kg · sold {todaySales.filter((sale) => sale.status !== "voided").reduce((sum, sale) => sum + Number(sale.quantity_kg || 0), 0).toFixed(1)} kg · loss {todayLostKg.toFixed(1)} kg · {todaySales.length} sale{todaySales.length === 1 ? "" : "s"} · {formatKES(todayRevenue)}
+                  Harvested {todayHarvestKg.toFixed(1)} kg · sold {todayClosedSales.reduce((sum, sale) => sum + Number(sale.quantity_kg || 0), 0).toFixed(1)} kg · awaiting POS {todayPendingSalesKg.toFixed(1)} kg · loss {todayLostKg.toFixed(1)} kg · {todayClosedSales.length} closed sale{todayClosedSales.length === 1 ? "" : "s"} · {formatKES(todayRevenue)}
                 </Text>
               </View>
             </View>
@@ -1016,7 +1119,7 @@ export default function SalesScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.cardTitle}>
-              {review?.action === "check" ? "Check this sale"
+              {review?.action === "check" ? "Confirm sale at Sunmi POS"
                 : review?.action === "discount" ? "Approve discount"
                 : review?.action === "voidRequest" ? "Request sale void"
                 : "Approve sale void"}
@@ -1024,11 +1127,16 @@ export default function SalesScreen() {
             <Text style={styles.helperTextLeft}>
               {review?.sale.receipt_number} · {review?.sale.buyer_name} · {formatKES(review?.sale.total_kes || 0)}
             </Text>
+            {review?.action === "check" ? (
+              <Text style={styles.helperTextLeft}>
+                Verify payment at the POS. After confirmation, the Android print window opens so you can choose the Sunmi printer.
+              </Text>
+            ) : null}
             <TextInput
               style={[styles.input, styles.reasonInput]}
               value={reason}
               onChangeText={setReason}
-              placeholder="Required review reason or note"
+              placeholder={review?.action === "check" ? "Payment check note or reference" : "Required review reason or note"}
               placeholderTextColor={COLORS.textMuted}
               multiline
               textAlignVertical="top"
@@ -1038,7 +1146,9 @@ export default function SalesScreen() {
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </Pressable>
               <Pressable style={[styles.primaryButton, styles.modalSubmit, saving && styles.buttonDisabled]} onPress={submitReview} disabled={saving}>
-                {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Save review</Text>}
+                {saving
+                  ? <ActivityIndicator color={COLORS.white} />
+                  : <Text style={styles.primaryButtonText}>{review?.action === "check" ? "Confirm & open receipt" : "Save review"}</Text>}
               </Pressable>
             </View>
           </View>
@@ -1078,6 +1188,10 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: "row", gap: 3, marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.cardBg, borderRadius: 11, padding: 4 },
   commitmentsLink: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.primarySurface },
   commitmentsLinkText: { flex: 1, fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.primary },
+  posPendingCard: { marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 14, backgroundColor: COLORS.amberLight, gap: 7 },
+  posPendingTitle: { fontFamily: "Manrope_700Bold", fontSize: 13, color: COLORS.amberDark },
+  posPendingRow: { borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingTop: 6, gap: 2 },
+  posPendingMeta: { fontFamily: "Manrope_600SemiBold", fontSize: 12, color: COLORS.text },
   commitmentNotice: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 12, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.borderLight },
   commitmentNoticeWarning: { backgroundColor: COLORS.amberLight, borderColor: COLORS.amberLight },
   commitmentNoticeText: { flex: 1, fontFamily: "Manrope_500Medium", fontSize: 12, lineHeight: 17, color: COLORS.textSecondary },
