@@ -1,45 +1,40 @@
-# [Project name]
+# Farm Diary
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile app for recording farm activities, managing crop seasons, tracking costs and harvests, and keeping plot and soil records.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- The Replit mobile preview starts through the managed `artifacts/farm-diary: expo` workflow.
+- The API starts through `artifacts/api-server: API Server`.
+- Install dependencies from the workspace root with `pnpm install --frozen-lockfile`.
+- Run the full TypeScript check with `pnpm run typecheck`.
+- Run Farm Diary tests with `pnpm --filter @workspace/farm-diary test`.
+- The API health endpoint is `/api/healthz`.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspaces, Node.js 22+, TypeScript
+- Mobile app: Expo, React Native, Expo Router
+- API: Express
+- Data and authentication: Supabase
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/farm-diary/app/` — app screens and routes
+- `artifacts/farm-diary/context/` — authentication, farm selection, and data sync
+- `artifacts/farm-diary/lib/supabase-storage.ts` — Supabase data access
+- `artifacts/api-server/src/` — Express server and API routes
+- `artifacts/farm-diary/tests/` — app logic tests
 
-## Architecture decisions
+## Environment
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- The mobile app uses `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
+- The API needs the private `SUPABASE_SERVICE_ROLE_KEY` Replit Secret; it uses `SUPABASE_URL` when set, otherwise the public Supabase URL.
+- `GEMINI_API_KEY` enables soil-report text extraction and is optional.
+- Keep service-role and other private keys in Replit Secrets, not in source files or `EXPO_PUBLIC_` variables.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Run the API on Node.js 22 or newer; the Supabase client needs Node's built-in WebSocket support.
+- Farm Diary also supports offline writes and later sync; do not replace its local cache with mock data.
+- The Expo app has existing iOS and Android bundle identifiers; preserve them.
