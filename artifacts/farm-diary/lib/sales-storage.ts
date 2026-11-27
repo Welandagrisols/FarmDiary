@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getQueueForUser, withCache, withWrite } from "@/lib/offline-storage";
 import { isNetworkError } from "@/lib/network-errors";
 
-export type FarmRole = "admin" | "owner" | "manager" | "seller" | "storekeeper" | "none";
+export type FarmRole = "admin" | "owner" | "manager" | "cashier" | "seller" | "storekeeper" | "none";
 export type SaleStatus = "pending_check" | "discount_pending" | "recorded" | "void_requested" | "voided";
 export type LocalSaleSyncState = "queued" | "synced";
 
@@ -110,7 +110,7 @@ function localDateKey(date = new Date()) {
 }
 
 const ROLE_CACHE_PREFIX = "farm_role_cache_";
-const VALID_FARM_ROLES: FarmRole[] = ["admin", "owner", "manager", "seller", "storekeeper", "none"];
+const VALID_FARM_ROLES: FarmRole[] = ["admin", "owner", "manager", "cashier", "seller", "storekeeper", "none"];
 
 function roleCacheKey(userId: string, farmId: string) {
   return `${ROLE_CACHE_PREFIX}${userId}_${farmId}`;

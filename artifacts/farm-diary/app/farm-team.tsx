@@ -19,7 +19,7 @@ import { farmTeamApi } from "@/lib/api";
 import { addFarmWorker, getFarmWorkers, setFarmWorkerActive } from "@/lib/supabase-storage";
 import type { FarmWorker } from "@/lib/storage";
 
-type TeamRole = "manager" | "seller" | "storekeeper";
+type TeamRole = "manager" | "cashier" | "seller" | "storekeeper";
 interface TeamMember {
   user_id: string;
   email: string;
@@ -29,6 +29,7 @@ interface TeamMember {
 
 const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
   { value: "seller", label: "Seller" },
+  { value: "cashier", label: "Cashier" },
   { value: "storekeeper", label: "Storekeeper" },
   { value: "manager", label: "Manager" },
 ];

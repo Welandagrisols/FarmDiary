@@ -82,7 +82,7 @@ export const farmTeamApi = {
   list: (farmId: string) =>
     adminRequest(`/api/farms/${encodeURIComponent(farmId)}/team`, "GET"),
 
-  create: (farmId: string, email: string, password: string, role: "manager" | "seller" | "storekeeper") =>
+  create: (farmId: string, email: string, password: string, role: "manager" | "cashier" | "seller" | "storekeeper") =>
     adminRequest(`/api/farms/${encodeURIComponent(farmId)}/team`, "POST", { email, password, role }),
 
   remove: (farmId: string, userId: string) =>

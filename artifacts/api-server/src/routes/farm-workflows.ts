@@ -195,7 +195,7 @@ export function registerFarmWorkflowRoutes(router: Router) {
       res.status(400).json({ message: "Password must be at least 8 characters." });
       return;
     }
-    if (!["manager", "seller", "storekeeper"].includes(role)) {
+    if (!["manager", "cashier", "seller", "storekeeper"].includes(role)) {
       res.status(400).json({ message: "Invalid farm role." });
       return;
     }
